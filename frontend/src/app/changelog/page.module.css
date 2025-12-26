@@ -1,0 +1,160 @@
+.main {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem 1.5rem;
+  background: linear-gradient(
+    135deg,
+    var(--color-background) 0%,
+    var(--color-surface) 100%
+  );
+}
+
+.container {
+  max-width: 700px;
+  width: 100%;
+}
+
+.backLink {
+  display: inline-block;
+  margin-bottom: 2rem;
+  color: var(--color-primary);
+  text-decoration: none;
+  font-size: 0.875rem;
+  transition: opacity 0.2s ease;
+}
+
+.backLink:hover {
+  opacity: 0.8;
+}
+
+.title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.description {
+  font-size: 1.125rem;
+  color: var(--color-secondary);
+  margin-bottom: 3rem;
+}
+
+/* Timeline */
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+/* Entry */
+.entry {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  transition: border-color 0.2s ease;
+}
+
+.entry:hover {
+  border-color: var(--color-primary);
+}
+
+.entryHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.version {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-foreground);
+}
+
+.date {
+  font-size: 0.875rem;
+  color: var(--color-secondary);
+}
+
+/* Change List */
+.changeList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.changeItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+/* Tags */
+.tag {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  text-transform: uppercase;
+}
+
+.tagFeature {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+}
+
+.tagFix {
+  background-color: #fce7f3;
+  color: #be185d;
+}
+
+.tagImprovement {
+  background-color: #d1fae5;
+  color: #047857;
+}
+
+.tagBreaking {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+
+/* Dark mode tag adjustments */
+@media (prefers-color-scheme: dark) {
+  .tagFeature {
+    background-color: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+  }
+
+  .tagFix {
+    background-color: rgba(236, 72, 153, 0.2);
+    color: #f472b6;
+  }
+
+  .tagImprovement {
+    background-color: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+  }
+
+  .tagBreaking {
+    background-color: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+  }
+}
+
+.changeDescription {
+  font-size: 0.9375rem;
+  color: var(--color-foreground);
+  line-height: 1.5;
+}
+

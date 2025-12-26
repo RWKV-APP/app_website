@@ -101,3 +101,5 @@ pnpm prisma migrate deploy
 
 - Backend: 修改 `backend/.env` 中的 `PORT` 值
 - Frontend: 修改 `frontend/package.json` 中的 dev 脚本为 `next dev -p 3002`
+
+
