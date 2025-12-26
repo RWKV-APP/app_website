@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+.taro
+.docusaurus
+public
+build
+pnpm-lock.yaml
+
+
+
+

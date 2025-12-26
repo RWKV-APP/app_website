@@ -1,0 +1,38 @@
+---
+alwaysApply: true
+---
+
+这是一个使用 pnpm 管理的 monorepo 项目
+
+## backend
+
+使用 nest.js 部署一个服务器
+
+### 技术栈
+
+- prisma
+- nest.js
+- typescript
+- sqlite
+
+### 功能
+
+- 管理 app 的远程配置文件
+- 部署 frontend
+- 管理 app 的最新安装包, 并同步至 frontend
+
+## frontend
+
+使用最佳实践来开发
+
+### 技术栈
+
+- next.js
+- jotai
+- react
+
+### 功能
+
+- 主要是做一个下载页面, 用户可以从该页面下载 apk, exe, dmg 等等安装包
+- 如果用户使用 ios, 还会引导用户打开 App Store 下载 App, 或者直接自动跳转至 app
+- 展示版本更新记录

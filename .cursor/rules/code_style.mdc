@@ -1,0 +1,36 @@
+---
+alwaysApply: true
+---
+
+# 必须使用 "Options Object Pattern" (选项对象模式) 或 "Named Parameters" (simulated via object destructuring — 通过对象解构模拟的具名参数)。
+
+使用下面的形式定义函数
+
+```ts
+function myFunction(options: { param1: string; param2: number }) {
+  const { param1, param2 } = options
+  return param1 + param2
+}
+```
+
+```ts
+/// 当参数很多时
+
+interface MyFunctionParams {
+  param1: string
+  param2: number
+}
+
+function myFunction(options: MyFunctionParams) {
+  const { param1, param2 } = options
+  return param1 + param2
+}
+```
+
+严禁使用下面的形式定义函数
+
+```ts
+function myFunction(param1: string, param2: number) {
+  return param1 + param2
+}
+```

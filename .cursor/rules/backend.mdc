@@ -1,0 +1,6 @@
+---
+globs: backend/
+alwaysApply: false
+---
+
+- 严禁使用任何 console.log, console, console.debug, 全部替换为 this.logger.error, this.logger.debug

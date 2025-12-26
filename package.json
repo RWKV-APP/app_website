@@ -1,0 +1,24 @@
+{
+  "name": "app-website",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Monorepo for app website with backend and frontend",
+  "scripts": {
+    "dev:backend": "pnpm --filter backend dev",
+    "dev:frontend": "pnpm --filter frontend dev",
+    "build:backend": "pnpm --filter backend build",
+    "build:frontend": "pnpm --filter frontend build",
+    "build": "pnpm build:frontend && pnpm build:backend",
+    "deploy": "bash scripts/deploy.sh",
+    "build:deploy": "pnpm build:frontend && pnpm deploy && pnpm build:backend",
+    "lint": "pnpm --filter backend lint && pnpm --filter frontend lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}
