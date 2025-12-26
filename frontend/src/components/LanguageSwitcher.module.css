@@ -1,7 +1,5 @@
 .wrapper {
-  position: fixed;
-  top: 1rem;
-  right: 1rem;
+  position: relative;
   z-index: 100;
 }
 
@@ -11,7 +9,7 @@
   background-color: var(--color-surface);
   color: var(--color-foreground);
   border: 1px solid var(--color-border);
-  border-radius: 0.5rem;
+  border-radius: 0.375rem;
   cursor: pointer;
   transition:
     border-color 0.2s ease,

@@ -3,26 +3,50 @@
   /* Light theme (default) */
   --color-background: #ffffff;
   --color-foreground: #171717;
-  --color-primary: #0066cc;
-  --color-primary-hover: #0052a3;
+  --color-primary: #14b8a6;
+  --color-primary-hover: #0d9488;
   --color-secondary: #6b7280;
   --color-border: #e5e7eb;
   --color-surface: #f9fafb;
   --color-surface-hover: #f3f4f6;
 }
 
-/* Dark theme - auto detect system preference */
+/* Dark theme - auto detect system preference (when no manual preference) */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --color-background: #0a0a0a;
     --color-foreground: #ededed;
-    --color-primary: #3b82f6;
-    --color-primary-hover: #60a5fa;
+    --color-primary: #0d9488;
+    --color-primary-hover: #14b8a6;
     --color-secondary: #9ca3af;
     --color-border: #27272a;
     --color-surface: #18181b;
     --color-surface-hover: #27272a;
   }
+}
+
+/* Manual dark theme via data-theme attribute */
+:root[data-theme='dark'] {
+  --color-background: #0a0a0a;
+  --color-foreground: #ededed;
+  --color-primary: #0d9488;
+  --color-primary-hover: #14b8a6;
+  --color-secondary: #9ca3af;
+  --color-border: #27272a;
+  --color-surface: #18181b;
+  --color-surface-hover: #27272a;
+}
+
+/* Manual light theme via data-theme attribute */
+:root[data-theme='light'] {
+  --color-background: #ffffff;
+  --color-foreground: #171717;
+  --color-primary: #14b8a6;
+  --color-primary-hover: #0d9488;
+  --color-secondary: #6b7280;
+  --color-border: #e5e7eb;
+  --color-surface: #f9fafb;
+  --color-surface-hover: #f3f4f6;
 }
 
 * {

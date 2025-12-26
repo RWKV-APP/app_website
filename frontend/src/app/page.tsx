@@ -1,12 +1,25 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { useAtomValue } from 'jotai';
-import { translationsAtom } from '@/atoms';
+import { useRef, useState, useEffect } from 'react';
+import { translationsAtom, localeAtom, themeAtom, devicePlatformAtom } from '@/atoms';
+import { ThemeSwitcher, LanguageSwitcher } from '@/components';
+import { getAppStoreBadgePath, getAppleLogoPath, getAppIconPath, getPlatformIconPath } from '@/utils';
 import styles from './page.module.css';
 
 export default function Home() {
   const t = useAtomValue(translationsAtom);
+  const locale = useAtomValue(localeAtom);
+  const theme = useAtomValue(themeAtom);
+  const platform = useAtomValue(devicePlatformAtom);
+  const allPlatformsRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const features = [
     { icon: '📴', title: t.featureOffline, desc: t.featureOfflineDesc },
@@ -16,27 +29,427 @@ export default function Home() {
     { icon: '🎨', title: t.featureMultimodal, desc: t.featureMultimodalDesc },
   ];
 
+  const appleLogoPath = getAppleLogoPath({ theme });
+  const appStoreBadgePath = getAppStoreBadgePath({ locale, theme });
+
+  // 根据设备平台获取对应的下载选项
+  const getSmartDownloadOptions = () => {
+    switch (platform) {
+      case 'ios':
+        return {
+          platformName: t.ios,
+          platformIcon: getAppleLogoPath({ theme }),
+          downloads: [
+            {
+              type: 'testflight',
+              label: t.testFlight,
+              href: 'https://testflight.apple.com/join/DaMqCNKh',
+            },
+            {
+              type: 'app-store',
+              label: t.appStore,
+              href: 'https://apps.apple.com/app/rwkv-chat/id6740192639',
+              badge: appStoreBadgePath,
+            },
+          ],
+        };
+      case 'android':
+        return {
+          platformName: t.android,
+          platformIcon: getPlatformIconPath({ platform: 'android' }),
+          downloads: [
+            {
+              type: 'apk',
+              label: t.apk,
+              href: '#android-apk',
+            },
+            {
+              type: 'play-store',
+              label: t.playStore,
+              href: 'https://play.google.com/store/apps/details?id=com.rwkvzone.chat',
+              badge: '/images/badges/play-store/get-it-on-google-play.png',
+            },
+          ],
+        };
+      case 'windows':
+        return {
+          platformName: t.windows,
+          platformIcon: getPlatformIconPath({ platform: 'windows' }),
+          downloads: [
+            {
+              type: 'installer',
+              label: t.installer,
+              href: '#windows-installer',
+            },
+            {
+              type: 'zip',
+              label: t.zip,
+              href: '#windows-zip',
+            },
+          ],
+        };
+      case 'macos':
+        return {
+          platformName: t.macos,
+          platformIcon: getAppleLogoPath({ theme }),
+          downloads: [
+            {
+              type: 'dmg',
+              label: t.dmg,
+              href: '#macos-dmg',
+            },
+          ],
+        };
+      case 'linux':
+        return {
+          platformName: t.linux,
+          platformIcon: getPlatformIconPath({ platform: 'linux' }),
+          downloads: [
+            {
+              type: 'appimage',
+              label: 'AppImage',
+              href: '#linux-appimage',
+            },
+          ],
+        };
+      default:
+        return null;
+    }
+  };
+
+  const smartDownloadOptions = getSmartDownloadOptions();
+
+  // 滚动到所有平台区域
+  const scrollToAllPlatforms = () => {
+    if (allPlatformsRef.current) {
+      allPlatformsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   const platforms = {
     mobile: [
-      { name: t.android, icon: '🤖', arch: t.androidRequirement, href: '#android' },
-      { name: t.ios, icon: '🍎', arch: t.iosRequirement, href: '#ios' },
+      {
+        name: t.android,
+        icon: '/images/platforms/android.svg',
+        minOs: t.androidRequirement,
+        downloads: [
+          {
+            type: 'apk',
+            label: t.apk,
+            href: '#android-apk',
+          },
+          {
+            type: 'play-store',
+            label: t.playStore,
+            href: 'https://play.google.com/store/apps/details?id=com.rwkvzone.chat',
+            badge: '/images/badges/play-store/get-it-on-google-play.png',
+          },
+        ],
+      },
+      {
+        name: t.ios,
+        icon: appleLogoPath,
+        minOs: t.iosRequirement,
+        downloads: [
+          {
+            type: 'testflight',
+            label: t.testFlight,
+            href: 'https://testflight.apple.com/join/DaMqCNKh',
+          },
+          {
+            type: 'app-store',
+            label: t.appStore,
+            href: 'https://apps.apple.com/app/rwkv-chat/id6740192639',
+            badge: appStoreBadgePath,
+          },
+        ],
+      },
     ],
     desktop: [
-      { name: t.macos, icon: '🖥️', arch: t.macosRequirement, href: '#macos' },
-      { name: t.windows, icon: '🪟', arch: t.windowsRequirement, href: '#windows' },
-      { name: t.linux, icon: '🐧', arch: t.linuxRequirement, href: '#linux' },
+      {
+        name: t.macos,
+        icon: appleLogoPath,
+        minOs: t.macosRequirement,
+        downloads: [
+          {
+            type: 'dmg',
+            label: t.dmg,
+            href: '#macos-dmg',
+          },
+        ],
+      },
+      {
+        name: t.windows,
+        icon: '/images/platforms/windows-logo.png',
+        minOs: t.windowsRequirement,
+        downloads: [
+          {
+            type: 'installer',
+            label: t.installer,
+            href: '#windows-installer',
+          },
+          {
+            type: 'zip',
+            label: t.zip,
+            href: '#windows-zip',
+          },
+        ],
+      },
+      {
+        name: t.linux,
+        icon: '/images/platforms/linux.png',
+        minOs: t.linuxRequirement,
+        downloads: [
+          {
+            type: 'appimage',
+            label: 'AppImage',
+            href: '#linux-appimage',
+          },
+        ],
+      },
     ],
   };
 
   return (
     <main className={styles.main}>
+      {/* Toolbar */}
+      <div className={styles.toolbar}>
+        <LanguageSwitcher />
+        <ThemeSwitcher />
+      </div>
+
       <div className={styles.container}>
         {/* Hero Section */}
         <section className={styles.hero}>
+          <div className={styles.heroIcon}>
+            <Image
+              src={getAppIconPath()}
+              alt={t.appName}
+              width={120}
+              height={120}
+              className={styles.appIconImage}
+              priority
+            />
+          </div>
           <h1 className={styles.appName}>{t.appName}</h1>
           <p className={styles.tagline}>{t.appTagline}</p>
           <p className={styles.description}>{t.appDescription}</p>
         </section>
+
+        {/* Smart Download Section */}
+        {mounted && smartDownloadOptions && (
+          <section className={styles.smartDownloadSection}>
+            <div className={styles.smartDownloadContent}>
+              <div className={styles.smartDownloadHeader}>
+                <Image
+                  src={smartDownloadOptions.platformIcon}
+                  alt={smartDownloadOptions.platformName}
+                  width={32}
+                  height={32}
+                  className={styles.smartDownloadPlatformIcon}
+                />
+                <h2 className={styles.smartDownloadTitle}>{t.smartDownload}</h2>
+              </div>
+              <p className={styles.smartDownloadDesc}>{t.downloadForYourDevice}</p>
+              <div className={styles.smartDownloadButtons}>
+                {smartDownloadOptions.downloads.map((download) => (
+                  <a
+                    key={download.type}
+                    href={download.href}
+                    className={`${styles.downloadButton} ${download.badge ? styles.badgeButton : ''}`}
+                    target={download.href.startsWith('http') ? '_blank' : undefined}
+                    rel={download.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+                  >
+                    {download.badge ? (
+                      <Image
+                        src={download.badge}
+                        alt={download.label}
+                        width={155}
+                        height={60}
+                        className={styles.badgeImage}
+                        unoptimized
+                      />
+                    ) : (
+                      <>
+                        <span>{download.label}</span>
+                        <svg
+                          className={styles.arrowIcon}
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <line x1="5" y1="12" x2="19" y2="12" />
+                          <polyline points="12 5 19 12 12 19" />
+                        </svg>
+                      </>
+                    )}
+                  </a>
+                ))}
+              </div>
+              <button
+                onClick={scrollToAllPlatforms}
+                className={styles.otherPlatformsButton}
+                type="button"
+              >
+                {t.downloadOtherPlatforms}
+                <svg
+                  className={styles.arrowIcon}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <polyline points="19 12 12 19 5 12" />
+                </svg>
+              </button>
+            </div>
+          </section>
+        )}
+
+        {/* All Platforms Section */}
+        <div ref={allPlatformsRef}>
+          {/* Download Section - Mobile */}
+        <section className={styles.downloadSection}>
+          <div className={styles.downloadContent}>
+            <div className={styles.downloadText}>
+              <h2 className={styles.downloadTitle}>{t.mobile}</h2>
+              <p className={styles.downloadDesc}>{t.mobileDesc}</p>
+              <div className={styles.downloadButtons}>
+                {platforms.mobile.map((platform) => (
+                  <div key={platform.name} className={styles.platformGroup}>
+                    <div className={styles.platformLabel}>{platform.name}</div>
+                    <div className={styles.platformGroupButtons}>
+                      {platform.downloads.map((download) => (
+                        <a
+                          key={download.type}
+                          href={download.href}
+                          className={`${styles.downloadButton} ${download.badge ? styles.badgeButton : ''}`}
+                          target={download.href.startsWith('http') ? '_blank' : undefined}
+                          rel={download.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+                        >
+                          {download.badge ? (
+                            <Image
+                              src={download.badge}
+                              alt={download.label}
+                              width={155}
+                              height={60}
+                              className={styles.badgeImage}
+                              unoptimized
+                            />
+                          ) : (
+                            <>
+                              <span>{download.label}</span>
+                              <svg
+                                className={styles.arrowIcon}
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <line x1="5" y1="12" x2="19" y2="12" />
+                                <polyline points="12 5 19 12 12 19" />
+                              </svg>
+                            </>
+                          )}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className={styles.previewArea}>
+              <div className={styles.mobilePreview}>
+                <div className={styles.mobileFrame}>
+                  <div className={styles.mobileHeader}>
+                    <span className={styles.mobileTime}>15:08</span>
+                    <div className={styles.mobileStatus}>
+                      <span>📶</span>
+                      <span>🔋</span>
+                    </div>
+                  </div>
+                  <div className={styles.mobileContent}>
+                    <div className={styles.mobileLogo}>RWKV</div>
+                    <div className={styles.mobileText}>Ask RWKV, Know More</div>
+                    <div className={styles.mobileInput}>
+                      <span>How can I help you today?</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Download Section - Desktop */}
+        <section className={styles.downloadSection}>
+          <div className={styles.downloadContent}>
+            <div className={styles.downloadText}>
+              <h2 className={styles.downloadTitle}>{t.desktop}</h2>
+              <p className={styles.downloadDesc}>{t.desktopDesc}</p>
+              <div className={styles.downloadButtons}>
+                {platforms.desktop.map((platform) => (
+                  <div key={platform.name} className={styles.platformGroup}>
+                    <div className={styles.platformLabel}>{platform.name}</div>
+                    {platform.downloads.map((download) => (
+                      <a
+                        key={download.type}
+                        href={download.href}
+                        className={styles.downloadButton}
+                        target={download.href.startsWith('http') ? '_blank' : undefined}
+                        rel={download.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+                      >
+                        <span>{download.label}</span>
+                        <svg
+                          className={styles.arrowIcon}
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <line x1="5" y1="12" x2="19" y2="12" />
+                          <polyline points="12 5 19 12 12 19" />
+                        </svg>
+                      </a>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className={styles.previewArea}>
+              <div className={styles.desktopPreview}>
+                <div className={styles.desktopFrame}>
+                  <div className={styles.desktopTitleBar}>
+                    <div className={styles.desktopControls}>
+                      <span className={styles.controlDot}></span>
+                      <span className={styles.controlDot}></span>
+                      <span className={styles.controlDot}></span>
+                    </div>
+                    <span className={styles.desktopTitle}>RWKV Chat</span>
+                  </div>
+                  <div className={styles.desktopContent}>
+                    <div className={styles.desktopLogo}>RWKV</div>
+                    <div className={styles.desktopText}>Ask RWKV, Know More</div>
+                    <div className={styles.desktopInput}>
+                      <span>How can I help you today?</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+        </div>
 
         {/* Features Section */}
         <section className={styles.section}>
@@ -49,39 +462,6 @@ export default function Home() {
                 <p className={styles.featureDesc}>{feature.desc}</p>
               </div>
             ))}
-          </div>
-        </section>
-
-        {/* Download Section */}
-        <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>{t.downloadNow}</h2>
-
-          {/* Mobile Platforms */}
-          <div className={styles.platformSection}>
-            <h3 className={styles.platformTitle}>{t.mobile}</h3>
-            <div className={styles.platformGrid}>
-              {platforms.mobile.map((platform) => (
-                <a key={platform.name} href={platform.href} className={styles.platformCard}>
-                  <span className={styles.platformIcon}>{platform.icon}</span>
-                  <span className={styles.platformName}>{platform.name}</span>
-                  <span className={styles.platformArch}>{platform.arch}</span>
-                </a>
-              ))}
-            </div>
-          </div>
-
-          {/* Desktop Platforms */}
-          <div className={styles.platformSection}>
-            <h3 className={styles.platformTitle}>{t.desktop}</h3>
-            <div className={styles.platformGrid}>
-              {platforms.desktop.map((platform) => (
-                <a key={platform.name} href={platform.href} className={styles.platformCard}>
-                  <span className={styles.platformIcon}>{platform.icon}</span>
-                  <span className={styles.platformName}>{platform.name}</span>
-                  <span className={styles.platformArch}>{platform.arch}</span>
-                </a>
-              ))}
-            </div>
           </div>
         </section>
 

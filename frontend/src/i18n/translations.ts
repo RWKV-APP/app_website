@@ -24,14 +24,23 @@ export interface Translations {
 
   // Home page - Download
   downloadNow: string;
+  smartDownload: string;
+  downloadForYourDevice: string;
+  downloadOtherPlatforms: string;
   mobile: string;
+  mobileDesc: string;
   desktop: string;
+  desktopDesc: string;
   viewChangelog: string;
 
   // Home page - Open Source
   openSource: string;
   openSourceDesc: string;
   viewOnGithub: string;
+
+  // Theme Switcher
+  switchToLight: string;
+  switchToDark: string;
 
   // Home page - Community (Deprecated, kept for compatibility)
   appDownload: string;
@@ -45,7 +54,12 @@ export interface Translations {
   linux: string;
   apk: string;
   appStore: string;
+  playStore: string;
+  testFlight: string;
   universal: string;
+  dmg: string;
+  installer: string;
+  zip: string;
 
   // System requirements
   iosRequirement: string;
@@ -94,12 +108,19 @@ const translations: Record<Locale, Translations> = {
     featureMultimodal: '多模态多功能',
     featureMultimodalDesc: '聊天、图像理解、语音输出、OCR 翻译、小说续写',
     downloadNow: '⬇️ 立即下载',
+    smartDownload: '立即下载',
+    downloadForYourDevice: '为您的设备下载',
+    downloadOtherPlatforms: '下载其他平台',
     mobile: '📱 移动端',
+    mobileDesc: '随时随地聊天，语音对话，图片问答',
     desktop: '💻 桌面端',
+    desktopDesc: '处理邮件、截图、文件，以及屏幕上的任何内容',
     viewChangelog: '📋 查看更新日志',
     openSource: '🔓 开源项目',
     openSourceDesc: '我们坚持 Open Source First，所有代码与工程实践均已开源',
     viewOnGithub: '在 GitHub 上查看',
+    switchToLight: '切换到浅色模式',
+    switchToDark: '切换到深色模式',
     appDownload: '应用下载',
     downloadDescription: '下载适合您设备的最新版本应用',
     android: 'Android',
@@ -109,7 +130,12 @@ const translations: Record<Locale, Translations> = {
     linux: 'Linux',
     apk: 'APK',
     appStore: 'App Store',
+    playStore: 'Play Store',
+    testFlight: 'TestFlight',
     universal: 'Universal',
+    dmg: 'DMG',
+    installer: 'Installer',
+    zip: 'Zip',
     iosRequirement: 'iOS 16+',
     macosRequirement: 'macOS 15+',
     windowsRequirement: 'Win10+',
@@ -150,12 +176,19 @@ const translations: Record<Locale, Translations> = {
     featureMultimodal: '多模態多功能',
     featureMultimodalDesc: '聊天、圖像理解、語音輸出、OCR 翻譯、小說續寫',
     downloadNow: '⬇️ 立即下載',
+    smartDownload: '立即下載',
+    downloadForYourDevice: '為您的裝置下載',
+    downloadOtherPlatforms: '下載其他平台',
     mobile: '📱 行動裝置',
+    mobileDesc: '隨時隨地聊天，語音對話，圖片問答',
     desktop: '💻 桌面端',
+    desktopDesc: '處理郵件、截圖、文件，以及螢幕上的任何內容',
     viewChangelog: '📋 查看更新日誌',
     openSource: '🔓 開源項目',
     openSourceDesc: '我們堅持 Open Source First，所有代碼與工程實踐均已開源',
     viewOnGithub: '在 GitHub 上查看',
+    switchToLight: '切換到淺色模式',
+    switchToDark: '切換到深色模式',
     appDownload: '應用下載',
     downloadDescription: '下載適合您裝置的最新版本應用',
     android: 'Android',
@@ -165,7 +198,12 @@ const translations: Record<Locale, Translations> = {
     linux: 'Linux',
     apk: 'APK',
     appStore: 'App Store',
+    playStore: 'Play Store',
+    testFlight: 'TestFlight',
     universal: 'Universal',
+    dmg: 'DMG',
+    installer: 'Installer',
+    zip: 'Zip',
     iosRequirement: 'iOS 16+',
     macosRequirement: 'macOS 15+',
     windowsRequirement: 'Win10+',
@@ -206,12 +244,19 @@ const translations: Record<Locale, Translations> = {
     featureMultimodal: 'マルチモーダル',
     featureMultimodalDesc: 'チャット、画像理解、音声出力、OCR翻訳、小説続き書き',
     downloadNow: '⬇️ 今すぐダウンロード',
+    smartDownload: '今すぐダウンロード',
+    downloadForYourDevice: 'お使いのデバイス用にダウンロード',
+    downloadOtherPlatforms: '他のプラットフォームをダウンロード',
     mobile: '📱 モバイル',
+    mobileDesc: 'いつでもどこでもチャット、音声会話、画像質問',
     desktop: '💻 デスクトップ',
+    desktopDesc: 'メール、スクリーンショット、ファイル、画面のあらゆる内容を処理',
     viewChangelog: '📋 更新履歴を見る',
     openSource: '🔓 オープンソース',
     openSourceDesc: 'Open Source First を貫き、すべてのコードを公開しています',
     viewOnGithub: 'GitHub で見る',
+    switchToLight: 'ライトモードに切り替え',
+    switchToDark: 'ダークモードに切り替え',
     appDownload: 'アプリダウンロード',
     downloadDescription: 'お使いのデバイスに最新バージョンをダウンロード',
     android: 'Android',
@@ -221,7 +266,12 @@ const translations: Record<Locale, Translations> = {
     linux: 'Linux',
     apk: 'APK',
     appStore: 'App Store',
+    playStore: 'Play Store',
+    testFlight: 'TestFlight',
     universal: 'Universal',
+    dmg: 'DMG',
+    installer: 'Installer',
+    zip: 'Zip',
     iosRequirement: 'iOS 16+',
     macosRequirement: 'macOS 15+',
     windowsRequirement: 'Win10+',
@@ -262,12 +312,19 @@ const translations: Record<Locale, Translations> = {
     featureMultimodal: '멀티모달',
     featureMultimodalDesc: '채팅, 이미지 이해, 음성 출력, OCR 번역, 소설 이어쓰기',
     downloadNow: '⬇️ 지금 다운로드',
+    smartDownload: '지금 다운로드',
+    downloadForYourDevice: '기기에 맞게 다운로드',
+    downloadOtherPlatforms: '다른 플랫폼 다운로드',
     mobile: '📱 모바일',
+    mobileDesc: '언제 어디서나 채팅, 음성 대화, 이미지 질문',
     desktop: '💻 데스크톱',
+    desktopDesc: '이메일, 스크린샷, 파일 및 화면의 모든 내용 처리',
     viewChangelog: '📋 업데이트 내역 보기',
     openSource: '🔓 오픈소스',
     openSourceDesc: 'Open Source First를 지향하며 모든 코드를 공개합니다',
     viewOnGithub: 'GitHub에서 보기',
+    switchToLight: '라이트 모드로 전환',
+    switchToDark: '다크 모드로 전환',
     appDownload: '앱 다운로드',
     downloadDescription: '기기에 맞는 최신 버전을 다운로드하세요',
     android: 'Android',
@@ -277,7 +334,12 @@ const translations: Record<Locale, Translations> = {
     linux: 'Linux',
     apk: 'APK',
     appStore: 'App Store',
+    playStore: 'Play Store',
+    testFlight: 'TestFlight',
     universal: 'Universal',
+    dmg: 'DMG',
+    installer: 'Installer',
+    zip: 'Zip',
     iosRequirement: 'iOS 16+',
     macosRequirement: 'macOS 15+',
     windowsRequirement: 'Win10+',
@@ -318,12 +380,19 @@ const translations: Record<Locale, Translations> = {
     featureMultimodal: 'Multimodal',
     featureMultimodalDesc: 'Chat, image understanding, TTS, OCR translation, novel continuation',
     downloadNow: '⬇️ Download Now',
+    smartDownload: 'Download',
+    downloadForYourDevice: 'Download for your device',
+    downloadOtherPlatforms: 'Download for other platforms',
     mobile: '📱 Mobile',
+    mobileDesc: 'Chat on the go, have voice conversations, and ask about photos',
     desktop: '💻 Desktop',
+    desktopDesc: 'Chat about email, screenshots, files, and anything on your screen',
     viewChangelog: '📋 View Changelog',
     openSource: '🔓 Open Source',
     openSourceDesc: 'We embrace Open Source First, all code and engineering practices are open source',
     viewOnGithub: 'View on GitHub',
+    switchToLight: 'Switch to light mode',
+    switchToDark: 'Switch to dark mode',
     appDownload: 'App Download',
     downloadDescription: 'Download the latest version for your device',
     android: 'Android',
@@ -333,7 +402,12 @@ const translations: Record<Locale, Translations> = {
     linux: 'Linux',
     apk: 'APK',
     appStore: 'App Store',
+    playStore: 'Play Store',
+    testFlight: 'TestFlight',
     universal: 'Universal',
+    dmg: 'DMG',
+    installer: 'Installer',
+    zip: 'Zip',
     iosRequirement: 'iOS 16+',
     macosRequirement: 'macOS 15+',
     windowsRequirement: 'Win10+',
@@ -374,12 +448,19 @@ const translations: Record<Locale, Translations> = {
     featureMultimodal: 'Мультимодальность',
     featureMultimodalDesc: 'Чат, понимание изображений, TTS, OCR, продолжение романов',
     downloadNow: '⬇️ Скачать сейчас',
+    smartDownload: 'Скачать',
+    downloadForYourDevice: 'Скачать для вашего устройства',
+    downloadOtherPlatforms: 'Скачать для других платформ',
     mobile: '📱 Мобильные',
+    mobileDesc: 'Общайтесь в пути, ведите голосовые диалоги, задавайте вопросы о фото',
     desktop: '💻 Десктоп',
+    desktopDesc: 'Обсуждайте письма, скриншоты, файлы и всё, что на экране',
     viewChangelog: '📋 История изменений',
     openSource: '🔓 Открытый код',
     openSourceDesc: 'Мы придерживаемся принципа Open Source First',
     viewOnGithub: 'Смотреть на GitHub',
+    switchToLight: 'Переключить на светлую тему',
+    switchToDark: 'Переключить на тёмную тему',
     appDownload: 'Скачать приложение',
     downloadDescription: 'Скачайте последнюю версию для вашего устройства',
     android: 'Android',
@@ -389,7 +470,12 @@ const translations: Record<Locale, Translations> = {
     linux: 'Linux',
     apk: 'APK',
     appStore: 'App Store',
+    playStore: 'Play Store',
+    testFlight: 'TestFlight',
     universal: 'Universal',
+    dmg: 'DMG',
+    installer: 'Installer',
+    zip: 'Zip',
     iosRequirement: 'iOS 16+',
     macosRequirement: 'macOS 15+',
     windowsRequirement: 'Win10+',
