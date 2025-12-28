@@ -44,3 +44,43 @@ export function detectLocale(): Locale {
 
   return defaultLocale;
 }
+
+/**
+ * Detect locale based on geographic location
+ * @param locationInfo - Location information from IP geolocation
+ * @returns Locale based on country/region
+ */
+export function detectLocaleFromLocation(locationInfo: {
+  countryCode: string;
+  isMainlandChina: boolean;
+}): Locale | null {
+  const { countryCode, isMainlandChina } = locationInfo;
+
+  // Mainland China → Simplified Chinese
+  if (isMainlandChina && countryCode === 'CN') {
+    return 'zh-CN';
+  }
+
+  // Hong Kong, Macau, Taiwan → Traditional Chinese
+  if (countryCode === 'HK' || countryCode === 'MO' || countryCode === 'TW') {
+    return 'zh-TW';
+  }
+
+  // Japan → Japanese
+  if (countryCode === 'JP') {
+    return 'ja';
+  }
+
+  // South Korea → Korean
+  if (countryCode === 'KR') {
+    return 'ko';
+  }
+
+  // Russia → Russian
+  if (countryCode === 'RU') {
+    return 'ru';
+  }
+
+  // No match, return null to use browser default
+  return null;
+}

@@ -168,3 +168,15 @@ export const isDesktopAtom = atom<boolean>((get) => {
   const platform = get(devicePlatformAtom);
   return platform === 'macos' || platform === 'windows' || platform === 'linux';
 });
+
+// Location types
+export interface LocationInfo {
+  country: string;
+  countryCode: string;
+  region: string;
+  regionCode: string;
+  isMainlandChina: boolean;
+}
+
+// Location atom - initialized as null, will be updated on client
+export const locationAtom = atom<LocationInfo | null>(null);

@@ -2,24 +2,74 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useAtomValue } from 'jotai';
+import { useAtom, useAtomValue } from 'jotai';
 import { useRef, useState, useEffect } from 'react';
-import { translationsAtom, localeAtom, themeAtom, devicePlatformAtom } from '@/atoms';
+import { translationsAtom, localeAtom, themeAtom, devicePlatformAtom, locationAtom, detectLocale } from '@/atoms';
 import { ThemeSwitcher, LanguageSwitcher } from '@/components';
-import { getAppStoreBadgePath, getAppleLogoPath, getAppIconPath, getPlatformIconPath } from '@/utils';
+import { getAppStoreBadgePath, getAppleLogoPath, getAppIconPath, getPlatformIconPath, fetchLatestDistributions, fetchLocation } from '@/utils';
+import { detectLocaleFromLocation } from '@/i18n/locales';
+import { LatestDistributionsResponse, DistributionType } from '@/types/distribution';
 import styles from './page.module.css';
 
 export default function Home() {
   const t = useAtomValue(translationsAtom);
-  const locale = useAtomValue(localeAtom);
+  const [locale, setLocale] = useAtom(localeAtom);
   const theme = useAtomValue(themeAtom);
   const platform = useAtomValue(devicePlatformAtom);
+  const [location, setLocation] = useAtom(locationAtom);
   const allPlatformsRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
+  const [distributions, setDistributions] = useState<LatestDistributionsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const locationDetectedRef = useRef(false);
+  const browserDefaultLocaleRef = useRef<Locale | null>(null);
 
   useEffect(() => {
     setMounted(true);
+    // Store browser default locale on mount
+    if (typeof window !== 'undefined') {
+      browserDefaultLocaleRef.current = detectLocale();
+    }
   }, []);
+
+  useEffect(() => {
+    if (mounted) {
+      fetchLatestDistributions()
+        .then((data) => {
+          setDistributions(data);
+          setLoading(false);
+        })
+        .catch((error) => {
+          console.error('Failed to load distributions:', error);
+          setLoading(false);
+        });
+
+      // Detect user location
+      if (!location && !locationDetectedRef.current) {
+        locationDetectedRef.current = true;
+        fetchLocation()
+          .then((locationData) => {
+            if (locationData) {
+              setLocation(locationData);
+              
+              // Auto-detect locale from location
+              // Only set if current locale is still the browser default (user hasn't manually changed it)
+              const currentLocale = locale;
+              const browserDefault = browserDefaultLocaleRef.current;
+              if (browserDefault && currentLocale === browserDefault) {
+                const detectedLocale = detectLocaleFromLocation(locationData);
+                if (detectedLocale && detectedLocale !== currentLocale) {
+                  setLocale(detectedLocale);
+                }
+              }
+            }
+          })
+          .catch((error) => {
+            console.error('Failed to detect location:', error);
+          });
+      }
+    }
+  }, [mounted, location, setLocation, setLocale, locale]);
 
   const features = [
     { icon: '📴', title: t.featureOffline, desc: t.featureOfflineDesc },
@@ -29,11 +79,15 @@ export default function Home() {
     { icon: '🎨', title: t.featureMultimodal, desc: t.featureMultimodalDesc },
   ];
 
-  const appleLogoPath = getAppleLogoPath({ theme });
-  const appStoreBadgePath = getAppStoreBadgePath({ locale, theme });
+  // Only compute theme-dependent paths after mounting to avoid hydration mismatch
+  const appleLogoPath = mounted ? getAppleLogoPath({ theme }) : getAppleLogoPath({ theme: 'light' });
+  const appStoreBadgePath = mounted ? getAppStoreBadgePath({ locale, theme }) : getAppStoreBadgePath({ locale, theme: 'light' });
 
   // 根据设备平台获取对应的下载选项
   const getSmartDownloadOptions = () => {
+    if (!mounted || !distributions) {
+      return null;
+    }
     switch (platform) {
       case 'ios':
         return {
@@ -41,15 +95,19 @@ export default function Home() {
           platformIcon: getAppleLogoPath({ theme }),
           downloads: [
             {
-              type: 'testflight',
+              type: 'iOSTF',
               label: t.testFlight,
-              href: 'https://testflight.apple.com/join/DaMqCNKh',
+              href: distributions?.[DistributionType.iOSTF]?.url || 'https://testflight.apple.com/join/DaMqCNKh',
+              available: !!distributions?.[DistributionType.iOSTF],
+              version: distributions?.[DistributionType.iOSTF]?.version,
             },
             {
-              type: 'app-store',
+              type: 'iOSAS',
               label: t.appStore,
-              href: 'https://apps.apple.com/app/rwkv-chat/id6740192639',
+              href: distributions?.[DistributionType.iOSAS]?.url || 'https://apps.apple.com/app/rwkv-chat/id6740192639',
               badge: appStoreBadgePath,
+              available: !!distributions?.[DistributionType.iOSAS],
+              version: distributions?.[DistributionType.iOSAS]?.version,
             },
           ],
         };
@@ -59,15 +117,54 @@ export default function Home() {
           platformIcon: getPlatformIconPath({ platform: 'android' }),
           downloads: [
             {
-              type: 'apk',
-              label: t.apk,
-              href: '#android-apk',
+              type: 'androidHF',
+              label: 'HuggingFace',
+              href: distributions?.[DistributionType.androidHF]?.url || '#',
+              available: !!distributions?.[DistributionType.androidHF],
+              version: distributions?.[DistributionType.androidHF]?.version,
             },
             {
-              type: 'play-store',
+              type: 'androidAF',
+              label: 'Aifasthub',
+              href: distributions?.[DistributionType.androidAF]?.url || '#',
+              available: !!distributions?.[DistributionType.androidAF],
+              version: distributions?.[DistributionType.androidAF]?.version,
+            },
+            {
+              type: 'androidGR',
+              label: 'GitHub Release',
+              href: distributions?.[DistributionType.androidGR]?.url || '#',
+              available: !!distributions?.[DistributionType.androidGR],
+              version: distributions?.[DistributionType.androidGR]?.version,
+            },
+            {
+              type: 'androidHFM',
+              label: 'HF-Mirror',
+              href: distributions?.[DistributionType.androidHFM]?.url || '#',
+              available: !!distributions?.[DistributionType.androidHFM],
+              version: distributions?.[DistributionType.androidHFM]?.version,
+            },
+            {
+              type: 'androidPgyerAPK',
+              label: 'Pgyer APK',
+              href: distributions?.[DistributionType.androidPgyerAPK]?.url || '#',
+              available: !!distributions?.[DistributionType.androidPgyerAPK],
+              version: distributions?.[DistributionType.androidPgyerAPK]?.version,
+            },
+            {
+              type: 'androidPgyer',
+              label: 'Pgyer',
+              href: distributions?.[DistributionType.androidPgyer]?.url || '#',
+              available: !!distributions?.[DistributionType.androidPgyer],
+              version: distributions?.[DistributionType.androidPgyer]?.version,
+            },
+            {
+              type: 'androidGooglePlay',
               label: t.playStore,
-              href: 'https://play.google.com/store/apps/details?id=com.rwkvzone.chat',
+              href: distributions?.[DistributionType.androidGooglePlay]?.url || 'https://play.google.com/store/apps/details?id=com.rwkvzone.chat',
               badge: '/images/badges/play-store/get-it-on-google-play.png',
+              available: !!distributions?.[DistributionType.androidGooglePlay],
+              version: distributions?.[DistributionType.androidGooglePlay]?.version,
             },
           ],
         };
@@ -77,14 +174,60 @@ export default function Home() {
           platformIcon: getPlatformIconPath({ platform: 'windows' }),
           downloads: [
             {
-              type: 'installer',
-              label: t.installer,
-              href: '#windows-installer',
+              type: 'winHF',
+              label: 'Installer (HuggingFace)',
+              href: distributions?.[DistributionType.winHF]?.url || '#',
+              available: !!distributions?.[DistributionType.winHF],
+              version: distributions?.[DistributionType.winHF]?.version,
             },
             {
-              type: 'zip',
-              label: t.zip,
-              href: '#windows-zip',
+              type: 'winAF',
+              label: 'Installer (Aifasthub)',
+              href: distributions?.[DistributionType.winAF]?.url || '#',
+              available: !!distributions?.[DistributionType.winAF],
+              version: distributions?.[DistributionType.winAF]?.version,
+            },
+            {
+              type: 'winGR',
+              label: 'Installer (GitHub Release)',
+              href: distributions?.[DistributionType.winGR]?.url || '#',
+              available: !!distributions?.[DistributionType.winGR],
+              version: distributions?.[DistributionType.winGR]?.version,
+            },
+            {
+              type: 'winHFM',
+              label: 'Installer (HF-Mirror)',
+              href: distributions?.[DistributionType.winHFM]?.url || '#',
+              available: !!distributions?.[DistributionType.winHFM],
+              version: distributions?.[DistributionType.winHFM]?.version,
+            },
+            {
+              type: 'winZipHF',
+              label: 'Zip (HuggingFace)',
+              href: distributions?.[DistributionType.winZipHF]?.url || '#',
+              available: !!distributions?.[DistributionType.winZipHF],
+              version: distributions?.[DistributionType.winZipHF]?.version,
+            },
+            {
+              type: 'winZipAF',
+              label: 'Zip (Aifasthub)',
+              href: distributions?.[DistributionType.winZipAF]?.url || '#',
+              available: !!distributions?.[DistributionType.winZipAF],
+              version: distributions?.[DistributionType.winZipAF]?.version,
+            },
+            {
+              type: 'winZipGR',
+              label: 'Zip (GitHub Release)',
+              href: distributions?.[DistributionType.winZipGR]?.url || '#',
+              available: !!distributions?.[DistributionType.winZipGR],
+              version: distributions?.[DistributionType.winZipGR]?.version,
+            },
+            {
+              type: 'winZipHFM',
+              label: 'Zip (HF-Mirror)',
+              href: distributions?.[DistributionType.winZipHFM]?.url || '#',
+              available: !!distributions?.[DistributionType.winZipHFM],
+              version: distributions?.[DistributionType.winZipHFM]?.version,
             },
           ],
         };
@@ -94,9 +237,32 @@ export default function Home() {
           platformIcon: getAppleLogoPath({ theme }),
           downloads: [
             {
-              type: 'dmg',
-              label: t.dmg,
-              href: '#macos-dmg',
+              type: 'macosHF',
+              label: 'HuggingFace',
+              href: distributions?.[DistributionType.macosHF]?.url || '#',
+              available: !!distributions?.[DistributionType.macosHF],
+              version: distributions?.[DistributionType.macosHF]?.version,
+            },
+            {
+              type: 'macosAF',
+              label: 'Aifasthub',
+              href: distributions?.[DistributionType.macosAF]?.url || '#',
+              available: !!distributions?.[DistributionType.macosAF],
+              version: distributions?.[DistributionType.macosAF]?.version,
+            },
+            {
+              type: 'macosGR',
+              label: 'GitHub Release',
+              href: distributions?.[DistributionType.macosGR]?.url || '#',
+              available: !!distributions?.[DistributionType.macosGR],
+              version: distributions?.[DistributionType.macosGR]?.version,
+            },
+            {
+              type: 'macosHFM',
+              label: 'HF-Mirror',
+              href: distributions?.[DistributionType.macosHFM]?.url || '#',
+              available: !!distributions?.[DistributionType.macosHFM],
+              version: distributions?.[DistributionType.macosHFM]?.version,
             },
           ],
         };
@@ -106,9 +272,32 @@ export default function Home() {
           platformIcon: getPlatformIconPath({ platform: 'linux' }),
           downloads: [
             {
-              type: 'appimage',
-              label: 'AppImage',
-              href: '#linux-appimage',
+              type: 'linuxHF',
+              label: 'HuggingFace',
+              href: distributions?.[DistributionType.linuxHF]?.url || '#',
+              available: !!distributions?.[DistributionType.linuxHF],
+              version: distributions?.[DistributionType.linuxHF]?.version,
+            },
+            {
+              type: 'linuxAF',
+              label: 'Aifasthub',
+              href: distributions?.[DistributionType.linuxAF]?.url || '#',
+              available: !!distributions?.[DistributionType.linuxAF],
+              version: distributions?.[DistributionType.linuxAF]?.version,
+            },
+            {
+              type: 'linuxGR',
+              label: 'GitHub Release',
+              href: distributions?.[DistributionType.linuxGR]?.url || '#',
+              available: !!distributions?.[DistributionType.linuxGR],
+              version: distributions?.[DistributionType.linuxGR]?.version,
+            },
+            {
+              type: 'linuxHFM',
+              label: 'HF-Mirror',
+              href: distributions?.[DistributionType.linuxHFM]?.url || '#',
+              available: !!distributions?.[DistributionType.linuxHFM],
+              version: distributions?.[DistributionType.linuxHFM]?.version,
             },
           ],
         };
@@ -134,15 +323,54 @@ export default function Home() {
         minOs: t.androidRequirement,
         downloads: [
           {
-            type: 'apk',
-            label: t.apk,
-            href: '#android-apk',
+            type: 'androidHF',
+            label: 'HuggingFace',
+            href: distributions?.[DistributionType.androidHF]?.url || '#',
+            available: !!distributions?.[DistributionType.androidHF],
+            version: distributions?.[DistributionType.androidHF]?.version,
           },
           {
-            type: 'play-store',
+            type: 'androidAF',
+            label: 'Aifasthub',
+            href: distributions?.[DistributionType.androidAF]?.url || '#',
+            available: !!distributions?.[DistributionType.androidAF],
+            version: distributions?.[DistributionType.androidAF]?.version,
+          },
+          {
+            type: 'androidGR',
+            label: 'GitHub Release',
+            href: distributions?.[DistributionType.androidGR]?.url || '#',
+            available: !!distributions?.[DistributionType.androidGR],
+            version: distributions?.[DistributionType.androidGR]?.version,
+          },
+          {
+            type: 'androidHFM',
+            label: 'HF-Mirror',
+            href: distributions?.[DistributionType.androidHFM]?.url || '#',
+            available: !!distributions?.[DistributionType.androidHFM],
+            version: distributions?.[DistributionType.androidHFM]?.version,
+          },
+          {
+            type: 'androidPgyerAPK',
+            label: 'Pgyer APK',
+            href: distributions?.[DistributionType.androidPgyerAPK]?.url || '#',
+            available: !!distributions?.[DistributionType.androidPgyerAPK],
+            version: distributions?.[DistributionType.androidPgyerAPK]?.version,
+          },
+          {
+            type: 'androidPgyer',
+            label: 'Pgyer',
+            href: distributions?.[DistributionType.androidPgyer]?.url || '#',
+            available: !!distributions?.[DistributionType.androidPgyer],
+            version: distributions?.[DistributionType.androidPgyer]?.version,
+          },
+          {
+            type: 'androidGooglePlay',
             label: t.playStore,
-            href: 'https://play.google.com/store/apps/details?id=com.rwkvzone.chat',
+            href: distributions?.[DistributionType.androidGooglePlay]?.url || 'https://play.google.com/store/apps/details?id=com.rwkvzone.chat',
             badge: '/images/badges/play-store/get-it-on-google-play.png',
+            available: !!distributions?.[DistributionType.androidGooglePlay],
+            version: distributions?.[DistributionType.androidGooglePlay]?.version,
           },
         ],
       },
@@ -152,15 +380,19 @@ export default function Home() {
         minOs: t.iosRequirement,
         downloads: [
           {
-            type: 'testflight',
+            type: 'iOSTF',
             label: t.testFlight,
-            href: 'https://testflight.apple.com/join/DaMqCNKh',
+            href: distributions?.[DistributionType.iOSTF]?.url || 'https://testflight.apple.com/join/DaMqCNKh',
+            available: !!distributions?.[DistributionType.iOSTF],
+            version: distributions?.[DistributionType.iOSTF]?.version,
           },
           {
-            type: 'app-store',
+            type: 'iOSAS',
             label: t.appStore,
-            href: 'https://apps.apple.com/app/rwkv-chat/id6740192639',
+            href: distributions?.[DistributionType.iOSAS]?.url || 'https://apps.apple.com/app/rwkv-chat/id6740192639',
             badge: appStoreBadgePath,
+            available: !!distributions?.[DistributionType.iOSAS],
+            version: distributions?.[DistributionType.iOSAS]?.version,
           },
         ],
       },
@@ -172,9 +404,32 @@ export default function Home() {
         minOs: t.macosRequirement,
         downloads: [
           {
-            type: 'dmg',
-            label: t.dmg,
-            href: '#macos-dmg',
+            type: 'macosHF',
+            label: 'HuggingFace',
+            href: distributions?.[DistributionType.macosHF]?.url || '#',
+            available: !!distributions?.[DistributionType.macosHF],
+            version: distributions?.[DistributionType.macosHF]?.version,
+          },
+          {
+            type: 'macosAF',
+            label: 'Aifasthub',
+            href: distributions?.[DistributionType.macosAF]?.url || '#',
+            available: !!distributions?.[DistributionType.macosAF],
+            version: distributions?.[DistributionType.macosAF]?.version,
+          },
+          {
+            type: 'macosGR',
+            label: 'GitHub Release',
+            href: distributions?.[DistributionType.macosGR]?.url || '#',
+            available: !!distributions?.[DistributionType.macosGR],
+            version: distributions?.[DistributionType.macosGR]?.version,
+          },
+          {
+            type: 'macosHFM',
+            label: 'HF-Mirror',
+            href: distributions?.[DistributionType.macosHFM]?.url || '#',
+            available: !!distributions?.[DistributionType.macosHFM],
+            version: distributions?.[DistributionType.macosHFM]?.version,
           },
         ],
       },
@@ -184,14 +439,60 @@ export default function Home() {
         minOs: t.windowsRequirement,
         downloads: [
           {
-            type: 'installer',
-            label: t.installer,
-            href: '#windows-installer',
+            type: 'winHF',
+            label: 'Installer (HuggingFace)',
+            href: distributions?.[DistributionType.winHF]?.url || '#',
+            available: !!distributions?.[DistributionType.winHF],
+            version: distributions?.[DistributionType.winHF]?.version,
           },
           {
-            type: 'zip',
-            label: t.zip,
-            href: '#windows-zip',
+            type: 'winAF',
+            label: 'Installer (Aifasthub)',
+            href: distributions?.[DistributionType.winAF]?.url || '#',
+            available: !!distributions?.[DistributionType.winAF],
+            version: distributions?.[DistributionType.winAF]?.version,
+          },
+          {
+            type: 'winGR',
+            label: 'Installer (GitHub Release)',
+            href: distributions?.[DistributionType.winGR]?.url || '#',
+            available: !!distributions?.[DistributionType.winGR],
+            version: distributions?.[DistributionType.winGR]?.version,
+          },
+          {
+            type: 'winHFM',
+            label: 'Installer (HF-Mirror)',
+            href: distributions?.[DistributionType.winHFM]?.url || '#',
+            available: !!distributions?.[DistributionType.winHFM],
+            version: distributions?.[DistributionType.winHFM]?.version,
+          },
+          {
+            type: 'winZipHF',
+            label: 'Zip (HuggingFace)',
+            href: distributions?.[DistributionType.winZipHF]?.url || '#',
+            available: !!distributions?.[DistributionType.winZipHF],
+            version: distributions?.[DistributionType.winZipHF]?.version,
+          },
+          {
+            type: 'winZipAF',
+            label: 'Zip (Aifasthub)',
+            href: distributions?.[DistributionType.winZipAF]?.url || '#',
+            available: !!distributions?.[DistributionType.winZipAF],
+            version: distributions?.[DistributionType.winZipAF]?.version,
+          },
+          {
+            type: 'winZipGR',
+            label: 'Zip (GitHub Release)',
+            href: distributions?.[DistributionType.winZipGR]?.url || '#',
+            available: !!distributions?.[DistributionType.winZipGR],
+            version: distributions?.[DistributionType.winZipGR]?.version,
+          },
+          {
+            type: 'winZipHFM',
+            label: 'Zip (HF-Mirror)',
+            href: distributions?.[DistributionType.winZipHFM]?.url || '#',
+            available: !!distributions?.[DistributionType.winZipHFM],
+            version: distributions?.[DistributionType.winZipHFM]?.version,
           },
         ],
       },
@@ -201,9 +502,32 @@ export default function Home() {
         minOs: t.linuxRequirement,
         downloads: [
           {
-            type: 'appimage',
-            label: 'AppImage',
-            href: '#linux-appimage',
+            type: 'linuxHF',
+            label: 'HuggingFace',
+            href: distributions?.[DistributionType.linuxHF]?.url || '#',
+            available: !!distributions?.[DistributionType.linuxHF],
+            version: distributions?.[DistributionType.linuxHF]?.version,
+          },
+          {
+            type: 'linuxAF',
+            label: 'Aifasthub',
+            href: distributions?.[DistributionType.linuxAF]?.url || '#',
+            available: !!distributions?.[DistributionType.linuxAF],
+            version: distributions?.[DistributionType.linuxAF]?.version,
+          },
+          {
+            type: 'linuxGR',
+            label: 'GitHub Release',
+            href: distributions?.[DistributionType.linuxGR]?.url || '#',
+            available: !!distributions?.[DistributionType.linuxGR],
+            version: distributions?.[DistributionType.linuxGR]?.version,
+          },
+          {
+            type: 'linuxHFM',
+            label: 'HF-Mirror',
+            href: distributions?.[DistributionType.linuxHFM]?.url || '#',
+            available: !!distributions?.[DistributionType.linuxHFM],
+            version: distributions?.[DistributionType.linuxHFM]?.version,
           },
         ],
       },
@@ -252,42 +576,51 @@ export default function Home() {
               </div>
               <p className={styles.smartDownloadDesc}>{t.downloadForYourDevice}</p>
               <div className={styles.smartDownloadButtons}>
-                {smartDownloadOptions.downloads.map((download) => (
-                  <a
-                    key={download.type}
-                    href={download.href}
-                    className={`${styles.downloadButton} ${download.badge ? styles.badgeButton : ''}`}
-                    target={download.href.startsWith('http') ? '_blank' : undefined}
-                    rel={download.href.startsWith('http') ? 'noopener noreferrer' : undefined}
-                  >
-                    {download.badge ? (
-                      <Image
-                        src={download.badge}
-                        alt={download.label}
-                        width={155}
-                        height={60}
-                        className={styles.badgeImage}
-                        unoptimized
-                      />
-                    ) : (
-                      <>
-                        <span>{download.label}</span>
-                        <svg
-                          className={styles.arrowIcon}
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <line x1="5" y1="12" x2="19" y2="12" />
-                          <polyline points="12 5 19 12 12 19" />
-                        </svg>
-                      </>
-                    )}
-                  </a>
-                ))}
+                {smartDownloadOptions.downloads.map((download) => {
+                  const version = download.version;
+                  // Display version if it exists and is not empty, even if it's "latest"
+                  const displayVersion = version && version.trim() !== '' ? version : null;
+                  return (
+                    <div key={download.type} className={download.badge ? styles.badgeWrapper : ''}>
+                      <a
+                        href={download.href}
+                        className={`${styles.downloadButton} ${download.badge ? styles.badgeButton : ''}`}
+                        target={download.href.startsWith('http') ? '_blank' : undefined}
+                        rel={download.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+                      >
+                        {download.badge ? (
+                          <Image
+                            src={download.badge}
+                            alt={download.label}
+                            width={155}
+                            height={60}
+                            className={styles.badgeImage}
+                            unoptimized
+                          />
+                        ) : (
+                          <>
+                            <span>{download.label}</span>
+                            <svg
+                              className={styles.arrowIcon}
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <line x1="5" y1="12" x2="19" y2="12" />
+                              <polyline points="12 5 19 12 12 19" />
+                            </svg>
+                          </>
+                        )}
+                      </a>
+                      {download.badge && displayVersion && (
+                        <div className={styles.badgeVersion}>{displayVersion}</div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
               <button
                 onClick={scrollToAllPlatforms}
@@ -325,42 +658,64 @@ export default function Home() {
                   <div key={platform.name} className={styles.platformGroup}>
                     <div className={styles.platformLabel}>{platform.name}</div>
                     <div className={styles.platformGroupButtons}>
-                      {platform.downloads.map((download) => (
-                        <a
-                          key={download.type}
-                          href={download.href}
-                          className={`${styles.downloadButton} ${download.badge ? styles.badgeButton : ''}`}
-                          target={download.href.startsWith('http') ? '_blank' : undefined}
-                          rel={download.href.startsWith('http') ? 'noopener noreferrer' : undefined}
-                        >
-                          {download.badge ? (
-                            <Image
-                              src={download.badge}
-                              alt={download.label}
-                              width={155}
-                              height={60}
-                              className={styles.badgeImage}
-                              unoptimized
-                            />
-                          ) : (
-                            <>
-                              <span>{download.label}</span>
-                              <svg
-                                className={styles.arrowIcon}
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <line x1="5" y1="12" x2="19" y2="12" />
-                                <polyline points="12 5 19 12 12 19" />
-                              </svg>
-                            </>
-                          )}
-                        </a>
-                      ))}
+                      {platform.downloads.map((download) => {
+                        const isAvailable = (download as any).available !== false;
+                        const version = (download as any).version;
+                        const displayLabel = version && version !== 'latest' 
+                          ? `${download.label} (${version})` 
+                          : download.label;
+                        // Display version if it exists and is not empty, even if it's "latest"
+                        const displayVersion = version && version.trim() !== '' ? version : null;
+                        
+                        return (
+                          <div key={download.type} className={download.badge ? styles.badgeWrapper : ''}>
+                            <a
+                              href={isAvailable && download.href !== '#' ? download.href : '#'}
+                              className={`${styles.downloadButton} ${download.badge ? styles.badgeButton : ''} ${!isAvailable ? styles.disabled : ''}`}
+                              target={isAvailable && download.href.startsWith('http') ? '_blank' : undefined}
+                              rel={isAvailable && download.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+                              onClick={(e) => {
+                                if (!isAvailable || download.href === '#') {
+                                  e.preventDefault();
+                                }
+                              }}
+                              style={!isAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                            >
+                              {download.badge ? (
+                                <Image
+                                  src={download.badge}
+                                  alt={download.label}
+                                  width={155}
+                                  height={60}
+                                  className={styles.badgeImage}
+                                  unoptimized
+                                />
+                              ) : (
+                                <>
+                                  <span>{displayLabel}</span>
+                                  {isAvailable && (
+                                    <svg
+                                      className={styles.arrowIcon}
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    >
+                                      <line x1="5" y1="12" x2="19" y2="12" />
+                                      <polyline points="12 5 19 12 12 19" />
+                                    </svg>
+                                  )}
+                                </>
+                              )}
+                            </a>
+                            {download.badge && displayVersion && (
+                              <div className={styles.badgeVersion}>{displayVersion}</div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
@@ -399,29 +754,45 @@ export default function Home() {
                 {platforms.desktop.map((platform) => (
                   <div key={platform.name} className={styles.platformGroup}>
                     <div className={styles.platformLabel}>{platform.name}</div>
-                    {platform.downloads.map((download) => (
-                      <a
-                        key={download.type}
-                        href={download.href}
-                        className={styles.downloadButton}
-                        target={download.href.startsWith('http') ? '_blank' : undefined}
-                        rel={download.href.startsWith('http') ? 'noopener noreferrer' : undefined}
-                      >
-                        <span>{download.label}</span>
-                        <svg
-                          className={styles.arrowIcon}
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
+                    {platform.downloads.map((download) => {
+                      const isAvailable = (download as any).available !== false;
+                      const version = (download as any).version;
+                      const displayLabel = version && version !== 'latest' 
+                        ? `${download.label} (${version})` 
+                        : download.label;
+                      
+                      return (
+                        <a
+                          key={download.type}
+                          href={isAvailable && download.href !== '#' ? download.href : '#'}
+                          className={`${styles.downloadButton} ${!isAvailable ? styles.disabled : ''}`}
+                          target={isAvailable && download.href.startsWith('http') ? '_blank' : undefined}
+                          rel={isAvailable && download.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+                          onClick={(e) => {
+                            if (!isAvailable || download.href === '#') {
+                              e.preventDefault();
+                            }
+                          }}
+                          style={!isAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
                         >
-                          <line x1="5" y1="12" x2="19" y2="12" />
-                          <polyline points="12 5 19 12 12 19" />
-                        </svg>
-                      </a>
-                    ))}
+                          <span>{displayLabel}</span>
+                          {isAvailable && (
+                            <svg
+                              className={styles.arrowIcon}
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <line x1="5" y1="12" x2="19" y2="12" />
+                              <polyline points="12 5 19 12 12 19" />
+                            </svg>
+                          )}
+                        </a>
+                      );
+                    })}
                   </div>
                 ))}
               </div>

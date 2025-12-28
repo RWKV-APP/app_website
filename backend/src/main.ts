@@ -1,3 +1,5 @@
+import { config } from 'dotenv';
+import { resolve } from 'path';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -6,9 +8,20 @@ import { existsSync } from 'fs';
 import { Request, Response, NextFunction } from 'express';
 import { AppModule } from './app.module';
 
+// Load .env file
+config({ path: resolve(__dirname, '..', '.env') });
+
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const logger = new Logger('Bootstrap');
+
+  // Enable CORS for frontend
+  app.enableCors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  });
 
   // Set global prefix for API routes
   app.setGlobalPrefix('api');

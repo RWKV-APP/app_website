@@ -1,0 +1,878 @@
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
+import axios from 'axios';
+import { PrismaService } from '../prisma/prisma.service';
+import { DistributionType } from '../types/distribution';
+import { Config } from '../config';
+
+@Injectable()
+export class DistributionService implements OnModuleInit {
+  private readonly logger = new Logger(DistributionService.name);
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  async onModuleInit() {
+    this.logger.log('DistributionService initialized, running allInOne...');
+    await this.allInOne();
+  }
+
+  @Cron('0 */30 * * * *') // Every 30 minutes
+  async handleCron() {
+    this.logger.log('Running scheduled allInOne check...');
+    await this.allInOne();
+  }
+
+  async allInOne() {
+    this.logger.log('Starting allInOne distribution check...');
+
+    const distributionTypes = Object.values(DistributionType);
+
+    for (const type of distributionTypes) {
+      try {
+        await this.checkDistribution(type);
+      } catch (error) {
+        this.logger.error(`Error checking distribution type ${type}:`, error);
+      }
+    }
+
+    this.logger.log('Completed allInOne distribution check');
+  }
+
+  private async checkDistribution(type: DistributionType) {
+    switch (type) {
+      case DistributionType.macosHF:
+        await this.checkMacosHF();
+        break;
+      case DistributionType.macosAF:
+        await this.checkMacosAF();
+        break;
+      case DistributionType.macosGR:
+        await this.checkMacosGR();
+        break;
+      case DistributionType.macosHFM:
+        await this.checkMacosHFM();
+        break;
+      case DistributionType.linuxHF:
+        await this.checkLinuxHF();
+        break;
+      case DistributionType.linuxAF:
+        await this.checkLinuxAF();
+        break;
+      case DistributionType.linuxGR:
+        await this.checkLinuxGR();
+        break;
+      case DistributionType.linuxHFM:
+        await this.checkLinuxHFM();
+        break;
+      case DistributionType.winHF:
+        await this.checkWinHF();
+        break;
+      case DistributionType.winAF:
+        await this.checkWinAF();
+        break;
+      case DistributionType.winGR:
+        await this.checkWinGR();
+        break;
+      case DistributionType.winHFM:
+        await this.checkWinHFM();
+        break;
+      case DistributionType.winZipHF:
+        await this.checkWinZipHF();
+        break;
+      case DistributionType.winZipAF:
+        await this.checkWinZipAF();
+        break;
+      case DistributionType.winZipGR:
+        await this.checkWinZipGR();
+        break;
+      case DistributionType.winZipHFM:
+        await this.checkWinZipHFM();
+        break;
+      case DistributionType.iOSTF:
+        await this.checkIOSTF();
+        break;
+      case DistributionType.iOSAS:
+        await this.checkIOSAS();
+        break;
+      case DistributionType.androidHF:
+        await this.checkAndroidHF();
+        break;
+      case DistributionType.androidAF:
+        await this.checkAndroidAF();
+        break;
+      case DistributionType.androidGR:
+        await this.checkAndroidGR();
+        break;
+      case DistributionType.androidHFM:
+        await this.checkAndroidHFM();
+        break;
+      case DistributionType.androidPgyerAPK:
+        await this.checkAndroidPgyerAPK();
+        break;
+      case DistributionType.androidPgyer:
+        await this.checkAndroidPgyer();
+        break;
+      case DistributionType.androidGooglePlay:
+        await this.checkAndroidGooglePlay();
+        break;
+      default:
+        this.logger.warn(`Unknown distribution type: ${type}`);
+    }
+  }
+
+  // Helper method to check HuggingFace distribution
+  private async checkHuggingFaceDistribution(options: {
+    type: DistributionType;
+    folderPath: string;
+    fileExtension: string;
+    endpoint?: string;
+  }) {
+    const { type, folderPath, fileExtension, endpoint } = options;
+    const repoId = Config.huggingface.repoId;
+    const baseEndpoint = endpoint || Config.huggingface.endpoint;
+
+    if (!repoId) {
+      this.logger.warn(`HF_DATASETS_ID not configured, skipping ${type}`);
+      return;
+    }
+
+    try {
+      // Use HuggingFace API to list files in the folder
+      const apiUrl = `${baseEndpoint}/api/datasets/${repoId}/tree/main/${folderPath}`;
+      const response = await axios.get(apiUrl, {
+        headers: {
+          Authorization: Config.huggingface.token
+            ? `Bearer ${Config.huggingface.token}`
+            : undefined,
+        },
+        timeout: 30000,
+      });
+
+      if (!response.data || !Array.isArray(response.data)) {
+        this.logger.warn(`No files found in ${folderPath} for ${type}`);
+        return;
+      }
+
+      // Filter files by extension and find the latest one
+      const files = response.data.filter(
+        (file: any) => file.path && file.path.endsWith(fileExtension),
+      );
+
+      if (files.length === 0) {
+        this.logger.warn(`No ${fileExtension} files found in ${folderPath} for ${type}`);
+        return;
+      }
+
+      // Sort by lastModified (most recent first) or by filename
+      const sortedFiles = files.sort((a: any, b: any) => {
+        if (a.lastModified && b.lastModified) {
+          return new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime();
+        }
+        // Fallback to filename comparison
+        return b.path.localeCompare(a.path);
+      });
+
+      // Process all files, not just the latest one
+      let savedCount = 0;
+      for (const file of sortedFiles) {
+        const fileName = file.path.split('/').pop() || '';
+        const filePath = `${folderPath}/${fileName}`;
+
+        // Parse version and build from filename
+        // Supported formats:
+        // 1. rwkv_chat_3.4.0_609.apk (Android APK: rwkv_chat_{version}_{build}.apk)
+        // 2. rwkv_chat_3.4.0_609_linux-x64.tar.gz (Linux: rwkv_chat_{version}_{build}_{platform}.{ext})
+        // 3. rwkv_chat_3.4.0_609_windows-x64.zip (Windows zip)
+        // 4. rwkv_chat_3.4.0_609_windows-x64-setup.exe (Windows installer)
+        // 5. rwkv_chat_3.4.0_609_macos-universal.dmg (macOS DMG)
+        // 6. 3.4.0+609 (format: {version}+{build})
+        // 7. app-3.4.0+609.dmg (format: {prefix}-{version}+{build}.{ext})
+
+        let version = '';
+        let build: number | null = null;
+
+        // Try format: rwkv_chat_{version}_{build} (with optional platform suffix)
+        // This matches:
+        // - rwkv_chat_3.4.0_609.apk
+        // - rwkv_chat_3.4.0_609_linux-x64.tar.gz
+        // - rwkv_chat_3.4.0_609_windows-x64.zip
+        // - rwkv_chat_3.4.0_609_windows-x64-setup.exe
+        // - rwkv_chat_3.4.0_609_macos-universal.dmg
+        const rwkvChatMatch = fileName.match(/rwkv_chat_(\d+\.\d+\.\d+)_(\d+)(?:_|\.)/);
+        if (rwkvChatMatch) {
+          version = rwkvChatMatch[1];
+          build = parseInt(rwkvChatMatch[2], 10);
+        } else {
+          // Try format: {version}+{build} or {prefix}-{version}+{build}.{ext}
+          const versionMatch = fileName.match(/(\d+\.\d+\.\d+)(?:\+(\d+)|_(\d+))?/);
+          if (versionMatch) {
+            version = versionMatch[1];
+            build = versionMatch[2]
+              ? parseInt(versionMatch[2], 10)
+              : versionMatch[3]
+                ? parseInt(versionMatch[3], 10)
+                : null;
+          }
+        }
+
+        // Skip if we couldn't parse version and build
+        if (!version) {
+          this.logger.warn(`Could not parse version from filename: ${fileName}`);
+          continue;
+        }
+
+        // version should only contain semantic version (e.g., "3.4.0"), not "3.4.0+609"
+        // build number is stored separately in the build field
+
+        // Build download URL
+        const downloadUrl = `${baseEndpoint}/datasets/${repoId}/resolve/main/${filePath}`;
+
+        // Save or update in database
+        await this.saveDistribution({
+          type,
+          url: downloadUrl,
+          version, // Only semantic version, e.g., "3.4.0"
+          build, // Build number separately, e.g., 609
+        });
+
+        savedCount++;
+        const displayVersion = version ? (build ? `${version}+${build}` : version) : 'unknown';
+        this.logger.log(`✅ Saved ${type}: ${fileName} (${displayVersion})`);
+      }
+
+      this.logger.log(`✅ Processed ${savedCount} file(s) for ${type}`);
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        this.logger.warn(`Folder ${folderPath} not found for ${type}`);
+      } else {
+        this.logger.error(`Error checking ${type}: ${error.message}`);
+      }
+    }
+  }
+
+  // Helper method to check Aifasthub distribution (mirror of HuggingFace)
+  private async checkAifasthubDistribution(options: {
+    type: DistributionType;
+    folderPath: string;
+    fileExtension: string;
+  }) {
+    const { type, folderPath, fileExtension } = options;
+    const repoId = Config.huggingface.repoId;
+    const baseEndpoint = 'https://aifasthub.com';
+
+    if (!repoId) {
+      this.logger.warn(`HF_DATASETS_ID not configured, skipping ${type}`);
+      return;
+    }
+
+    try {
+      // Use Aifasthub API to list files in the folder (similar to HuggingFace)
+      const apiUrl = `${baseEndpoint}/api/datasets/${repoId}/tree/main/${folderPath}`;
+      const response = await axios.get(apiUrl, {
+        headers: {
+          Authorization: Config.huggingface.token
+            ? `Bearer ${Config.huggingface.token}`
+            : undefined,
+        },
+        timeout: 30000,
+      });
+
+      if (!response.data || !Array.isArray(response.data)) {
+        this.logger.warn(`No files found in ${folderPath} for ${type}`);
+        return;
+      }
+
+      // Filter files by extension
+      const files = response.data.filter(
+        (file: any) => file.path && file.path.endsWith(fileExtension),
+      );
+
+      if (files.length === 0) {
+        this.logger.warn(`No ${fileExtension} files found in ${folderPath} for ${type}`);
+        return;
+      }
+
+      // Sort by lastModified (most recent first) or by filename
+      const sortedFiles = files.sort((a: any, b: any) => {
+        if (a.lastModified && b.lastModified) {
+          return new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime();
+        }
+        return b.path.localeCompare(a.path);
+      });
+
+      // Process all files
+      let savedCount = 0;
+      for (const file of sortedFiles) {
+        const fileName = file.path.split('/').pop() || '';
+        const filePath = `${folderPath}/${fileName}`;
+
+        // Parse version and build from filename (same logic as HuggingFace)
+        let version = '';
+        let build: number | null = null;
+
+        const rwkvChatMatch = fileName.match(/rwkv_chat_(\d+\.\d+\.\d+)_(\d+)(?:_|\.)/);
+        if (rwkvChatMatch) {
+          version = rwkvChatMatch[1];
+          build = parseInt(rwkvChatMatch[2], 10);
+        } else {
+          const versionMatch = fileName.match(/(\d+\.\d+\.\d+)(?:\+(\d+)|_(\d+))?/);
+          if (versionMatch) {
+            version = versionMatch[1];
+            build = versionMatch[2]
+              ? parseInt(versionMatch[2], 10)
+              : versionMatch[3]
+                ? parseInt(versionMatch[3], 10)
+                : null;
+          }
+        }
+
+        if (!version) {
+          this.logger.warn(`Could not parse version from filename: ${fileName}`);
+          continue;
+        }
+
+        // Build download URL with ?download=true suffix (as per aifasthub format)
+        const downloadUrl = `${baseEndpoint}/datasets/${repoId}/resolve/main/${filePath}?download=true`;
+
+        await this.saveDistribution({
+          type,
+          url: downloadUrl,
+          version,
+          build,
+        });
+
+        savedCount++;
+        const displayVersion = version ? (build ? `${version}+${build}` : version) : 'unknown';
+        this.logger.log(`✅ Saved ${type}: ${fileName} (${displayVersion})`);
+      }
+
+      this.logger.log(`✅ Processed ${savedCount} file(s) for ${type}`);
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        this.logger.warn(`Folder ${folderPath} not found for ${type}`);
+      } else {
+        this.logger.error(`Error checking ${type}: ${error.message}`);
+      }
+    }
+  }
+
+  private async saveDistribution(options: {
+    type: DistributionType;
+    url: string;
+    version: string;
+    build: number | null;
+  }) {
+    const { type, url, version, build } = options;
+
+    // Check if a record with the same type, url, version, and build already exists
+    const existing = await this.prisma.distribution.findFirst({
+      where: {
+        type,
+        url,
+        version,
+        build,
+      },
+    });
+
+    if (existing) {
+      // Record with identical type, url, version, and build already exists, skip
+      this.logger.debug(`Record already exists: ${type} - ${version} (${build}) - ${url}`);
+      return;
+    }
+
+    // Delete all existing records with the same type, url, version, and build
+    // This ensures we only keep one record when all fields are identical
+    const deleteResult = await this.prisma.distribution.deleteMany({
+      where: {
+        type,
+        url,
+        version,
+        build,
+      },
+    });
+
+    if (deleteResult.count > 0) {
+      this.logger.debug(
+        `Deleted ${deleteResult.count} duplicate record(s) with type: ${type}, url: ${url}, version: ${version}, build: ${build}`,
+      );
+    }
+
+    // Create new record
+    await this.prisma.distribution.create({
+      data: {
+        type,
+        url,
+        version,
+        build,
+      } as any,
+    });
+  }
+
+  // macOS distribution checkers
+  private async checkMacosHF() {
+    await this.checkHuggingFaceDistribution({
+      type: DistributionType.macosHF,
+      folderPath: 'macos-universal',
+      fileExtension: '.dmg',
+    });
+  }
+
+  private async checkMacosAF() {
+    await this.checkAifasthubDistribution({
+      type: DistributionType.macosAF,
+      folderPath: 'macos-universal',
+      fileExtension: '.dmg',
+    });
+  }
+
+  private async checkMacosGR() {
+    // TODO: Implement GitHub Release macOS DMG detection
+  }
+
+  private async checkMacosHFM() {
+    await this.checkHuggingFaceDistribution({
+      type: DistributionType.macosHFM,
+      folderPath: 'macos-universal',
+      fileExtension: '.dmg',
+      endpoint: 'https://hf-mirror.com',
+    });
+  }
+
+  // Linux distribution checkers
+  private async checkLinuxHF() {
+    await this.checkHuggingFaceDistribution({
+      type: DistributionType.linuxHF,
+      folderPath: 'linux-x64',
+      fileExtension: '.tar.gz',
+    });
+  }
+
+  private async checkLinuxAF() {
+    await this.checkAifasthubDistribution({
+      type: DistributionType.linuxAF,
+      folderPath: 'linux-x64',
+      fileExtension: '.tar.gz',
+    });
+  }
+
+  private async checkLinuxGR() {
+    // TODO: Implement GitHub Release Linux tar.gz detection
+  }
+
+  private async checkLinuxHFM() {
+    await this.checkHuggingFaceDistribution({
+      type: DistributionType.linuxHFM,
+      folderPath: 'linux-x64',
+      fileExtension: '.tar.gz',
+      endpoint: 'https://hf-mirror.com',
+    });
+  }
+
+  // Windows distribution checkers
+  private async checkWinHF() {
+    await this.checkHuggingFaceDistribution({
+      type: DistributionType.winHF,
+      folderPath: 'windows-x64-installer',
+      fileExtension: '.exe',
+    });
+  }
+
+  private async checkWinAF() {
+    await this.checkAifasthubDistribution({
+      type: DistributionType.winAF,
+      folderPath: 'windows-x64-installer',
+      fileExtension: '.exe',
+    });
+  }
+
+  private async checkWinGR() {
+    // TODO: Implement GitHub Release Windows installer detection
+  }
+
+  private async checkWinHFM() {
+    await this.checkHuggingFaceDistribution({
+      type: DistributionType.winHFM,
+      folderPath: 'windows-x64-installer',
+      fileExtension: '.exe',
+      endpoint: 'https://hf-mirror.com',
+    });
+  }
+
+  // Windows Zip distribution checkers
+  private async checkWinZipHF() {
+    await this.checkHuggingFaceDistribution({
+      type: DistributionType.winZipHF,
+      folderPath: 'windows-x64',
+      fileExtension: '.zip',
+    });
+  }
+
+  private async checkWinZipAF() {
+    await this.checkAifasthubDistribution({
+      type: DistributionType.winZipAF,
+      folderPath: 'windows-x64',
+      fileExtension: '.zip',
+    });
+  }
+
+  private async checkWinZipGR() {
+    // TODO: Implement GitHub Release Windows zip detection
+  }
+
+  private async checkWinZipHFM() {
+    await this.checkHuggingFaceDistribution({
+      type: DistributionType.winZipHFM,
+      folderPath: 'windows-x64',
+      fileExtension: '.zip',
+      endpoint: 'https://hf-mirror.com',
+    });
+  }
+
+  // iOS distribution checkers
+  private async checkIOSTF() {
+    // TODO: Implement iOS TestFlight link detection
+  }
+
+  private async checkIOSAS() {
+    // iOS App Store link is fixed
+    const appStoreUrl = 'https://apps.apple.com/us/app/rwkv-chat/id6740192639';
+    const appId = '6740192639';
+
+    let version = 'latest';
+    const build: number | null = null;
+
+    try {
+      // Use iTunes Search API to get app version
+      const response = await axios.get(`https://itunes.apple.com/lookup?id=${appId}`, {
+        timeout: 10000,
+      });
+
+      if (response.data && response.data.results && response.data.results.length > 0) {
+        const appInfo = response.data.results[0];
+        if (appInfo.version) {
+          version = appInfo.version;
+          this.logger.log(`✅ Fetched App Store version: ${version}`);
+        }
+      }
+    } catch (error: any) {
+      this.logger.warn(`Failed to fetch App Store version: ${error.message}`);
+      // Fallback to 'latest' if API call fails
+    }
+
+    await this.saveDistribution({
+      type: DistributionType.iOSAS,
+      url: appStoreUrl,
+      version,
+      build,
+    });
+
+    this.logger.log(`✅ Updated ${DistributionType.iOSAS}: App Store link (version: ${version})`);
+  }
+
+  // Android distribution checkers
+  private async checkAndroidHF() {
+    await this.checkHuggingFaceDistribution({
+      type: DistributionType.androidHF,
+      folderPath: 'android-arm64',
+      fileExtension: '.apk',
+    });
+  }
+
+  private async checkAndroidAF() {
+    await this.checkAifasthubDistribution({
+      type: DistributionType.androidAF,
+      folderPath: 'android-arm64',
+      fileExtension: '.apk',
+    });
+  }
+
+  private async checkAndroidGR() {
+    // TODO: Implement GitHub Release Android APK detection
+  }
+
+  private async checkAndroidHFM() {
+    await this.checkHuggingFaceDistribution({
+      type: DistributionType.androidHFM,
+      folderPath: 'android-arm64',
+      fileExtension: '.apk',
+      endpoint: 'https://hf-mirror.com',
+    });
+  }
+
+  private async checkAndroidPgyerAPK() {
+    // TODO: Implement Pgyer Android APK detection
+  }
+
+  private async checkAndroidPgyer() {
+    // TODO: Implement Pgyer Android download page link detection
+  }
+
+  private async checkAndroidGooglePlay() {
+    // Google Play Store link is fixed
+    const playStoreUrl = 'https://play.google.com/store/apps/details?id=com.rwkvzone.chat';
+
+    let version = 'latest';
+    const build: number | null = null;
+
+    try {
+      // Try to fetch version from Play Store page
+      // Note: Google doesn't provide a public API, so we parse the HTML
+      const response = await axios.get(playStoreUrl, {
+        timeout: 10000,
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+        },
+      });
+
+      // Try multiple patterns to extract version from HTML
+      const html = response.data;
+
+      // Pattern 1: Look for version in AF_initDataCallback (Google Play Store internal data)
+      // First, try to find the pattern [["3.3.1"]] directly in the HTML
+      const directVersionMatch = html.match(/\[\["(\d+\.\d+\.\d+)"\]\]/);
+      if (directVersionMatch && directVersionMatch[1]) {
+        version = directVersionMatch[1];
+        this.logger.log(
+          `✅ Fetched Play Store version from AF_initDataCallback (direct): ${version}`,
+        );
+      } else {
+        // Try to find AF_initDataCallback and extract data field
+        const afInitDataMatch = html.match(
+          /AF_initDataCallback\s*\([^)]*data:\s*(\[[\s\S]{0,50000}\])\s*[,}]/i,
+        );
+        if (afInitDataMatch) {
+          try {
+            const dataStr = afInitDataMatch[1];
+            // Try to find version pattern in the data string
+            const versionInDataMatch = dataStr.match(/\[\["(\d+\.\d+\.\d+)"\]\]/);
+            if (versionInDataMatch && versionInDataMatch[1]) {
+              version = versionInDataMatch[1];
+              this.logger.log(`✅ Fetched Play Store version from AF_initDataCallback: ${version}`);
+            } else {
+              // Try a more flexible search for version strings
+              const flexibleVersionMatch = dataStr.match(/"(\d+\.\d+\.\d+)"/);
+              if (flexibleVersionMatch && flexibleVersionMatch[1]) {
+                version = flexibleVersionMatch[1];
+                this.logger.log(
+                  `✅ Fetched Play Store version from AF_initDataCallback (flexible): ${version}`,
+                );
+              } else {
+                // Try to parse and search recursively
+                try {
+                  const dataArray = JSON.parse(dataStr);
+                  const versionFromData = this.extractVersionFromNestedArray(dataArray);
+                  if (versionFromData) {
+                    version = versionFromData;
+                    this.logger.log(
+                      `✅ Fetched Play Store version from AF_initDataCallback (parsed): ${version}`,
+                    );
+                  }
+                } catch (parseError) {
+                  // JSON parsing failed, continue to other patterns
+                  this.logger.debug(`Failed to parse AF_initDataCallback data: ${parseError}`);
+                }
+              }
+            }
+          } catch (e) {
+            // Continue to other patterns
+            this.logger.debug(`Failed to extract from AF_initDataCallback: ${e}`);
+          }
+        }
+      }
+
+      // Pattern 2: Look for version in JSON-LD structured data
+      if (version === 'latest') {
+        const jsonLdMatch = html.match(
+          /<script[^>]*type=["']application\/ld\+json["'][^>]*>(.*?)<\/script>/is,
+        );
+        if (jsonLdMatch) {
+          try {
+            const jsonLd = JSON.parse(jsonLdMatch[1]);
+            if (jsonLd.softwareVersion) {
+              version = jsonLd.softwareVersion;
+              this.logger.log(`✅ Fetched Play Store version from JSON-LD: ${version}`);
+            }
+          } catch (e) {
+            // Continue to other patterns
+          }
+        }
+      }
+
+      // Pattern 3: Look for version in the page content
+      if (version === 'latest') {
+        const versionPatterns = [
+          /Current Version[^>]*>(\d+\.\d+\.\d+)/i,
+          /Version[^>]*>(\d+\.\d+\.\d+)/i,
+          /"version":"(\d+\.\d+\.\d+)"/i,
+          /versionCode["\s]*:["\s]*(\d+)/i,
+          /<div[^>]*>(\d+\.\d+\.\d+)<\/div>[^<]*Current Version/i,
+        ];
+
+        for (const pattern of versionPatterns) {
+          const match = html.match(pattern);
+          if (match && match[1] && match[1].length > 1) {
+            // Ensure we have a valid version (not just a single dot)
+            version = match[1];
+            this.logger.log(`✅ Fetched Play Store version from HTML: ${version}`);
+            break;
+          }
+        }
+      }
+    } catch (error: any) {
+      this.logger.warn(`Failed to fetch Play Store version: ${error.message}`);
+      // Fallback to 'latest' if API call fails
+    }
+
+    await this.saveDistribution({
+      type: DistributionType.androidGooglePlay,
+      url: playStoreUrl,
+      version,
+      build,
+    });
+
+    this.logger.log(
+      `✅ Updated ${DistributionType.androidGooglePlay}: Google Play Store link (version: ${version})`,
+    );
+  }
+
+  /**
+   * Recursively extract version number from nested array structure
+   * Looks for patterns like [["3.3.1"]] or nested arrays containing semantic version strings
+   */
+  private extractVersionFromNestedArray(arr: any): string | null {
+    if (!Array.isArray(arr)) {
+      return null;
+    }
+
+    for (const item of arr) {
+      if (typeof item === 'string') {
+        // Check if it's a semantic version pattern (e.g., "3.3.1")
+        const versionMatch = item.match(/^(\d+\.\d+\.\d+)$/);
+        if (versionMatch) {
+          return versionMatch[1];
+        }
+      } else if (Array.isArray(item)) {
+        // Recursively search in nested arrays
+        const result = this.extractVersionFromNestedArray(item);
+        if (result) {
+          return result;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Compare two semantic versions (e.g., "3.4.0" vs "3.5.0")
+   * Returns: -1 if v1 < v2, 0 if v1 === v2, 1 if v1 > v2
+   */
+  private compareVersions(v1: string, v2: string): number {
+    if (!v1 && !v2) return 0;
+    if (!v1) return -1;
+    if (!v2) return 1;
+
+    const parts1 = v1.split('.').map(Number);
+    const parts2 = v2.split('.').map(Number);
+    const maxLength = Math.max(parts1.length, parts2.length);
+
+    for (let i = 0; i < maxLength; i++) {
+      const part1 = parts1[i] || 0;
+      const part2 = parts2[i] || 0;
+      if (part1 < part2) return -1;
+      if (part1 > part2) return 1;
+    }
+    return 0;
+  }
+
+  /**
+   * Get the latest distribution for each type
+   * Returns an object where keys are DistributionType and values are the latest record or null
+   */
+  async getLatestDistributions(): Promise<Record<string, any | null>> {
+    const distributionTypes = Object.values(DistributionType);
+    const result: Record<string, any | null> = {};
+
+    for (const type of distributionTypes) {
+      // Get all records for this type
+      const records = await this.prisma.distribution.findMany({
+        where: { type },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (records.length === 0) {
+        result[type] = null;
+        continue;
+      }
+
+      // Find the record with the latest version
+      // Priority: 1. "latest" version (for App Store/Play Store) > 2. Highest semantic version > 3. Highest build number
+      let latestRecord = records[0];
+      let latestVersion = (latestRecord as any).version || '';
+      let latestBuild = (latestRecord as any).build || null;
+
+      // Step 1: If any record has "latest" version, prefer it (for App Store/Play Store links)
+      const latestVersionRecord = records.find((r) => (r as any).version === 'latest');
+      if (latestVersionRecord) {
+        latestRecord = latestVersionRecord;
+        latestVersion = 'latest';
+        latestBuild = (latestVersionRecord as any).build || null;
+      } else {
+        // Step 2: Find the record with the highest semantic version
+        // Step 3: If versions are equal, pick the one with the highest build number
+        for (const record of records) {
+          const recordVersion = (record as any).version || '';
+          const recordBuild = (record as any).build || null;
+
+          // Skip "latest" version in comparison (already handled above)
+          if (recordVersion === 'latest') {
+            continue;
+          }
+
+          // Skip empty or invalid versions
+          if (!recordVersion) {
+            continue;
+          }
+
+          const versionCompare = this.compareVersions(recordVersion, latestVersion);
+          if (versionCompare > 0) {
+            // Newer semantic version found - this is definitely the latest
+            latestRecord = record;
+            latestVersion = recordVersion;
+            latestBuild = recordBuild;
+          } else if (versionCompare === 0) {
+            // Same semantic version, compare build numbers
+            // If both have build numbers, pick the higher one
+            // If only one has a build number, prefer the one with build number
+            if (recordBuild !== null && latestBuild !== null) {
+              if (recordBuild > latestBuild) {
+                latestRecord = record;
+                latestBuild = recordBuild;
+              }
+            } else if (recordBuild !== null && latestBuild === null) {
+              // Prefer record with build number over one without
+              latestRecord = record;
+              latestBuild = recordBuild;
+            }
+            // If latestBuild has a value but recordBuild is null, keep latestRecord
+          }
+        }
+      }
+
+      result[type] = {
+        id: latestRecord.id,
+        type: latestRecord.type,
+        url: latestRecord.url,
+        version: (latestRecord as any).version,
+        build: (latestRecord as any).build,
+        createdAt: latestRecord.createdAt,
+        updatedAt: latestRecord.updatedAt,
+      };
+    }
+
+    return result;
+  }
+}

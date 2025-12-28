@@ -709,6 +709,13 @@
   display: block;
 }
 
+.badgeWrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .badgeButton {
   padding: 0.5rem;
   border: none;
@@ -726,6 +733,15 @@
   border: none;
   opacity: 0.85;
   transform: translateY(-2px);
+}
+
+.badgeVersion {
+  font-size: 0.875rem;
+  color: var(--color-secondary);
+  font-weight: 600;
+  text-align: center;
+  margin-top: 0.5rem;
+  opacity: 0.9;
 }
 
 /* Footer */
