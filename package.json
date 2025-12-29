@@ -10,7 +10,8 @@
     "build:frontend": "pnpm --filter frontend build",
     "build": "pnpm build:frontend && pnpm build:backend",
     "deploy": "bash scripts/deploy.sh",
-    "build:deploy": "pnpm build:frontend && pnpm deploy && pnpm build:backend",
+    "build:deploy": "pnpm build:frontend && bash scripts/deploy.sh && pnpm build:backend",
+    "start:prod": "bash scripts/start-prod.sh",
     "lint": "pnpm --filter backend lint && pnpm --filter frontend lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
   },

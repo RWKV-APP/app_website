@@ -7,7 +7,7 @@ import { useRef, useState, useEffect } from 'react';
 import { translationsAtom, localeAtom, themeAtom, devicePlatformAtom, locationAtom, detectLocale } from '@/atoms';
 import { ThemeSwitcher, LanguageSwitcher } from '@/components';
 import { getAppStoreBadgePath, getAppleLogoPath, getAppIconPath, getPlatformIconPath, fetchLatestDistributions, fetchLocation } from '@/utils';
-import { detectLocaleFromLocation } from '@/i18n/locales';
+import { detectLocaleFromLocation, type Locale } from '@/i18n/locales';
 import { LatestDistributionsResponse, DistributionType } from '@/types/distribution';
 import styles from './page.module.css';
 
