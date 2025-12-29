@@ -21,17 +21,16 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio --port 5556 --hostname 0.0.0.0 --browser none"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
     "@nestjs/core": "^10.0.0",
     "@nestjs/platform-express": "^10.0.0",
     "@nestjs/schedule": "^6.1.0",
-    "@prisma/adapter-better-sqlite3": "^7.2.0",
-    "@prisma/client": "^7.0.0",
+    "@prisma/client": "^6.19.0",
     "axios": "^1.13.2",
-    "better-sqlite3": "^12.5.0",
+    "sqlite3": "^5.1.7",
     "dotenv": "^17.2.3",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1"
@@ -51,7 +50,7 @@
     "eslint-plugin-prettier": "^5.0.0",
     "jest": "^29.5.0",
     "prettier": "^3.0.0",
-    "prisma": "^7.0.0",
+    "prisma": "^6.19.0",
     "source-map-support": "^0.5.21",
     "supertest": "^6.3.3",
     "ts-jest": "^29.1.0",

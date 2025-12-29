@@ -7,4 +7,5 @@ onlyBuiltDependencies:
   - '@prisma/client'
   - '@prisma/engines'
   - prisma
+  - sqlite3
   - unrs-resolver

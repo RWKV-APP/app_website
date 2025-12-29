@@ -6,11 +6,6 @@ import { AppService } from './app.service';
 export class AppController {
   constructor(private readonly appService: AppService) {}
 
-  @Get('health')
-  getHello(): string {
-    return this.appService.getHello();
-  }
-
   @Get('location')
   async getLocation(@Req() req: Request) {
     // Extract IP from request

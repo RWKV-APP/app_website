@@ -5,11 +5,6 @@ import axios from 'axios';
 export class AppService {
   private readonly logger = new Logger(AppService.name);
 
-  getHello(): string {
-    this.logger.debug('getHello called');
-    return 'Hello World!';
-  }
-
   /**
    * Check if IP is a local/reserved IP address
    */
