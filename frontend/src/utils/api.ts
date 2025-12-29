@@ -2,7 +2,7 @@ import { LatestDistributionsResponse } from '@/types/distribution';
 import { LocationInfo } from '@/atoms';
 
 // Use api.rwkv.halowang.cloud in production, or env variable if set
-// In development, fallback to localhost
+// In development, use relative path to leverage Next.js rewrites
 const getApiBaseUrl = (): string => {
   // Allow override via environment variable
   if (process.env.NEXT_PUBLIC_API_URL) {
@@ -16,12 +16,17 @@ const getApiBaseUrl = (): string => {
     if (hostname === 'rwkv.halowang.cloud') {
       return 'https://api.rwkv.halowang.cloud';
     }
+    // In development, use relative path to leverage Next.js rewrites
+    // This will proxy to http://localhost:3462 via rewrites
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return '';
+    }
     // Otherwise use relative path (for same-domain deployment)
     return '';
   }
 
-  // Server-side rendering fallback (development)
-  return 'http://localhost:3001';
+  // Server-side rendering: use relative path in dev (rewrites work), or production URL
+  return '';
 };
 
 const API_BASE_URL = getApiBaseUrl();

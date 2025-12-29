@@ -12,30 +12,50 @@ export class DistributionService implements OnModuleInit {
   constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit() {
-    this.logger.log('DistributionService initialized, running allInOne...');
-    await this.allInOne();
+    this.logger.log('DistributionService initialized, scheduling allInOne...');
+    // Don't await - run in background so it doesn't block service startup
+    // If allInOne fails, it won't prevent the service from starting
+    this.allInOne().catch((error: any) => {
+      this.logger.error(`Error in onModuleInit allInOne: ${error.message}`, error.stack);
+    });
   }
 
   @Cron('0 */30 * * * *') // Every 30 minutes
   async handleCron() {
     this.logger.log('Running scheduled allInOne check...');
-    await this.allInOne();
+    try {
+      await this.allInOne();
+    } catch (error: any) {
+      this.logger.error(`Error in scheduled allInOne: ${error.message}`, error.stack);
+      // Don't throw - allow cron to continue
+    }
   }
 
   async allInOne() {
-    this.logger.log('Starting allInOne distribution check...');
+    try {
+      this.logger.log('Starting allInOne distribution check...');
 
-    const distributionTypes = Object.values(DistributionType);
+      const distributionTypes = Object.values(DistributionType);
 
-    for (const type of distributionTypes) {
-      try {
-        await this.checkDistribution(type);
-      } catch (error) {
-        this.logger.error(`Error checking distribution type ${type}:`, error);
+      for (const type of distributionTypes) {
+        try {
+          await this.checkDistribution(type);
+        } catch (error: any) {
+          this.logger.error(
+            `Error checking distribution type ${type}: ${error.message}`,
+            error.stack,
+          );
+          // Continue with next type even if one fails
+        }
       }
-    }
 
-    this.logger.log('Completed allInOne distribution check');
+      this.logger.log('Completed allInOne distribution check');
+    } catch (error: any) {
+      // Catch any unexpected errors (e.g., DistributionType.values() fails)
+      this.logger.error(`Fatal error in allInOne: ${error.message}`, error.stack);
+      // Don't throw - allow the process to continue
+      // Individual type errors are already handled above
+    }
   }
 
   private async checkDistribution(type: DistributionType) {
@@ -364,7 +384,44 @@ export class DistributionService implements OnModuleInit {
   }) {
     const { type, url, version, build } = options;
 
-    // Check if a record with the same type, url, version, and build already exists
+    // For fixed URL types (App Store, Play Store), update existing record instead of creating new one
+    const fixedUrlTypes = [DistributionType.iOSAS, DistributionType.androidGooglePlay];
+
+    if (fixedUrlTypes.includes(type)) {
+      // For fixed URL types, find existing record by type and url
+      const existing = await this.prisma.distribution.findFirst({
+        where: {
+          type,
+          url,
+        },
+      });
+
+      if (existing) {
+        // Check if version or build has changed
+        if ((existing as any).version === version && (existing as any).build === build) {
+          // No change, skip update
+          this.logger.debug(
+            `Record already exists with same version: ${type} - ${version} (${build}) - ${url}`,
+          );
+          return;
+        }
+
+        // Update existing record with new version/build
+        await this.prisma.distribution.update({
+          where: { id: existing.id },
+          data: {
+            version,
+            build,
+          } as any,
+        });
+
+        const displayVersion = version ? (build ? `${version}+${build}` : version) : 'unknown';
+        this.logger.debug(`Updated distribution record: ${type} - ${displayVersion} - ${url}`);
+        return;
+      }
+    }
+
+    // For other types or if no existing record found, check if identical record exists
     const existing = await this.prisma.distribution.findFirst({
       where: {
         type,
@@ -380,24 +437,8 @@ export class DistributionService implements OnModuleInit {
       return;
     }
 
-    // Delete all existing records with the same type, url, version, and build
-    // This ensures we only keep one record when all fields are identical
-    const deleteResult = await this.prisma.distribution.deleteMany({
-      where: {
-        type,
-        url,
-        version,
-        build,
-      },
-    });
-
-    if (deleteResult.count > 0) {
-      this.logger.debug(
-        `Deleted ${deleteResult.count} duplicate record(s) with type: ${type}, url: ${url}, version: ${version}, build: ${build}`,
-      );
-    }
-
-    // Create new record
+    // No existing record found (existing is null), create new record
+    // Note: We don't need deleteMany here since findFirst already confirmed no record exists
     await this.prisma.distribution.create({
       data: {
         type,
@@ -406,6 +447,9 @@ export class DistributionService implements OnModuleInit {
         build,
       } as any,
     });
+
+    const displayVersion = version ? (build ? `${version}+${build}` : version) : 'unknown';
+    this.logger.debug(`Created new distribution record: ${type} - ${displayVersion} - ${url}`);
   }
 
   // macOS distribution checkers
@@ -793,86 +837,99 @@ export class DistributionService implements OnModuleInit {
    * Returns an object where keys are DistributionType and values are the latest record or null
    */
   async getLatestDistributions(): Promise<Record<string, any | null>> {
-    const distributionTypes = Object.values(DistributionType);
-    const result: Record<string, any | null> = {};
+    try {
+      const distributionTypes = Object.values(DistributionType);
+      const result: Record<string, any | null> = {};
 
-    for (const type of distributionTypes) {
-      // Get all records for this type
-      const records = await this.prisma.distribution.findMany({
-        where: { type },
-        orderBy: { createdAt: 'desc' },
-      });
+      for (const type of distributionTypes) {
+        try {
+          // Get all records for this type
+          const records = await this.prisma.distribution.findMany({
+            where: { type },
+            orderBy: { createdAt: 'desc' },
+          });
 
-      if (records.length === 0) {
-        result[type] = null;
-        continue;
-      }
-
-      // Find the record with the latest version
-      // Priority: 1. "latest" version (for App Store/Play Store) > 2. Highest semantic version > 3. Highest build number
-      let latestRecord = records[0];
-      let latestVersion = (latestRecord as any).version || '';
-      let latestBuild = (latestRecord as any).build || null;
-
-      // Step 1: If any record has "latest" version, prefer it (for App Store/Play Store links)
-      const latestVersionRecord = records.find((r) => (r as any).version === 'latest');
-      if (latestVersionRecord) {
-        latestRecord = latestVersionRecord;
-        latestVersion = 'latest';
-        latestBuild = (latestVersionRecord as any).build || null;
-      } else {
-        // Step 2: Find the record with the highest semantic version
-        // Step 3: If versions are equal, pick the one with the highest build number
-        for (const record of records) {
-          const recordVersion = (record as any).version || '';
-          const recordBuild = (record as any).build || null;
-
-          // Skip "latest" version in comparison (already handled above)
-          if (recordVersion === 'latest') {
+          if (records.length === 0) {
+            result[type] = null;
             continue;
           }
 
-          // Skip empty or invalid versions
-          if (!recordVersion) {
-            continue;
-          }
+          // Find the record with the latest version
+          // Priority: 1. "latest" version (for App Store/Play Store) > 2. Highest semantic version > 3. Highest build number
+          let latestRecord = records[0];
+          let latestVersion = (latestRecord as any).version || '';
+          let latestBuild = (latestRecord as any).build || null;
 
-          const versionCompare = this.compareVersions(recordVersion, latestVersion);
-          if (versionCompare > 0) {
-            // Newer semantic version found - this is definitely the latest
-            latestRecord = record;
-            latestVersion = recordVersion;
-            latestBuild = recordBuild;
-          } else if (versionCompare === 0) {
-            // Same semantic version, compare build numbers
-            // If both have build numbers, pick the higher one
-            // If only one has a build number, prefer the one with build number
-            if (recordBuild !== null && latestBuild !== null) {
-              if (recordBuild > latestBuild) {
-                latestRecord = record;
-                latestBuild = recordBuild;
+          // Step 1: If any record has "latest" version, prefer it (for App Store/Play Store links)
+          const latestVersionRecord = records.find((r) => (r as any).version === 'latest');
+          if (latestVersionRecord) {
+            latestRecord = latestVersionRecord;
+            latestVersion = 'latest';
+            latestBuild = (latestVersionRecord as any).build || null;
+          } else {
+            // Step 2: Find the record with the highest semantic version
+            // Step 3: If versions are equal, pick the one with the highest build number
+            for (const record of records) {
+              const recordVersion = (record as any).version || '';
+              const recordBuild = (record as any).build || null;
+
+              // Skip "latest" version in comparison (already handled above)
+              if (recordVersion === 'latest') {
+                continue;
               }
-            } else if (recordBuild !== null && latestBuild === null) {
-              // Prefer record with build number over one without
-              latestRecord = record;
-              latestBuild = recordBuild;
+
+              // Skip empty or invalid versions
+              if (!recordVersion) {
+                continue;
+              }
+
+              const versionCompare = this.compareVersions(recordVersion, latestVersion);
+              if (versionCompare > 0) {
+                // Newer semantic version found - this is definitely the latest
+                latestRecord = record;
+                latestVersion = recordVersion;
+                latestBuild = recordBuild;
+              } else if (versionCompare === 0) {
+                // Same semantic version, compare build numbers
+                // If both have build numbers, pick the higher one
+                // If only one has a build number, prefer the one with build number
+                if (recordBuild !== null && latestBuild !== null) {
+                  if (recordBuild > latestBuild) {
+                    latestRecord = record;
+                    latestBuild = recordBuild;
+                  }
+                } else if (recordBuild !== null && latestBuild === null) {
+                  // Prefer record with build number over one without
+                  latestRecord = record;
+                  latestBuild = recordBuild;
+                }
+                // If latestBuild has a value but recordBuild is null, keep latestRecord
+              }
             }
-            // If latestBuild has a value but recordBuild is null, keep latestRecord
           }
+
+          result[type] = {
+            id: latestRecord.id,
+            type: latestRecord.type,
+            url: latestRecord.url,
+            version: (latestRecord as any).version,
+            build: (latestRecord as any).build,
+            createdAt: latestRecord.createdAt,
+            updatedAt: latestRecord.updatedAt,
+          };
+        } catch (error: any) {
+          // If database query fails (e.g., table doesn't exist, connection error), return null for this type
+          this.logger.warn(`Failed to fetch records for type ${type}: ${error.message}`);
+          result[type] = null;
         }
       }
 
-      result[type] = {
-        id: latestRecord.id,
-        type: latestRecord.type,
-        url: latestRecord.url,
-        version: (latestRecord as any).version,
-        build: (latestRecord as any).build,
-        createdAt: latestRecord.createdAt,
-        updatedAt: latestRecord.updatedAt,
-      };
+      return result;
+    } catch (error: any) {
+      // If there's a fatal error (e.g., Prisma not connected, database doesn't exist), return empty object
+      this.logger.error(`Fatal error in getLatestDistributions: ${error.message}`, error.stack);
+      // Return empty object instead of throwing - this allows the API to return 200 with empty data
+      return {};
     }
-
-    return result;
   }
 }
