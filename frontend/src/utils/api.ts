@@ -1,7 +1,21 @@
 import { LatestDistributionsResponse } from '@/types/distribution';
 import { LocationInfo } from '@/atoms';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+// Use relative path in production (same domain), or env variable if set
+// In development, fallback to localhost
+const getApiBaseUrl = (): string => {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  // In browser, use relative path (works for same-domain deployment)
+  if (typeof window !== 'undefined') {
+    return '/api';
+  }
+  // Server-side rendering fallback (development)
+  return 'http://localhost:3001/api';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 export async function fetchLatestDistributions(): Promise<LatestDistributionsResponse> {
   try {
@@ -28,4 +42,3 @@ export async function fetchLocation(): Promise<LocationInfo | null> {
     return null;
   }
 }
-

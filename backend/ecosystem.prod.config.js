@@ -4,7 +4,7 @@ module.exports = {
   apps: [
     {
       name: 'app-website-prod',
-      script: path.join(__dirname, 'dist/main.js'),
+      script: path.join(__dirname, 'dist/src/main.js'),
       instances: 1,
       exec_mode: 'fork',
       env: {
@@ -27,4 +27,3 @@ module.exports = {
     },
   ],
 };
-

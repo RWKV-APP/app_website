@@ -26,17 +26,11 @@ pnpm prisma:generate
 # 检查是否有迁移文件，如果没有则创建初始迁移
 if [ ! -d "prisma/migrations" ] || [ -z "$(ls -A prisma/migrations 2>/dev/null)" ]; then
   echo "   📝 创建初始数据库迁移..."
-  pnpm prisma migrate dev --name init || {
-    echo "   ⚠️  创建迁移失败，尝试直接推送 schema..."
-    pnpm prisma db push --accept-data-loss || true
-  }
+  pnpm prisma migrate dev --name init
 else
   # 如果有迁移文件，使用 deploy 应用迁移（生产环境推荐）
   echo "   🚀 应用数据库迁移..."
-  pnpm prisma:migrate:deploy || {
-    echo "   ⚠️  迁移失败，尝试直接推送 schema..."
-    pnpm prisma db push --accept-data-loss || true
-  }
+  pnpm prisma:migrate:deploy
 fi
 
 # 验证数据库是否已创建
