@@ -376,6 +376,129 @@ export class DistributionService implements OnModuleInit {
     }
   }
 
+  // Helper method to check GitHub Release distribution
+  private async checkGitHubReleaseDistribution(options: {
+    type: DistributionType;
+    fileExtension: string;
+    fileNamePattern: RegExp;
+  }) {
+    const { type, fileExtension, fileNamePattern } = options;
+    const { repo, token } = Config.github;
+
+    if (!repo) {
+      this.logger.warn(`GITHUB_REPO not configured, skipping ${type}`);
+      return;
+    }
+
+    try {
+      // Get latest release from GitHub API
+      const apiUrl = `https://api.github.com/repos/${repo}/releases/latest`;
+      const headers: Record<string, string> = {
+        Accept: 'application/vnd.github.v3+json',
+      };
+
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const response = await axios.get(apiUrl, {
+        headers,
+        timeout: 30000,
+      });
+
+      if (!response.data || !response.data.assets || !Array.isArray(response.data.assets)) {
+        this.logger.warn(`No assets found in latest release for ${type}`);
+        return;
+      }
+
+      // Filter assets by extension and filename pattern
+      const matchingAssets = response.data.assets.filter((asset: any) => {
+        const name = asset.name || '';
+        return (
+          name.endsWith(fileExtension) && fileNamePattern.test(name) && asset.browser_download_url
+        );
+      });
+
+      if (matchingAssets.length === 0) {
+        this.logger.warn(`No matching ${fileExtension} files found in latest release for ${type}`);
+        return;
+      }
+
+      // Sort by upload time (most recent first)
+      const sortedAssets = matchingAssets.sort((a: any, b: any) => {
+        const timeA = new Date(a.updated_at || a.created_at || 0).getTime();
+        const timeB = new Date(b.updated_at || b.created_at || 0).getTime();
+        return timeB - timeA;
+      });
+
+      // Process all matching assets
+      let savedCount = 0;
+      for (const asset of sortedAssets) {
+        const fileName = asset.name || '';
+        const downloadUrl = asset.browser_download_url;
+
+        // Parse version and build from filename
+        let version = '';
+        let build: number | null = null;
+
+        // Try format: rwkv_chat_{version}_{build} (with optional platform suffix)
+        const rwkvChatMatch = fileName.match(/rwkv_chat_(\d+\.\d+\.\d+)_(\d+)(?:_|\.)/);
+        if (rwkvChatMatch) {
+          version = rwkvChatMatch[1];
+          build = parseInt(rwkvChatMatch[2], 10);
+        } else {
+          // Try format: {version}+{build} or {prefix}-{version}+{build}.{ext}
+          const versionMatch = fileName.match(/(\d+\.\d+\.\d+)(?:\+(\d+)|_(\d+))?/);
+          if (versionMatch) {
+            version = versionMatch[1];
+            build = versionMatch[2]
+              ? parseInt(versionMatch[2], 10)
+              : versionMatch[3]
+                ? parseInt(versionMatch[3], 10)
+                : null;
+          }
+        }
+
+        // If we couldn't parse from filename, try to use release tag name
+        if (!version && response.data.tag_name) {
+          const tagMatch = response.data.tag_name.match(/v?(\d+\.\d+\.\d+)(?:\+(\d+)|-(\d+))?/);
+          if (tagMatch) {
+            version = tagMatch[1];
+            build = tagMatch[2]
+              ? parseInt(tagMatch[2], 10)
+              : tagMatch[3]
+                ? parseInt(tagMatch[3], 10)
+                : null;
+          }
+        }
+
+        if (!version) {
+          this.logger.warn(`Could not parse version from filename or tag: ${fileName}`);
+          continue;
+        }
+
+        await this.saveDistribution({
+          type,
+          url: downloadUrl,
+          version,
+          build,
+        });
+
+        savedCount++;
+        const displayVersion = version ? (build ? `${version}+${build}` : version) : 'unknown';
+        this.logger.log(`✅ Saved ${type}: ${fileName} (${displayVersion})`);
+      }
+
+      this.logger.log(`✅ Processed ${savedCount} file(s) for ${type}`);
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        this.logger.warn(`Latest release not found for ${type}`);
+      } else {
+        this.logger.error(`Error checking ${type}: ${error.message}`);
+      }
+    }
+  }
+
   private async saveDistribution(options: {
     type: DistributionType;
     url: string;
@@ -470,7 +593,11 @@ export class DistributionService implements OnModuleInit {
   }
 
   private async checkMacosGR() {
-    // TODO: Implement GitHub Release macOS DMG detection
+    await this.checkGitHubReleaseDistribution({
+      type: DistributionType.macosGR,
+      fileExtension: '.dmg',
+      fileNamePattern: /macos|universal/i,
+    });
   }
 
   private async checkMacosHFM() {
@@ -500,7 +627,11 @@ export class DistributionService implements OnModuleInit {
   }
 
   private async checkLinuxGR() {
-    // TODO: Implement GitHub Release Linux tar.gz detection
+    await this.checkGitHubReleaseDistribution({
+      type: DistributionType.linuxGR,
+      fileExtension: '.tar.gz',
+      fileNamePattern: /linux/i,
+    });
   }
 
   private async checkLinuxHFM() {
@@ -530,7 +661,11 @@ export class DistributionService implements OnModuleInit {
   }
 
   private async checkWinGR() {
-    // TODO: Implement GitHub Release Windows installer detection
+    await this.checkGitHubReleaseDistribution({
+      type: DistributionType.winGR,
+      fileExtension: '.exe',
+      fileNamePattern: /windows.*installer|setup/i,
+    });
   }
 
   private async checkWinHFM() {
@@ -560,7 +695,11 @@ export class DistributionService implements OnModuleInit {
   }
 
   private async checkWinZipGR() {
-    // TODO: Implement GitHub Release Windows zip detection
+    await this.checkGitHubReleaseDistribution({
+      type: DistributionType.winZipGR,
+      fileExtension: '.zip',
+      fileNamePattern: /windows/i,
+    });
   }
 
   private async checkWinZipHFM() {
@@ -631,7 +770,14 @@ export class DistributionService implements OnModuleInit {
   }
 
   private async checkAndroidGR() {
-    // TODO: Implement GitHub Release Android APK detection
+    await this.checkGitHubReleaseDistribution({
+      type: DistributionType.androidGR,
+      fileExtension: '.apk',
+      // Match APK files that don't contain other platform keywords
+      // This matches files like rwkv_chat_3.4.1_626.apk
+      // Negative lookahead to exclude macos, linux, windows, universal
+      fileNamePattern: /^(?!.*(?:macos|linux|windows|universal))/i,
+    });
   }
 
   private async checkAndroidHFM() {
@@ -644,11 +790,217 @@ export class DistributionService implements OnModuleInit {
   }
 
   private async checkAndroidPgyerAPK() {
-    // TODO: Implement Pgyer Android APK detection
+    const { apiKey, appKey } = Config.pgyer;
+
+    // Check if apiKey is empty or undefined
+    if (!apiKey || apiKey.trim() === '') {
+      this.logger.warn(
+        `PGYER_API_KEY not configured, skipping ${DistributionType.androidPgyerAPK}`,
+      );
+      return;
+    }
+
+    if (!appKey || appKey.trim() === '') {
+      this.logger.warn(
+        `PGYER_APP_KEY not configured, skipping ${DistributionType.androidPgyerAPK}`,
+      );
+      return;
+    }
+
+    try {
+      // Use Pgyer API v2 to get app information
+      // Pgyer API supports both GET and POST
+      const trimmedApiKey = apiKey.trim();
+      const trimmedAppKey = appKey.trim();
+
+      // Log the API key (masked for security)
+      this.logger.debug(
+        `Calling Pgyer API for ${DistributionType.androidPgyerAPK} with appKey: ${trimmedAppKey}, apiKey length: ${trimmedApiKey.length}`,
+      );
+
+      // Try GET request first (Pgyer API may prefer GET)
+      const apiUrl = 'https://www.pgyer.com/apiv2/app/view';
+      const response = await axios.get(apiUrl, {
+        params: {
+          _api_key: trimmedApiKey,
+          appKey: trimmedAppKey,
+        },
+        timeout: 30000,
+      });
+
+      if (!response.data || response.data.code !== 0) {
+        this.logger.warn(
+          `Failed to get Pgyer app info for ${DistributionType.androidPgyerAPK}: ${response.data?.message || 'Unknown error'}`,
+        );
+        // Log full response for debugging
+        this.logger.debug(`Pgyer API response: ${JSON.stringify(response.data)}`);
+        return;
+      }
+
+      const appData = response.data.data;
+      if (!appData || !appData.buildKey) {
+        this.logger.warn(
+          `No buildKey found in Pgyer response for ${DistributionType.androidPgyerAPK}`,
+        );
+        this.logger.debug(`Pgyer API response: ${JSON.stringify(response.data)}`);
+        return;
+      }
+
+      // Parse version and build from appData
+      let version = '';
+      let build: number | null = null;
+
+      // Use buildVersion field (e.g., "3.4.1")
+      if (appData.buildVersion) {
+        const versionMatch = appData.buildVersion.match(/(\d+\.\d+\.\d+)/);
+        if (versionMatch) {
+          version = versionMatch[1];
+        } else {
+          version = appData.buildVersion;
+        }
+      }
+
+      // Use buildVersionNo field for build number (e.g., "627")
+      if (appData.buildVersionNo) {
+        const buildMatch = appData.buildVersionNo.match(/(\d+)/);
+        if (buildMatch) {
+          build = parseInt(buildMatch[1], 10);
+        }
+      }
+
+      if (!version) {
+        this.logger.warn(
+          `Could not parse version from Pgyer response for ${DistributionType.androidPgyerAPK}`,
+        );
+        return;
+      }
+
+      // Build direct APK download URL using buildKey
+      // Pgyer direct download format: https://www.pgyer.com/app/install/{buildKey}
+      const downloadUrl = `https://www.pgyer.com/app/install/${appData.buildKey}`;
+
+      await this.saveDistribution({
+        type: DistributionType.androidPgyerAPK,
+        url: downloadUrl,
+        version,
+        build,
+      });
+
+      const displayVersion = version ? (build ? `${version}+${build}` : version) : 'unknown';
+      this.logger.log(
+        `✅ Saved ${DistributionType.androidPgyerAPK}: ${downloadUrl} (${displayVersion})`,
+      );
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        this.logger.warn(`Pgyer app not found for ${DistributionType.androidPgyerAPK}`);
+      } else {
+        this.logger.error(`Error checking ${DistributionType.androidPgyerAPK}: ${error.message}`);
+      }
+    }
   }
 
   private async checkAndroidPgyer() {
-    // TODO: Implement Pgyer Android download page link detection
+    const { apiKey, appKey } = Config.pgyer;
+
+    // Check if apiKey is empty or undefined
+    if (!apiKey || apiKey.trim() === '') {
+      this.logger.warn(`PGYER_API_KEY not configured, skipping ${DistributionType.androidPgyer}`);
+      return;
+    }
+
+    if (!appKey || appKey.trim() === '') {
+      this.logger.warn(`PGYER_APP_KEY not configured, skipping ${DistributionType.androidPgyer}`);
+      return;
+    }
+
+    try {
+      // Use Pgyer API v2 to get app information
+      // Pgyer API supports both GET and POST
+      const trimmedApiKey = apiKey.trim();
+      const trimmedAppKey = appKey.trim();
+
+      // Log the API key (masked for security)
+      this.logger.debug(
+        `Calling Pgyer API for ${DistributionType.androidPgyer} with appKey: ${trimmedAppKey}, apiKey length: ${trimmedApiKey.length}`,
+      );
+
+      // Try GET request first (Pgyer API may prefer GET)
+      const apiUrl = 'https://www.pgyer.com/apiv2/app/view';
+      const response = await axios.get(apiUrl, {
+        params: {
+          _api_key: trimmedApiKey,
+          appKey: trimmedAppKey,
+        },
+        timeout: 30000,
+      });
+
+      if (!response.data || response.data.code !== 0) {
+        this.logger.warn(
+          `Failed to get Pgyer app info for ${DistributionType.androidPgyer}: ${response.data?.message || 'Unknown error'}`,
+        );
+        // Log full response for debugging
+        this.logger.debug(`Pgyer API response: ${JSON.stringify(response.data)}`);
+        return;
+      }
+
+      const appData = response.data.data;
+      if (!appData || !appData.buildShortcutUrl) {
+        this.logger.warn(
+          `No shortcut URL found in Pgyer response for ${DistributionType.androidPgyer}`,
+        );
+        return;
+      }
+
+      // Parse version and build from appData
+      let version = '';
+      let build: number | null = null;
+
+      // Use buildVersion field (e.g., "3.4.1")
+      if (appData.buildVersion) {
+        const versionMatch = appData.buildVersion.match(/(\d+\.\d+\.\d+)/);
+        if (versionMatch) {
+          version = versionMatch[1];
+        } else {
+          version = appData.buildVersion;
+        }
+      }
+
+      // Use buildVersionNo field for build number (e.g., "627")
+      if (appData.buildVersionNo) {
+        const buildMatch = appData.buildVersionNo.match(/(\d+)/);
+        if (buildMatch) {
+          build = parseInt(buildMatch[1], 10);
+        }
+      }
+
+      if (!version) {
+        this.logger.warn(
+          `Could not parse version from Pgyer response for ${DistributionType.androidPgyer}`,
+        );
+        return;
+      }
+
+      // Build download page URL from shortcut URL
+      const downloadPageUrl = `https://www.pgyer.com/${appData.buildShortcutUrl}`;
+
+      await this.saveDistribution({
+        type: DistributionType.androidPgyer,
+        url: downloadPageUrl,
+        version,
+        build,
+      });
+
+      const displayVersion = version ? (build ? `${version}+${build}` : version) : 'unknown';
+      this.logger.log(
+        `✅ Saved ${DistributionType.androidPgyer}: ${downloadPageUrl} (${displayVersion})`,
+      );
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        this.logger.warn(`Pgyer app not found for ${DistributionType.androidPgyer}`);
+      } else {
+        this.logger.error(`Error checking ${DistributionType.androidPgyer}: ${error.message}`);
+      }
+    }
   }
 
   private async checkAndroidGooglePlay() {

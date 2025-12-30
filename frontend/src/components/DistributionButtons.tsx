@@ -43,7 +43,6 @@ const distributionConfigs: DistributionButtonConfig[] = [
   { type: DistributionType.androidAF, label: 'Android APK (Aifasthub)', icon: '🤖' },
   { type: DistributionType.androidGR, label: 'Android APK (GitHub Release)', icon: '🤖' },
   { type: DistributionType.androidHFM, label: 'Android APK (HF-Mirror)', icon: '🤖' },
-  { type: DistributionType.androidPgyerAPK, label: 'Android APK (Pgyer)', icon: '🤖' },
   { type: DistributionType.androidPgyer, label: 'Android (Pgyer)', icon: '🤖' },
   { type: DistributionType.androidGooglePlay, label: 'Android (Google Play)', icon: '🤖' },
 ];

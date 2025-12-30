@@ -65,3 +65,24 @@ export function getBrandingPath({ theme }: { theme: Theme }): string {
     : '/images/logos/branding-light.png';
 }
 
+/**
+ * 获取 Google Play Store 徽章路径
+ * 根据语言返回对应的 SVG 路径
+ */
+export function getGooglePlayBadgePath(options: { locale: Locale }): string {
+  const { locale } = options;
+
+  // 将 locale 映射到 SVG 文件名
+  const localeToFileName: Record<Locale, string> = {
+    'zh-CN': 'Chinese-China',
+    'zh-TW': 'Chinese-Taiwan',
+    ja: 'Japanese',
+    ko: 'Korean',
+    en: 'English',
+    ru: 'Russian',
+  };
+
+  const fileName = localeToFileName[locale] || localeToFileName['en'];
+  return `/images/badges/playstore/GetItOnGooglePlay_Badge_Web_color_${fileName}.svg`;
+}
+

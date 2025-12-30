@@ -5,6 +5,7 @@ export {
   getRWKVLogoPath,
   getAppIconPath,
   getBrandingPath,
+  getGooglePlayBadgePath,
 } from './getAssetPath';
 
 export { fetchLatestDistributions, fetchLocation } from './api';

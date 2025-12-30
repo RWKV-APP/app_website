@@ -1,12 +1,26 @@
 'use client';
 
 import Image from 'next/image';
-import Link from 'next/link';
 import { useAtom, useAtomValue } from 'jotai';
 import { useRef, useState, useEffect } from 'react';
-import { translationsAtom, localeAtom, themeAtom, devicePlatformAtom, locationAtom, detectLocale } from '@/atoms';
+import {
+  translationsAtom,
+  localeAtom,
+  themeAtom,
+  devicePlatformAtom,
+  locationAtom,
+  detectLocale,
+} from '@/atoms';
 import { ThemeSwitcher, LanguageSwitcher } from '@/components';
-import { getAppStoreBadgePath, getAppleLogoPath, getAppIconPath, getPlatformIconPath, fetchLatestDistributions, fetchLocation } from '@/utils';
+import {
+  getAppStoreBadgePath,
+  getAppleLogoPath,
+  getAppIconPath,
+  getPlatformIconPath,
+  getGooglePlayBadgePath,
+  fetchLatestDistributions,
+  fetchLocation,
+} from '@/utils';
 import { detectLocaleFromLocation, type Locale } from '@/i18n/locales';
 import { LatestDistributionsResponse, DistributionType } from '@/types/distribution';
 import styles from './page.module.css';
@@ -51,7 +65,7 @@ export default function Home() {
           .then((locationData) => {
             if (locationData) {
               setLocation(locationData);
-              
+
               // Auto-detect locale from location
               // Only set if current locale is still the browser default (user hasn't manually changed it)
               const currentLocale = locale;
@@ -80,8 +94,14 @@ export default function Home() {
   ];
 
   // Only compute theme-dependent paths after mounting to avoid hydration mismatch
-  const appleLogoPath = mounted ? getAppleLogoPath({ theme }) : getAppleLogoPath({ theme: 'light' });
-  const appStoreBadgePath = mounted ? getAppStoreBadgePath({ locale, theme }) : getAppStoreBadgePath({ locale, theme: 'light' });
+  const appleLogoPath = mounted
+    ? getAppleLogoPath({ theme })
+    : getAppleLogoPath({ theme: 'light' });
+  const appStoreBadgePath = mounted
+    ? getAppStoreBadgePath({ locale, theme })
+    : getAppStoreBadgePath({ locale, theme: 'light' });
+
+  const googlePlayBadgePath = getGooglePlayBadgePath({ locale });
 
   // 根据设备平台获取对应的下载选项
   const getSmartDownloadOptions = () => {
@@ -97,14 +117,18 @@ export default function Home() {
             {
               type: 'iOSTF',
               label: t.testFlight,
-              href: distributions?.[DistributionType.iOSTF]?.url || 'https://testflight.apple.com/join/DaMqCNKh',
-              available: !!distributions?.[DistributionType.iOSTF],
+              href:
+                distributions?.[DistributionType.iOSTF]?.url ||
+                'https://testflight.apple.com/join/DaMqCNKh',
+              available: true, // TestFlight link is always available
               version: distributions?.[DistributionType.iOSTF]?.version,
             },
             {
               type: 'iOSAS',
               label: t.appStore,
-              href: distributions?.[DistributionType.iOSAS]?.url || 'https://apps.apple.com/app/rwkv-chat/id6740192639',
+              href:
+                distributions?.[DistributionType.iOSAS]?.url ||
+                'https://apps.apple.com/app/rwkv-chat/id6740192639',
               badge: appStoreBadgePath,
               available: !!distributions?.[DistributionType.iOSAS],
               version: distributions?.[DistributionType.iOSAS]?.version,
@@ -145,13 +169,6 @@ export default function Home() {
               version: distributions?.[DistributionType.androidHFM]?.version,
             },
             {
-              type: 'androidPgyerAPK',
-              label: 'Pgyer APK',
-              href: distributions?.[DistributionType.androidPgyerAPK]?.url || '#',
-              available: !!distributions?.[DistributionType.androidPgyerAPK],
-              version: distributions?.[DistributionType.androidPgyerAPK]?.version,
-            },
-            {
               type: 'androidPgyer',
               label: 'Pgyer',
               href: distributions?.[DistributionType.androidPgyer]?.url || '#',
@@ -161,8 +178,10 @@ export default function Home() {
             {
               type: 'androidGooglePlay',
               label: t.playStore,
-              href: distributions?.[DistributionType.androidGooglePlay]?.url || 'https://play.google.com/store/apps/details?id=com.rwkvzone.chat',
-              badge: '/images/badges/play-store/get-it-on-google-play.png',
+              href:
+                distributions?.[DistributionType.androidGooglePlay]?.url ||
+                'https://play.google.com/store/apps/details?id=com.rwkvzone.chat',
+              badge: googlePlayBadgePath,
               available: !!distributions?.[DistributionType.androidGooglePlay],
               version: distributions?.[DistributionType.androidGooglePlay]?.version,
             },
@@ -351,13 +370,6 @@ export default function Home() {
             version: distributions?.[DistributionType.androidHFM]?.version,
           },
           {
-            type: 'androidPgyerAPK',
-            label: 'Pgyer APK',
-            href: distributions?.[DistributionType.androidPgyerAPK]?.url || '#',
-            available: !!distributions?.[DistributionType.androidPgyerAPK],
-            version: distributions?.[DistributionType.androidPgyerAPK]?.version,
-          },
-          {
             type: 'androidPgyer',
             label: 'Pgyer',
             href: distributions?.[DistributionType.androidPgyer]?.url || '#',
@@ -367,8 +379,10 @@ export default function Home() {
           {
             type: 'androidGooglePlay',
             label: t.playStore,
-            href: distributions?.[DistributionType.androidGooglePlay]?.url || 'https://play.google.com/store/apps/details?id=com.rwkvzone.chat',
-            badge: '/images/badges/play-store/get-it-on-google-play.png',
+            href:
+              distributions?.[DistributionType.androidGooglePlay]?.url ||
+              'https://play.google.com/store/apps/details?id=com.rwkvzone.chat',
+            badge: googlePlayBadgePath,
             available: !!distributions?.[DistributionType.androidGooglePlay],
             version: distributions?.[DistributionType.androidGooglePlay]?.version,
           },
@@ -382,14 +396,18 @@ export default function Home() {
           {
             type: 'iOSTF',
             label: t.testFlight,
-            href: distributions?.[DistributionType.iOSTF]?.url || 'https://testflight.apple.com/join/DaMqCNKh',
-            available: !!distributions?.[DistributionType.iOSTF],
+            href:
+              distributions?.[DistributionType.iOSTF]?.url ||
+              'https://testflight.apple.com/join/DaMqCNKh',
+            available: true, // TestFlight link is always available
             version: distributions?.[DistributionType.iOSTF]?.version,
           },
           {
             type: 'iOSAS',
             label: t.appStore,
-            href: distributions?.[DistributionType.iOSAS]?.url || 'https://apps.apple.com/app/rwkv-chat/id6740192639',
+            href:
+              distributions?.[DistributionType.iOSAS]?.url ||
+              'https://apps.apple.com/app/rwkv-chat/id6740192639',
             badge: appStoreBadgePath,
             available: !!distributions?.[DistributionType.iOSAS],
             version: distributions?.[DistributionType.iOSAS]?.version,
@@ -577,16 +595,34 @@ export default function Home() {
               <p className={styles.smartDownloadDesc}>{t.downloadForYourDevice}</p>
               <div className={styles.smartDownloadButtons}>
                 {smartDownloadOptions.downloads.map((download) => {
+                  const isAvailable = download.available !== false;
                   const version = download.version;
                   // Display version if it exists and is not empty, even if it's "latest"
                   const displayVersion = version && version.trim() !== '' ? version : null;
+                  // For non-badge buttons, include version in label if available and not "latest"
+                  const displayLabel =
+                    !download.badge && version && version !== 'latest'
+                      ? `${download.label} (${version})`
+                      : download.label;
                   return (
                     <div key={download.type} className={download.badge ? styles.badgeWrapper : ''}>
                       <a
-                        href={download.href}
-                        className={`${styles.downloadButton} ${download.badge ? styles.badgeButton : ''}`}
-                        target={download.href.startsWith('http') ? '_blank' : undefined}
-                        rel={download.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+                        href={isAvailable && download.href !== '#' ? download.href : '#'}
+                        className={`${styles.downloadButton} ${download.badge ? styles.badgeButton : ''} ${!isAvailable ? styles.disabled : ''}`}
+                        target={
+                          isAvailable && download.href.startsWith('http') ? '_blank' : undefined
+                        }
+                        rel={
+                          isAvailable && download.href.startsWith('http')
+                            ? 'noopener noreferrer'
+                            : undefined
+                        }
+                        onClick={(e) => {
+                          if (!isAvailable || download.href === '#') {
+                            e.preventDefault();
+                          }
+                        }}
+                        style={!isAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
                       >
                         {download.badge ? (
                           <Image
@@ -599,19 +635,21 @@ export default function Home() {
                           />
                         ) : (
                           <>
-                            <span>{download.label}</span>
-                            <svg
-                              className={styles.arrowIcon}
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <line x1="5" y1="12" x2="19" y2="12" />
-                              <polyline points="12 5 19 12 12 19" />
-                            </svg>
+                            <span>{displayLabel}</span>
+                            {isAvailable && (
+                              <svg
+                                className={styles.arrowIcon}
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <line x1="5" y1="12" x2="19" y2="12" />
+                                <polyline points="12 5 19 12 12 19" />
+                              </svg>
+                            )}
                           </>
                         )}
                       </a>
@@ -648,178 +686,164 @@ export default function Home() {
         {/* All Platforms Section */}
         <div ref={allPlatformsRef}>
           {/* Download Section - Mobile */}
-        <section className={styles.downloadSection}>
-          <div className={styles.downloadContent}>
-            <div className={styles.downloadText}>
-              <h2 className={styles.downloadTitle}>{t.mobile}</h2>
-              <p className={styles.downloadDesc}>{t.mobileDesc}</p>
-              <div className={styles.downloadButtons}>
-                {platforms.mobile.map((platform) => (
-                  <div key={platform.name} className={styles.platformGroup}>
-                    <div className={styles.platformLabel}>{platform.name}</div>
-                    <div className={styles.platformGroupButtons}>
-                      {platform.downloads.map((download) => {
-                        const isAvailable = (download as any).available !== false;
-                        const version = (download as any).version;
-                        const displayLabel = version && version !== 'latest' 
-                          ? `${download.label} (${version})` 
-                          : download.label;
-                        // Display version if it exists and is not empty, even if it's "latest"
-                        const displayVersion = version && version.trim() !== '' ? version : null;
-                        
-                        return (
-                          <div key={download.type} className={download.badge ? styles.badgeWrapper : ''}>
+          <section className={styles.downloadSection}>
+            <div className={styles.downloadContent}>
+              <div className={styles.downloadText}>
+                <h2 className={styles.downloadTitle}>{t.mobile}</h2>
+                <p className={styles.downloadDesc}>{t.mobileDesc}</p>
+                <div className={styles.downloadButtons}>
+                  {platforms.mobile.map((platform) => (
+                    <div key={platform.name} className={styles.platformGroup}>
+                      <div className={styles.platformLabel}>{platform.name}</div>
+                      <div className={styles.platformGroupButtons}>
+                        {platform.downloads.map((download) => {
+                          const isAvailable = (download as any).available !== false;
+                          const version = (download as any).version;
+                          const displayLabel =
+                            version && version !== 'latest'
+                              ? `${download.label} (${version})`
+                              : download.label;
+                          // Display version if it exists and is not empty, even if it's "latest"
+                          const displayVersion = version && version.trim() !== '' ? version : null;
+
+                          return (
+                            <div
+                              key={download.type}
+                              className={download.badge ? styles.badgeWrapper : ''}
+                            >
+                              <a
+                                href={isAvailable && download.href !== '#' ? download.href : '#'}
+                                className={`${styles.downloadButton} ${download.badge ? styles.badgeButton : ''} ${!isAvailable ? styles.disabled : ''}`}
+                                target={
+                                  isAvailable && download.href.startsWith('http')
+                                    ? '_blank'
+                                    : undefined
+                                }
+                                rel={
+                                  isAvailable && download.href.startsWith('http')
+                                    ? 'noopener noreferrer'
+                                    : undefined
+                                }
+                                onClick={(e) => {
+                                  if (!isAvailable || download.href === '#') {
+                                    e.preventDefault();
+                                  }
+                                }}
+                                style={
+                                  !isAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : undefined
+                                }
+                              >
+                                {download.badge ? (
+                                  <Image
+                                    src={download.badge}
+                                    alt={download.label}
+                                    width={155}
+                                    height={60}
+                                    className={styles.badgeImage}
+                                    unoptimized
+                                  />
+                                ) : (
+                                  <>
+                                    <span>{displayLabel}</span>
+                                    {isAvailable && (
+                                      <svg
+                                        className={styles.arrowIcon}
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      >
+                                        <line x1="5" y1="12" x2="19" y2="12" />
+                                        <polyline points="12 5 19 12 12 19" />
+                                      </svg>
+                                    )}
+                                  </>
+                                )}
+                              </a>
+                              {download.badge && displayVersion && (
+                                <div className={styles.badgeVersion}>{displayVersion}</div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Download Section - Desktop */}
+          <section className={styles.downloadSection}>
+            <div className={styles.downloadContent}>
+              <div className={styles.downloadText}>
+                <h2 className={styles.downloadTitle}>{t.desktop}</h2>
+                <p className={styles.downloadDesc}>{t.desktopDesc}</p>
+                <div className={styles.downloadButtons}>
+                  {platforms.desktop.map((platform) => (
+                    <div key={platform.name} className={styles.platformGroup}>
+                      <div className={styles.platformLabel}>{platform.name}</div>
+                      <div className={styles.platformGroupButtons}>
+                        {platform.downloads.map((download) => {
+                          const isAvailable = (download as any).available !== false;
+                          const version = (download as any).version;
+                          const displayLabel =
+                            version && version !== 'latest'
+                              ? `${download.label} (${version})`
+                              : download.label;
+
+                          return (
                             <a
+                              key={download.type}
                               href={isAvailable && download.href !== '#' ? download.href : '#'}
-                              className={`${styles.downloadButton} ${download.badge ? styles.badgeButton : ''} ${!isAvailable ? styles.disabled : ''}`}
-                              target={isAvailable && download.href.startsWith('http') ? '_blank' : undefined}
-                              rel={isAvailable && download.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+                              className={`${styles.downloadButton} ${!isAvailable ? styles.disabled : ''}`}
+                              target={
+                                isAvailable && download.href.startsWith('http')
+                                  ? '_blank'
+                                  : undefined
+                              }
+                              rel={
+                                isAvailable && download.href.startsWith('http')
+                                  ? 'noopener noreferrer'
+                                  : undefined
+                              }
                               onClick={(e) => {
                                 if (!isAvailable || download.href === '#') {
                                   e.preventDefault();
                                 }
                               }}
-                              style={!isAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                              style={
+                                !isAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : undefined
+                              }
                             >
-                              {download.badge ? (
-                                <Image
-                                  src={download.badge}
-                                  alt={download.label}
-                                  width={155}
-                                  height={60}
-                                  className={styles.badgeImage}
-                                  unoptimized
-                                />
-                              ) : (
-                                <>
-                                  <span>{displayLabel}</span>
-                                  {isAvailable && (
-                                    <svg
-                                      className={styles.arrowIcon}
-                                      viewBox="0 0 24 24"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      strokeWidth="2"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                    >
-                                      <line x1="5" y1="12" x2="19" y2="12" />
-                                      <polyline points="12 5 19 12 12 19" />
-                                    </svg>
-                                  )}
-                                </>
+                              <span>{displayLabel}</span>
+                              {isAvailable && (
+                                <svg
+                                  className={styles.arrowIcon}
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <line x1="5" y1="12" x2="19" y2="12" />
+                                  <polyline points="12 5 19 12 12 19" />
+                                </svg>
                               )}
                             </a>
-                            {download.badge && displayVersion && (
-                              <div className={styles.badgeVersion}>{displayVersion}</div>
-                            )}
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className={styles.previewArea}>
-              <div className={styles.mobilePreview}>
-                <div className={styles.mobileFrame}>
-                  <div className={styles.mobileHeader}>
-                    <span className={styles.mobileTime}>15:08</span>
-                    <div className={styles.mobileStatus}>
-                      <span>📶</span>
-                      <span>🔋</span>
-                    </div>
-                  </div>
-                  <div className={styles.mobileContent}>
-                    <div className={styles.mobileLogo}>RWKV</div>
-                    <div className={styles.mobileText}>Ask RWKV, Know More</div>
-                    <div className={styles.mobileInput}>
-                      <span>How can I help you today?</span>
-                    </div>
-                  </div>
+                  ))}
                 </div>
               </div>
             </div>
-          </div>
-        </section>
-
-        {/* Download Section - Desktop */}
-        <section className={styles.downloadSection}>
-          <div className={styles.downloadContent}>
-            <div className={styles.downloadText}>
-              <h2 className={styles.downloadTitle}>{t.desktop}</h2>
-              <p className={styles.downloadDesc}>{t.desktopDesc}</p>
-              <div className={styles.downloadButtons}>
-                {platforms.desktop.map((platform) => (
-                  <div key={platform.name} className={styles.platformGroup}>
-                    <div className={styles.platformLabel}>{platform.name}</div>
-                    {platform.downloads.map((download) => {
-                      const isAvailable = (download as any).available !== false;
-                      const version = (download as any).version;
-                      const displayLabel = version && version !== 'latest' 
-                        ? `${download.label} (${version})` 
-                        : download.label;
-                      
-                      return (
-                        <a
-                          key={download.type}
-                          href={isAvailable && download.href !== '#' ? download.href : '#'}
-                          className={`${styles.downloadButton} ${!isAvailable ? styles.disabled : ''}`}
-                          target={isAvailable && download.href.startsWith('http') ? '_blank' : undefined}
-                          rel={isAvailable && download.href.startsWith('http') ? 'noopener noreferrer' : undefined}
-                          onClick={(e) => {
-                            if (!isAvailable || download.href === '#') {
-                              e.preventDefault();
-                            }
-                          }}
-                          style={!isAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
-                        >
-                          <span>{displayLabel}</span>
-                          {isAvailable && (
-                            <svg
-                              className={styles.arrowIcon}
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <line x1="5" y1="12" x2="19" y2="12" />
-                              <polyline points="12 5 19 12 12 19" />
-                            </svg>
-                          )}
-                        </a>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className={styles.previewArea}>
-              <div className={styles.desktopPreview}>
-                <div className={styles.desktopFrame}>
-                  <div className={styles.desktopTitleBar}>
-                    <div className={styles.desktopControls}>
-                      <span className={styles.controlDot}></span>
-                      <span className={styles.controlDot}></span>
-                      <span className={styles.controlDot}></span>
-                    </div>
-                    <span className={styles.desktopTitle}>RWKV Chat</span>
-                  </div>
-                  <div className={styles.desktopContent}>
-                    <div className={styles.desktopLogo}>RWKV</div>
-                    <div className={styles.desktopText}>Ask RWKV, Know More</div>
-                    <div className={styles.desktopInput}>
-                      <span>How can I help you today?</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
+          </section>
         </div>
 
         {/* Features Section */}
@@ -852,13 +876,6 @@ export default function Home() {
             {t.viewOnGithub}
           </a>
         </section>
-
-        {/* Footer */}
-        <div className={styles.footer}>
-          <Link href="/changelog" className={styles.changelogLink}>
-            {t.viewChangelog}
-          </Link>
-        </div>
       </div>
     </main>
   );
