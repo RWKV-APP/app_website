@@ -818,15 +818,19 @@
   font-weight: 600;
   transition:
     background-color 0.2s ease,
-    opacity 0.2s ease;
+    color 0.2s ease,
+    transform 0.2s ease;
 }
 
 .githubButton:hover {
   background-color: var(--color-primary-hover);
+  color: #ffffff;
   transform: translateY(-2px);
 }
 
 .githubIcon {
   width: 1.25rem;
   height: 1.25rem;
+  fill: currentColor;
+  transition: fill 0.2s ease;
 }

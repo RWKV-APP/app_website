@@ -584,6 +584,7 @@ export default function Home() {
             <div className={styles.smartDownloadContent}>
               <div className={styles.smartDownloadHeader}>
                 <Image
+                  key={`${smartDownloadOptions.platformIcon}-${theme}`}
                   src={smartDownloadOptions.platformIcon}
                   alt={smartDownloadOptions.platformName}
                   width={32}
