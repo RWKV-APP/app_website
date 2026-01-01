@@ -84,11 +84,17 @@ export const themeAtom = atom(
     return preference;
   },
   (get, set, update: Theme) => {
-    set(themePreferenceAtom, update);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(THEME_STORAGE_KEY, update);
-      applyThemeToDocument(update, update);
-    }
+    if (typeof window === 'undefined') return;
+    
+    // Get current system theme
+    const systemTheme = getSystemTheme();
+    
+    // If the user-selected theme matches system theme, save as 'system'
+    // Otherwise, save as the selected theme
+    const newPreference: ThemePreference = update === systemTheme ? 'system' : update;
+    
+    set(themePreferenceAtom, newPreference);
+    applyThemeToDocument(update, newPreference);
   },
 );
 
