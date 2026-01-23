@@ -974,7 +974,9 @@ export default function Home() {
                 <div className={styles.downloadButtons}>
                   {platforms.desktop.map((platform) => {
                     const platformWithSubsections = platform as any;
-                    const hasSubsections = platformWithSubsections.x64Downloads && platformWithSubsections.arm64Downloads;
+                    const hasSubsections =
+                      platformWithSubsections.x64Downloads &&
+                      platformWithSubsections.arm64Downloads;
 
                     return (
                       <div key={platform.name} className={styles.platformGroup}>
@@ -1011,7 +1013,9 @@ export default function Home() {
                                   return (
                                     <a
                                       key={download.type}
-                                      href={isAvailable && download.href !== '#' ? download.href : '#'}
+                                      href={
+                                        isAvailable && download.href !== '#' ? download.href : '#'
+                                      }
                                       className={`${styles.downloadButton} ${!isAvailable ? styles.disabled : ''}`}
                                       target={
                                         isAvailable && download.href.startsWith('http')
@@ -1029,7 +1033,9 @@ export default function Home() {
                                         }
                                       }}
                                       style={
-                                        !isAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : undefined
+                                        !isAvailable
+                                          ? { opacity: 0.5, cursor: 'not-allowed' }
+                                          : undefined
                                       }
                                     >
                                       <span>{displayLabel}</span>
@@ -1067,7 +1073,9 @@ export default function Home() {
                                   return (
                                     <a
                                       key={download.type}
-                                      href={isAvailable && download.href !== '#' ? download.href : '#'}
+                                      href={
+                                        isAvailable && download.href !== '#' ? download.href : '#'
+                                      }
                                       className={`${styles.downloadButton} ${!isAvailable ? styles.disabled : ''}`}
                                       target={
                                         isAvailable && download.href.startsWith('http')
@@ -1085,7 +1093,9 @@ export default function Home() {
                                         }
                                       }}
                                       style={
-                                        !isAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : undefined
+                                        !isAvailable
+                                          ? { opacity: 0.5, cursor: 'not-allowed' }
+                                          : undefined
                                       }
                                     >
                                       <span>{displayLabel}</span>
@@ -1140,7 +1150,9 @@ export default function Home() {
                                     }
                                   }}
                                   style={
-                                    !isAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : undefined
+                                    !isAvailable
+                                      ? { opacity: 0.5, cursor: 'not-allowed' }
+                                      : undefined
                                   }
                                 >
                                   <span>{displayLabel}</span>
