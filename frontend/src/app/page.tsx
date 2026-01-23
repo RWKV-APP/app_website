@@ -705,7 +705,12 @@ export default function Home() {
                           height={16}
                           className={styles.platformIcon}
                         />
-                        <span>{platform.name}</span>
+                        <span>
+                          {platform.name}
+                          {platform.minOs && (
+                            <span className={styles.platformMinOs}> · {platform.minOs}</span>
+                          )}
+                        </span>
                       </div>
                       <div className={styles.platformGroupButtons}>
                         {platform.downloads.map((download) => {
