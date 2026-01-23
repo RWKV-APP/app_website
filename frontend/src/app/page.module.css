@@ -404,6 +404,16 @@
   color: var(--color-foreground);
   margin-bottom: 0.5rem;
   text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.platformIcon {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 
 .platformGroupButtons {
@@ -660,6 +670,7 @@
 .platformMinOs {
   font-size: 0.75rem;
   color: var(--color-secondary);
+  font-weight: 400;
 }
 
 /* Download Options */

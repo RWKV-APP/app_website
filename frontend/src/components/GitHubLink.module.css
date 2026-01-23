@@ -1,0 +1,27 @@
+.githubLink {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem;
+  color: var(--color-foreground);
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.githubLink:hover {
+  background-color: var(--color-background);
+  border-color: var(--color-primary);
+}
+
+.icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}

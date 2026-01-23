@@ -11,7 +11,7 @@ import {
   locationAtom,
   detectLocale,
 } from '@/atoms';
-import { ThemeSwitcher, LanguageSwitcher } from '@/components';
+import { ThemeSwitcher, LanguageSwitcher, GitHubLink } from '@/components';
 import {
   getAppStoreBadgePath,
   getAppleLogoPath,
@@ -558,6 +558,7 @@ export default function Home() {
       <div className={styles.toolbar}>
         <LanguageSwitcher />
         <ThemeSwitcher />
+        <GitHubLink />
       </div>
 
       <div className={styles.container}>
@@ -695,7 +696,17 @@ export default function Home() {
                 <div className={styles.downloadButtons}>
                   {platforms.mobile.map((platform) => (
                     <div key={platform.name} className={styles.platformGroup}>
-                      <div className={styles.platformLabel}>{platform.name}</div>
+                      <div className={styles.platformLabel}>
+                        <Image
+                          key={`${platform.icon}-${theme}`}
+                          src={platform.icon}
+                          alt={platform.name}
+                          width={16}
+                          height={16}
+                          className={styles.platformIcon}
+                        />
+                        <span>{platform.name}</span>
+                      </div>
                       <div className={styles.platformGroupButtons}>
                         {platform.downloads.map((download) => {
                           const isAvailable = (download as any).available !== false;
@@ -786,7 +797,22 @@ export default function Home() {
                 <div className={styles.downloadButtons}>
                   {platforms.desktop.map((platform) => (
                     <div key={platform.name} className={styles.platformGroup}>
-                      <div className={styles.platformLabel}>{platform.name}</div>
+                      <div className={styles.platformLabel}>
+                        <Image
+                          key={`${platform.icon}-${theme}`}
+                          src={platform.icon}
+                          alt={platform.name}
+                          width={16}
+                          height={16}
+                          className={styles.platformIcon}
+                        />
+                        <span>
+                          {platform.name}
+                          {platform.minOs && (
+                            <span className={styles.platformMinOs}> · {platform.minOs}</span>
+                          )}
+                        </span>
+                      </div>
                       <div className={styles.platformGroupButtons}>
                         {platform.downloads.map((download) => {
                           const isAvailable = (download as any).available !== false;
