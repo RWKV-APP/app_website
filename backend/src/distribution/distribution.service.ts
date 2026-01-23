@@ -108,6 +108,30 @@ export class DistributionService implements OnModuleInit {
       case DistributionType.winZipHFM:
         await this.checkWinZipHFM();
         break;
+      case DistributionType.winArm64HF:
+        await this.checkWinArm64HF();
+        break;
+      case DistributionType.winArm64AF:
+        await this.checkWinArm64AF();
+        break;
+      case DistributionType.winArm64GR:
+        await this.checkWinArm64GR();
+        break;
+      case DistributionType.winArm64HFM:
+        await this.checkWinArm64HFM();
+        break;
+      case DistributionType.winArm64ZipHF:
+        await this.checkWinArm64ZipHF();
+        break;
+      case DistributionType.winArm64ZipAF:
+        await this.checkWinArm64ZipAF();
+        break;
+      case DistributionType.winArm64ZipGR:
+        await this.checkWinArm64ZipGR();
+        break;
+      case DistributionType.winArm64ZipHFM:
+        await this.checkWinArm64ZipHFM();
+        break;
       case DistributionType.iOSTF:
         await this.checkIOSTF();
         break;
@@ -706,6 +730,74 @@ export class DistributionService implements OnModuleInit {
     await this.checkHuggingFaceDistribution({
       type: DistributionType.winZipHFM,
       folderPath: 'windows-x64',
+      fileExtension: '.zip',
+      endpoint: 'https://hf-mirror.com',
+    });
+  }
+
+  // Windows ARM64 distribution checkers
+  private async checkWinArm64HF() {
+    await this.checkHuggingFaceDistribution({
+      type: DistributionType.winArm64HF,
+      folderPath: 'windows-arm64-installer',
+      fileExtension: '.exe',
+    });
+  }
+
+  private async checkWinArm64AF() {
+    await this.checkAifasthubDistribution({
+      type: DistributionType.winArm64AF,
+      folderPath: 'windows-arm64-installer',
+      fileExtension: '.exe',
+    });
+  }
+
+  private async checkWinArm64GR() {
+    await this.checkGitHubReleaseDistribution({
+      type: DistributionType.winArm64GR,
+      fileExtension: '.exe',
+      fileNamePattern: /windows-arm64.*(installer|setup)/i,
+    });
+  }
+
+  private async checkWinArm64HFM() {
+    await this.checkHuggingFaceDistribution({
+      type: DistributionType.winArm64HFM,
+      folderPath: 'windows-arm64-installer',
+      fileExtension: '.exe',
+      endpoint: 'https://hf-mirror.com',
+    });
+  }
+
+  // Windows ARM64 Zip distribution checkers
+  private async checkWinArm64ZipHF() {
+    await this.checkHuggingFaceDistribution({
+      type: DistributionType.winArm64ZipHF,
+      folderPath: 'windows-arm64',
+      fileExtension: '.zip',
+    });
+  }
+
+  private async checkWinArm64ZipAF() {
+    await this.checkAifasthubDistribution({
+      type: DistributionType.winArm64ZipAF,
+      folderPath: 'windows-arm64',
+      fileExtension: '.zip',
+    });
+  }
+
+  private async checkWinArm64ZipGR() {
+    await this.checkGitHubReleaseDistribution({
+      type: DistributionType.winArm64ZipGR,
+      fileExtension: '.zip',
+      fileNamePattern: /windows-arm64/i,
+    });
+  }
+
+  private async checkWinArm64ZipHFM() {
+    await this.checkHuggingFaceDistribution({
+      type: DistributionType.winArm64ZipHFM,
+      folderPath: 'windows-arm64',
       fileExtension: '.zip',
       endpoint: 'https://hf-mirror.com',
     });

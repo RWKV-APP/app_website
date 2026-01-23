@@ -425,6 +425,27 @@
   /* background-color: rgba(0, 0, 0, 0.1); */
 }
 
+.platformSubsection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.platformSubsection:first-of-type {
+  margin-top: 0.5rem;
+}
+
+.platformSubsectionTitle {
+  font-size: 0.75rem;
+  color: var(--color-secondary);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+  text-align: left;
+}
+
 .arrowIcon {
   width: 1rem;
   height: 1rem;

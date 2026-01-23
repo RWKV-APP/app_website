@@ -120,6 +120,9 @@ if (typeof window !== 'undefined') {
 // Device platform types
 export type DevicePlatform = 'ios' | 'android' | 'macos' | 'windows' | 'linux' | 'unknown';
 
+// CPU architecture types
+export type CpuArchitecture = 'x64' | 'arm64' | 'x86' | 'unknown';
+
 // Device detection function
 function detectDevicePlatform(): DevicePlatform {
   if (typeof window === 'undefined') return 'unknown';
@@ -158,6 +161,71 @@ function detectDevicePlatform(): DevicePlatform {
   return 'unknown';
 }
 
+// CPU architecture detection function
+export async function detectCpuArchitecture(): Promise<CpuArchitecture> {
+  if (typeof window === 'undefined') return 'unknown';
+
+  // Try modern User-Agent Client Hints API (Chrome/Edge 90+)
+  if ('userAgentData' in navigator && navigator.userAgentData) {
+    try {
+      const uaData = await (navigator.userAgentData as any).getHighEntropyValues(['architecture']);
+      if (uaData.architecture) {
+        const arch = uaData.architecture.toLowerCase();
+        if (arch === 'x86' || arch === 'x64') {
+          return 'x64'; // x86 is typically 32-bit, but we'll treat it as x64 for compatibility
+        }
+        if (arch === 'arm' || arch === 'arm64') {
+          return 'arm64';
+        }
+        return arch as CpuArchitecture;
+      }
+    } catch (error) {
+      // API might require permission or not be available
+      console.debug('User-Agent Client Hints API not available:', error);
+    }
+  }
+
+  // Fallback: Try to detect from userAgent string (less reliable)
+  const userAgent = navigator.userAgent.toLowerCase();
+  const platformStr = navigator.platform.toLowerCase();
+
+  // Check for ARM indicators in userAgent
+  if (
+    /arm64|aarch64|armv8/.test(userAgent) ||
+    /arm64|aarch64/.test(platformStr)
+  ) {
+    return 'arm64';
+  }
+
+  // Check for x64 indicators
+  if (
+    /x64|win64|wow64|amd64/.test(userAgent) ||
+    /x64|win64/.test(platformStr)
+  ) {
+    return 'x64';
+  }
+
+  // For macOS, check if it's Apple Silicon (ARM64) or Intel (x64)
+  if (platformStr.includes('mac')) {
+    // Modern macOS on Apple Silicon
+    if (/arm64|aarch64/.test(userAgent) || platformStr.includes('arm')) {
+      return 'arm64';
+    }
+    // Intel Mac (older or Intel-based)
+    if (platformStr.includes('intel') || /intel/.test(userAgent)) {
+      return 'x64';
+    }
+  }
+
+  // Default: assume x64 for desktop platforms (most common)
+  const platform = detectDevicePlatform();
+  if (platform === 'windows' || platform === 'linux') {
+    return 'x64'; // Default assumption for desktop
+  }
+
+  return 'unknown';
+}
+
 // Device platform atom
 export const devicePlatformAtom = atom<DevicePlatform>(() => {
   if (typeof window === 'undefined') return 'unknown';
@@ -174,6 +242,29 @@ export const isDesktopAtom = atom<boolean>((get) => {
   const platform = get(devicePlatformAtom);
   return platform === 'macos' || platform === 'windows' || platform === 'linux';
 });
+
+// CPU architecture atom - starts as 'unknown', will be updated after detection
+const _cpuArchitectureAtomBase = atom<CpuArchitecture>('unknown');
+
+export const cpuArchitectureAtom = atom(
+  (get) => get(_cpuArchitectureAtomBase),
+  (get, set, update: CpuArchitecture) => {
+    set(_cpuArchitectureAtomBase, update);
+  },
+);
+
+// Initialize CPU architecture detection on client side
+if (typeof window !== 'undefined') {
+  detectCpuArchitecture()
+    .then((arch) => {
+      // Update atom when detection completes
+      // Note: This requires the atom to be used in a component context
+      // For immediate use, components should call detectCpuArchitecture() directly
+    })
+    .catch((error) => {
+      console.debug('CPU architecture detection failed:', error);
+    });
+}
 
 // Location types
 export interface LocationInfo {

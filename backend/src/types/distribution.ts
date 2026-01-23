@@ -19,6 +19,16 @@ export enum DistributionType {
   winZipGR = 'winZipGR', // win zip file in github release
   winZipHFM = 'winZipHFM', // win zip file in hf-mirror
 
+  winArm64HF = 'winArm64HF', // win arm64 installer file in huggingface
+  winArm64AF = 'winArm64AF', // win arm64 installer file in aifasthub
+  winArm64GR = 'winArm64GR', // win arm64 installer file in github release
+  winArm64HFM = 'winArm64HFM', // win arm64 installer file in hf-mirror
+
+  winArm64ZipHF = 'winArm64ZipHF', // win arm64 zip file in huggingface
+  winArm64ZipAF = 'winArm64ZipAF', // win arm64 zip file in aifasthub
+  winArm64ZipGR = 'winArm64ZipGR', // win arm64 zip file in github release
+  winArm64ZipHFM = 'winArm64ZipHFM', // win arm64 zip file in hf-mirror
+
   iOSTF = 'iOSTF', // ios testflight link
   iOSAS = 'iOSAS', // ios app store link
 

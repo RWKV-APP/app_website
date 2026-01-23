@@ -248,6 +248,62 @@ export default function Home() {
               available: !!distributions?.[DistributionType.winZipHFM],
               version: distributions?.[DistributionType.winZipHFM]?.version,
             },
+            {
+              type: 'winArm64HF',
+              label: 'Installer ARM64 (HuggingFace)',
+              href: distributions?.[DistributionType.winArm64HF]?.url || '#',
+              available: !!distributions?.[DistributionType.winArm64HF],
+              version: distributions?.[DistributionType.winArm64HF]?.version,
+            },
+            {
+              type: 'winArm64AF',
+              label: 'Installer ARM64 (Aifasthub)',
+              href: distributions?.[DistributionType.winArm64AF]?.url || '#',
+              available: !!distributions?.[DistributionType.winArm64AF],
+              version: distributions?.[DistributionType.winArm64AF]?.version,
+            },
+            {
+              type: 'winArm64GR',
+              label: 'Installer ARM64 (GitHub Release)',
+              href: distributions?.[DistributionType.winArm64GR]?.url || '#',
+              available: !!distributions?.[DistributionType.winArm64GR],
+              version: distributions?.[DistributionType.winArm64GR]?.version,
+            },
+            {
+              type: 'winArm64HFM',
+              label: 'Installer ARM64 (HF-Mirror)',
+              href: distributions?.[DistributionType.winArm64HFM]?.url || '#',
+              available: !!distributions?.[DistributionType.winArm64HFM],
+              version: distributions?.[DistributionType.winArm64HFM]?.version,
+            },
+            {
+              type: 'winArm64ZipHF',
+              label: 'Zip ARM64 (HuggingFace)',
+              href: distributions?.[DistributionType.winArm64ZipHF]?.url || '#',
+              available: !!distributions?.[DistributionType.winArm64ZipHF],
+              version: distributions?.[DistributionType.winArm64ZipHF]?.version,
+            },
+            {
+              type: 'winArm64ZipAF',
+              label: 'Zip ARM64 (Aifasthub)',
+              href: distributions?.[DistributionType.winArm64ZipAF]?.url || '#',
+              available: !!distributions?.[DistributionType.winArm64ZipAF],
+              version: distributions?.[DistributionType.winArm64ZipAF]?.version,
+            },
+            {
+              type: 'winArm64ZipGR',
+              label: 'Zip ARM64 (GitHub Release)',
+              href: distributions?.[DistributionType.winArm64ZipGR]?.url || '#',
+              available: !!distributions?.[DistributionType.winArm64ZipGR],
+              version: distributions?.[DistributionType.winArm64ZipGR]?.version,
+            },
+            {
+              type: 'winArm64ZipHFM',
+              label: 'Zip ARM64 (HF-Mirror)',
+              href: distributions?.[DistributionType.winArm64ZipHFM]?.url || '#',
+              available: !!distributions?.[DistributionType.winArm64ZipHFM],
+              version: distributions?.[DistributionType.winArm64ZipHFM]?.version,
+            },
           ],
         };
       case 'macos':
@@ -511,6 +567,122 @@ export default function Home() {
             href: distributions?.[DistributionType.winZipHFM]?.url || '#',
             available: !!distributions?.[DistributionType.winZipHFM],
             version: distributions?.[DistributionType.winZipHFM]?.version,
+          },
+        ],
+        x64Downloads: [
+          {
+            type: 'winHF',
+            label: 'Installer (HuggingFace)',
+            href: distributions?.[DistributionType.winHF]?.url || '#',
+            available: !!distributions?.[DistributionType.winHF],
+            version: distributions?.[DistributionType.winHF]?.version,
+          },
+          {
+            type: 'winAF',
+            label: 'Installer (Aifasthub)',
+            href: distributions?.[DistributionType.winAF]?.url || '#',
+            available: !!distributions?.[DistributionType.winAF],
+            version: distributions?.[DistributionType.winAF]?.version,
+          },
+          {
+            type: 'winGR',
+            label: 'Installer (GitHub Release)',
+            href: distributions?.[DistributionType.winGR]?.url || '#',
+            available: !!distributions?.[DistributionType.winGR],
+            version: distributions?.[DistributionType.winGR]?.version,
+          },
+          {
+            type: 'winHFM',
+            label: 'Installer (HF-Mirror)',
+            href: distributions?.[DistributionType.winHFM]?.url || '#',
+            available: !!distributions?.[DistributionType.winHFM],
+            version: distributions?.[DistributionType.winHFM]?.version,
+          },
+          {
+            type: 'winZipHF',
+            label: 'Zip (HuggingFace)',
+            href: distributions?.[DistributionType.winZipHF]?.url || '#',
+            available: !!distributions?.[DistributionType.winZipHF],
+            version: distributions?.[DistributionType.winZipHF]?.version,
+          },
+          {
+            type: 'winZipAF',
+            label: 'Zip (Aifasthub)',
+            href: distributions?.[DistributionType.winZipAF]?.url || '#',
+            available: !!distributions?.[DistributionType.winZipAF],
+            version: distributions?.[DistributionType.winZipAF]?.version,
+          },
+          {
+            type: 'winZipGR',
+            label: 'Zip (GitHub Release)',
+            href: distributions?.[DistributionType.winZipGR]?.url || '#',
+            available: !!distributions?.[DistributionType.winZipGR],
+            version: distributions?.[DistributionType.winZipGR]?.version,
+          },
+          {
+            type: 'winZipHFM',
+            label: 'Zip (HF-Mirror)',
+            href: distributions?.[DistributionType.winZipHFM]?.url || '#',
+            available: !!distributions?.[DistributionType.winZipHFM],
+            version: distributions?.[DistributionType.winZipHFM]?.version,
+          },
+        ],
+        arm64Downloads: [
+          {
+            type: 'winArm64HF',
+            label: 'Installer (HuggingFace)',
+            href: distributions?.[DistributionType.winArm64HF]?.url || '#',
+            available: !!distributions?.[DistributionType.winArm64HF],
+            version: distributions?.[DistributionType.winArm64HF]?.version,
+          },
+          {
+            type: 'winArm64AF',
+            label: 'Installer (Aifasthub)',
+            href: distributions?.[DistributionType.winArm64AF]?.url || '#',
+            available: !!distributions?.[DistributionType.winArm64AF],
+            version: distributions?.[DistributionType.winArm64AF]?.version,
+          },
+          {
+            type: 'winArm64GR',
+            label: 'Installer (GitHub Release)',
+            href: distributions?.[DistributionType.winArm64GR]?.url || '#',
+            available: !!distributions?.[DistributionType.winArm64GR],
+            version: distributions?.[DistributionType.winArm64GR]?.version,
+          },
+          {
+            type: 'winArm64HFM',
+            label: 'Installer (HF-Mirror)',
+            href: distributions?.[DistributionType.winArm64HFM]?.url || '#',
+            available: !!distributions?.[DistributionType.winArm64HFM],
+            version: distributions?.[DistributionType.winArm64HFM]?.version,
+          },
+          {
+            type: 'winArm64ZipHF',
+            label: 'Zip (HuggingFace)',
+            href: distributions?.[DistributionType.winArm64ZipHF]?.url || '#',
+            available: !!distributions?.[DistributionType.winArm64ZipHF],
+            version: distributions?.[DistributionType.winArm64ZipHF]?.version,
+          },
+          {
+            type: 'winArm64ZipAF',
+            label: 'Zip (Aifasthub)',
+            href: distributions?.[DistributionType.winArm64ZipAF]?.url || '#',
+            available: !!distributions?.[DistributionType.winArm64ZipAF],
+            version: distributions?.[DistributionType.winArm64ZipAF]?.version,
+          },
+          {
+            type: 'winArm64ZipGR',
+            label: 'Zip (GitHub Release)',
+            href: distributions?.[DistributionType.winArm64ZipGR]?.url || '#',
+            available: !!distributions?.[DistributionType.winArm64ZipGR],
+            version: distributions?.[DistributionType.winArm64ZipGR]?.version,
+          },
+          {
+            type: 'winArm64ZipHFM',
+            label: 'Zip (HF-Mirror)',
+            href: distributions?.[DistributionType.winArm64ZipHFM]?.url || '#',
+            available: !!distributions?.[DistributionType.winArm64ZipHFM],
+            version: distributions?.[DistributionType.winArm64ZipHFM]?.version,
           },
         ],
       },
@@ -800,78 +972,200 @@ export default function Home() {
                 <h2 className={styles.downloadTitle}>{t.desktop}</h2>
                 <p className={styles.downloadDesc}>{t.desktopDesc}</p>
                 <div className={styles.downloadButtons}>
-                  {platforms.desktop.map((platform) => (
-                    <div key={platform.name} className={styles.platformGroup}>
-                      <div className={styles.platformLabel}>
-                        <Image
-                          key={`${platform.icon}-${theme}`}
-                          src={platform.icon}
-                          alt={platform.name}
-                          width={16}
-                          height={16}
-                          className={styles.platformIcon}
-                        />
-                        <span>
-                          {platform.name}
-                          {platform.minOs && (
-                            <span className={styles.platformMinOs}> · {platform.minOs}</span>
-                          )}
-                        </span>
-                      </div>
-                      <div className={styles.platformGroupButtons}>
-                        {platform.downloads.map((download) => {
-                          const isAvailable = (download as any).available !== false;
-                          const version = (download as any).version;
-                          const displayLabel =
-                            version && version !== 'latest'
-                              ? `${download.label} (${version})`
-                              : download.label;
+                  {platforms.desktop.map((platform) => {
+                    const platformWithSubsections = platform as any;
+                    const hasSubsections = platformWithSubsections.x64Downloads && platformWithSubsections.arm64Downloads;
 
-                          return (
-                            <a
-                              key={download.type}
-                              href={isAvailable && download.href !== '#' ? download.href : '#'}
-                              className={`${styles.downloadButton} ${!isAvailable ? styles.disabled : ''}`}
-                              target={
-                                isAvailable && download.href.startsWith('http')
-                                  ? '_blank'
-                                  : undefined
-                              }
-                              rel={
-                                isAvailable && download.href.startsWith('http')
-                                  ? 'noopener noreferrer'
-                                  : undefined
-                              }
-                              onClick={(e) => {
-                                if (!isAvailable || download.href === '#') {
-                                  e.preventDefault();
-                                }
-                              }}
-                              style={
-                                !isAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : undefined
-                              }
-                            >
-                              <span>{displayLabel}</span>
-                              {isAvailable && (
-                                <svg
-                                  className={styles.arrowIcon}
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
+                    return (
+                      <div key={platform.name} className={styles.platformGroup}>
+                        <div className={styles.platformLabel}>
+                          <Image
+                            key={`${platform.icon}-${theme}`}
+                            src={platform.icon}
+                            alt={platform.name}
+                            width={16}
+                            height={16}
+                            className={styles.platformIcon}
+                          />
+                          <span>
+                            {platform.name}
+                            {platform.minOs && (
+                              <span className={styles.platformMinOs}> · {platform.minOs}</span>
+                            )}
+                          </span>
+                        </div>
+                        {hasSubsections ? (
+                          <>
+                            {/* x64/x86 Subsection */}
+                            <div className={styles.platformSubsection}>
+                              <div className={styles.platformSubsectionTitle}>x64</div>
+                              <div className={styles.platformGroupButtons}>
+                                {platformWithSubsections.x64Downloads.map((download: any) => {
+                                  const isAvailable = download.available !== false;
+                                  const version = download.version;
+                                  const displayLabel =
+                                    version && version !== 'latest'
+                                      ? `${download.label} (${version})`
+                                      : download.label;
+
+                                  return (
+                                    <a
+                                      key={download.type}
+                                      href={isAvailable && download.href !== '#' ? download.href : '#'}
+                                      className={`${styles.downloadButton} ${!isAvailable ? styles.disabled : ''}`}
+                                      target={
+                                        isAvailable && download.href.startsWith('http')
+                                          ? '_blank'
+                                          : undefined
+                                      }
+                                      rel={
+                                        isAvailable && download.href.startsWith('http')
+                                          ? 'noopener noreferrer'
+                                          : undefined
+                                      }
+                                      onClick={(e) => {
+                                        if (!isAvailable || download.href === '#') {
+                                          e.preventDefault();
+                                        }
+                                      }}
+                                      style={
+                                        !isAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : undefined
+                                      }
+                                    >
+                                      <span>{displayLabel}</span>
+                                      {isAvailable && (
+                                        <svg
+                                          className={styles.arrowIcon}
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                        >
+                                          <line x1="5" y1="12" x2="19" y2="12" />
+                                          <polyline points="12 5 19 12 12 19" />
+                                        </svg>
+                                      )}
+                                    </a>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            {/* ARM64 Subsection */}
+                            <div className={styles.platformSubsection}>
+                              <div className={styles.platformSubsectionTitle}>ARM64</div>
+                              <div className={styles.platformGroupButtons}>
+                                {platformWithSubsections.arm64Downloads.map((download: any) => {
+                                  const isAvailable = download.available !== false;
+                                  const version = download.version;
+                                  const displayLabel =
+                                    version && version !== 'latest'
+                                      ? `${download.label} (${version})`
+                                      : download.label;
+
+                                  return (
+                                    <a
+                                      key={download.type}
+                                      href={isAvailable && download.href !== '#' ? download.href : '#'}
+                                      className={`${styles.downloadButton} ${!isAvailable ? styles.disabled : ''}`}
+                                      target={
+                                        isAvailable && download.href.startsWith('http')
+                                          ? '_blank'
+                                          : undefined
+                                      }
+                                      rel={
+                                        isAvailable && download.href.startsWith('http')
+                                          ? 'noopener noreferrer'
+                                          : undefined
+                                      }
+                                      onClick={(e) => {
+                                        if (!isAvailable || download.href === '#') {
+                                          e.preventDefault();
+                                        }
+                                      }}
+                                      style={
+                                        !isAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : undefined
+                                      }
+                                    >
+                                      <span>{displayLabel}</span>
+                                      {isAvailable && (
+                                        <svg
+                                          className={styles.arrowIcon}
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                        >
+                                          <line x1="5" y1="12" x2="19" y2="12" />
+                                          <polyline points="12 5 19 12 12 19" />
+                                        </svg>
+                                      )}
+                                    </a>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <div className={styles.platformGroupButtons}>
+                            {platform.downloads.map((download) => {
+                              const isAvailable = (download as any).available !== false;
+                              const version = (download as any).version;
+                              const displayLabel =
+                                version && version !== 'latest'
+                                  ? `${download.label} (${version})`
+                                  : download.label;
+
+                              return (
+                                <a
+                                  key={download.type}
+                                  href={isAvailable && download.href !== '#' ? download.href : '#'}
+                                  className={`${styles.downloadButton} ${!isAvailable ? styles.disabled : ''}`}
+                                  target={
+                                    isAvailable && download.href.startsWith('http')
+                                      ? '_blank'
+                                      : undefined
+                                  }
+                                  rel={
+                                    isAvailable && download.href.startsWith('http')
+                                      ? 'noopener noreferrer'
+                                      : undefined
+                                  }
+                                  onClick={(e) => {
+                                    if (!isAvailable || download.href === '#') {
+                                      e.preventDefault();
+                                    }
+                                  }}
+                                  style={
+                                    !isAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : undefined
+                                  }
                                 >
-                                  <line x1="5" y1="12" x2="19" y2="12" />
-                                  <polyline points="12 5 19 12 12 19" />
-                                </svg>
-                              )}
-                            </a>
-                          );
-                        })}
+                                  <span>{displayLabel}</span>
+                                  {isAvailable && (
+                                    <svg
+                                      className={styles.arrowIcon}
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    >
+                                      <line x1="5" y1="12" x2="19" y2="12" />
+                                      <polyline points="12 5 19 12 12 19" />
+                                    </svg>
+                                  )}
+                                </a>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
