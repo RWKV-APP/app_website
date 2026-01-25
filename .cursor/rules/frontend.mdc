@@ -1,7 +1,7 @@
 ---
-globs: frontend/
-alwaysApply: false
+alwaysApply: true
 ---
 
 - 前端页面访问地址为: https://rwkv.halowang.cloud/
-- 会根据用户当前的运行设备来优先展示不同的 distribution 下载链接
+- API 请求地址为: https://api.rwkv.halowang.cloud/
+- 会根据用户当前的运行设备来在前端优先展示不同的 distribution 下载链接
