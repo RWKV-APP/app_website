@@ -63,9 +63,11 @@ export interface ReleaseNote {
   content: string;
 }
 
-export async function fetchAllReleaseNotes(): Promise<ReleaseNote[]> {
+export async function fetchAllReleaseNotes(options?: { locale?: string }): Promise<ReleaseNote[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/distributions/release-notes/all`);
+    const locale = options?.locale || 'zh-CN';
+    const url = `${API_BASE_URL}/distributions/release-notes/all${locale ? `?locale=${encodeURIComponent(locale)}` : ''}`;
+    const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }

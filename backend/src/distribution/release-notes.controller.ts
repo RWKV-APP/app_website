@@ -11,6 +11,7 @@ export class ReleaseNotesController {
   async getReleaseNotes(
     @Query('build') buildParam: string,
     @Query('version') versionParam?: string,
+    @Query('locale') localeParam?: string,
   ) {
     // Validate build parameter
     if (!buildParam) {
@@ -37,13 +38,14 @@ export class ReleaseNotesController {
       );
     }
 
-    // Get release notes with optional version for fallback
+    // Get release notes with optional version for fallback and locale
     this.logger.debug(
-      `Getting release notes for build ${buildNumber}${versionParam ? ` with version ${versionParam}` : ' (no version provided)'}`,
+      `Getting release notes for build ${buildNumber}${versionParam ? ` with version ${versionParam}` : ' (no version provided)'}${localeParam ? ` with locale ${localeParam}` : ' (default locale)'}`,
     );
     const result = await this.releaseNotesService.getReleaseNotes({
       buildNumber,
       version: versionParam,
+      locale: localeParam,
     });
 
     // If file doesn't exist, return empty content instead of 404
@@ -61,9 +63,11 @@ export class ReleaseNotesController {
   }
 
   @Get('release-notes/all')
-  async getAllReleaseNotes() {
-    this.logger.debug('Getting all release notes');
-    const result = await this.releaseNotesService.getAllReleaseNotes();
+  async getAllReleaseNotes(@Query('locale') localeParam?: string) {
+    this.logger.debug(`Getting all release notes${localeParam ? ` with locale ${localeParam}` : ' (default locale)'}`);
+    const result = await this.releaseNotesService.getAllReleaseNotes({
+      locale: localeParam,
+    });
     return result;
   }
 }
