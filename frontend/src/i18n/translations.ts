@@ -27,6 +27,7 @@ export interface Translations {
   smartDownload: string;
   downloadForYourDevice: string;
   downloadOtherPlatforms: string;
+  chinaDownloadRecommendation: string;
   mobile: string;
   mobileDesc: string;
   desktop: string;
@@ -76,6 +77,10 @@ export interface Translations {
   improvement: string;
   breaking: string;
 
+  // Release Notes page
+  releaseNotes: string;
+  releaseNotesDescription: string;
+
   // Changelog entries
   darkModeSupport: string;
   macosUniversal: string;
@@ -111,6 +116,7 @@ const translations: Record<Locale, Translations> = {
     smartDownload: '立即下载',
     downloadForYourDevice: '为您的设备下载',
     downloadOtherPlatforms: '下载其他平台',
+    chinaDownloadRecommendation: '💡 推荐中国大陆地区的用户优先使用 AI FastLab 或 HF Mirror 下载',
     mobile: '📱 移动端',
     mobileDesc: '随身携带的 AI 助手，支持语音对话、图片理解和实时问答',
     desktop: '💻 桌面端',
@@ -147,6 +153,8 @@ const translations: Record<Locale, Translations> = {
     fix: '修复',
     improvement: '优化',
     breaking: '破坏性变更',
+    releaseNotes: '版本更新',
+    releaseNotesDescription: '查看所有历史版本更新信息',
     darkModeSupport: '新增深色模式支持',
     macosUniversal: '支持 macOS Universal 安装包',
     uiOptimization: '优化下载页面 UI',
@@ -179,6 +187,7 @@ const translations: Record<Locale, Translations> = {
     smartDownload: '立即下載',
     downloadForYourDevice: '為您的裝置下載',
     downloadOtherPlatforms: '下載其他平台',
+    chinaDownloadRecommendation: '💡 推薦中國大陸地區的用戶優先使用 AI FastLab 或 HF Mirror 下載',
     mobile: '📱 行動裝置',
     mobileDesc: '隨身攜帶的 AI 助手，支援語音對話、圖片理解和即時問答',
     desktop: '💻 桌面端',
@@ -215,6 +224,8 @@ const translations: Record<Locale, Translations> = {
     fix: '修復',
     improvement: '優化',
     breaking: '破壞性變更',
+    releaseNotes: '版本更新',
+    releaseNotesDescription: '查看所有歷史版本更新信息',
     darkModeSupport: '新增深色模式支援',
     macosUniversal: '支援 macOS Universal 安裝包',
     uiOptimization: '優化下載頁面 UI',
@@ -247,6 +258,7 @@ const translations: Record<Locale, Translations> = {
     smartDownload: '今すぐダウンロード',
     downloadForYourDevice: 'お使いのデバイス用にダウンロード',
     downloadOtherPlatforms: '他のプラットフォームをダウンロード',
+    chinaDownloadRecommendation: '',
     mobile: '📱 モバイル',
     mobileDesc: '持ち運べる AI アシスタント、音声対話、画像理解、リアルタイム質問対応',
     desktop: '💻 デスクトップ',
@@ -284,6 +296,8 @@ const translations: Record<Locale, Translations> = {
     fix: '修正',
     improvement: '改善',
     breaking: '破壊的変更',
+    releaseNotes: 'リリースノート',
+    releaseNotesDescription: 'すべての履歴バージョン更新情報を表示',
     darkModeSupport: 'ダークモードに対応',
     macosUniversal: 'macOS Universal パッケージに対応',
     uiOptimization: 'ダウンロードページのUI最適化',
@@ -316,6 +330,7 @@ const translations: Record<Locale, Translations> = {
     smartDownload: '지금 다운로드',
     downloadForYourDevice: '기기에 맞게 다운로드',
     downloadOtherPlatforms: '다른 플랫폼 다운로드',
+    chinaDownloadRecommendation: '',
     mobile: '📱 모바일',
     mobileDesc: '휴대용 AI 어시스턴트, 음성 대화, 이미지 이해, 실시간 질문 응답',
     desktop: '💻 데스크톱',
@@ -352,6 +367,8 @@ const translations: Record<Locale, Translations> = {
     fix: '수정',
     improvement: '개선',
     breaking: '주요 변경',
+    releaseNotes: '릴리스 노트',
+    releaseNotesDescription: '모든 이력 버전 업데이트 정보 보기',
     darkModeSupport: '다크 모드 지원 추가',
     macosUniversal: 'macOS Universal 패키지 지원',
     uiOptimization: '다운로드 페이지 UI 최적화',
@@ -385,6 +402,7 @@ const translations: Record<Locale, Translations> = {
     smartDownload: 'Download',
     downloadForYourDevice: 'Download for your device',
     downloadOtherPlatforms: 'Download for other platforms',
+    chinaDownloadRecommendation: '',
     mobile: '📱 Mobile',
     mobileDesc:
       'Your portable AI assistant with voice conversations, image understanding, and real-time Q&A',
@@ -424,6 +442,8 @@ const translations: Record<Locale, Translations> = {
     fix: 'Fix',
     improvement: 'Improvement',
     breaking: 'Breaking',
+    releaseNotes: 'Release Notes',
+    releaseNotesDescription: 'View all historical release notes',
     darkModeSupport: 'Added dark mode support',
     macosUniversal: 'Support for macOS Universal package',
     uiOptimization: 'Optimized download page UI',
@@ -457,6 +477,7 @@ const translations: Record<Locale, Translations> = {
     smartDownload: 'Скачать',
     downloadForYourDevice: 'Скачать для вашего устройства',
     downloadOtherPlatforms: 'Скачать для других платформ',
+    chinaDownloadRecommendation: '',
     mobile: '📱 Мобильные',
     mobileDesc:
       'Портативный AI-ассистент с голосовыми диалогами, пониманием изображений и ответами в реальном времени',
@@ -495,6 +516,8 @@ const translations: Record<Locale, Translations> = {
     fix: 'Исправление',
     improvement: 'Улучшение',
     breaking: 'Критическое',
+    releaseNotes: 'Примечания к выпуску',
+    releaseNotesDescription: 'Просмотр всех исторических примечаний к выпуску',
     darkModeSupport: 'Добавлена поддержка тёмной темы',
     macosUniversal: 'Поддержка macOS Universal пакета',
     uiOptimization: 'Оптимизирован UI страницы загрузки',

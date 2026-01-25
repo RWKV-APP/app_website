@@ -56,3 +56,22 @@ export async function fetchLocation(): Promise<LocationInfo | null> {
     return null;
   }
 }
+
+export interface ReleaseNote {
+  build: number;
+  version: string;
+  content: string;
+}
+
+export async function fetchAllReleaseNotes(): Promise<ReleaseNote[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/distributions/release-notes/all`);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Failed to fetch all release notes:', error);
+    return [];
+  }
+}

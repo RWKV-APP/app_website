@@ -11,7 +11,7 @@ import {
   locationAtom,
   detectLocale,
 } from '@/atoms';
-import { ThemeSwitcher, LanguageSwitcher, GitHubLink } from '@/components';
+import { ThemeSwitcher, LanguageSwitcher, GitHubLink, ReleaseNotesLink } from '@/components';
 import {
   getAppStoreBadgePath,
   getAppleLogoPath,
@@ -222,28 +222,28 @@ export default function Home() {
             },
             {
               type: 'winZipHF',
-              label: 'Zip (HuggingFace)',
+              label: 'Zip 免安装 (HuggingFace)',
               href: distributions?.[DistributionType.winZipHF]?.url || '#',
               available: !!distributions?.[DistributionType.winZipHF],
               version: distributions?.[DistributionType.winZipHF]?.version,
             },
             {
               type: 'winZipAF',
-              label: 'Zip (Aifasthub)',
+              label: 'Zip 免安装 (Aifasthub)',
               href: distributions?.[DistributionType.winZipAF]?.url || '#',
               available: !!distributions?.[DistributionType.winZipAF],
               version: distributions?.[DistributionType.winZipAF]?.version,
             },
             {
               type: 'winZipGR',
-              label: 'Zip (GitHub Release)',
+              label: 'Zip 免安装 (GitHub Release)',
               href: distributions?.[DistributionType.winZipGR]?.url || '#',
               available: !!distributions?.[DistributionType.winZipGR],
               version: distributions?.[DistributionType.winZipGR]?.version,
             },
             {
               type: 'winZipHFM',
-              label: 'Zip (HF-Mirror)',
+              label: 'Zip 免安装 (HF-Mirror)',
               href: distributions?.[DistributionType.winZipHFM]?.url || '#',
               available: !!distributions?.[DistributionType.winZipHFM],
               version: distributions?.[DistributionType.winZipHFM]?.version,
@@ -278,28 +278,28 @@ export default function Home() {
             },
             {
               type: 'winArm64ZipHF',
-              label: 'Zip ARM64 (HuggingFace)',
+              label: 'Zip 免安装 ARM64 (HuggingFace)',
               href: distributions?.[DistributionType.winArm64ZipHF]?.url || '#',
               available: !!distributions?.[DistributionType.winArm64ZipHF],
               version: distributions?.[DistributionType.winArm64ZipHF]?.version,
             },
             {
               type: 'winArm64ZipAF',
-              label: 'Zip ARM64 (Aifasthub)',
+              label: 'Zip 免安装 ARM64 (Aifasthub)',
               href: distributions?.[DistributionType.winArm64ZipAF]?.url || '#',
               available: !!distributions?.[DistributionType.winArm64ZipAF],
               version: distributions?.[DistributionType.winArm64ZipAF]?.version,
             },
             {
               type: 'winArm64ZipGR',
-              label: 'Zip ARM64 (GitHub Release)',
+              label: 'Zip 免安装 ARM64 (GitHub Release)',
               href: distributions?.[DistributionType.winArm64ZipGR]?.url || '#',
               available: !!distributions?.[DistributionType.winArm64ZipGR],
               version: distributions?.[DistributionType.winArm64ZipGR]?.version,
             },
             {
               type: 'winArm64ZipHFM',
-              label: 'Zip ARM64 (HF-Mirror)',
+              label: 'Zip 免安装 ARM64 (HF-Mirror)',
               href: distributions?.[DistributionType.winArm64ZipHFM]?.url || '#',
               available: !!distributions?.[DistributionType.winArm64ZipHFM],
               version: distributions?.[DistributionType.winArm64ZipHFM]?.version,
@@ -348,28 +348,28 @@ export default function Home() {
           downloads: [
             {
               type: 'linuxHF',
-              label: 'HuggingFace',
+              label: 'tar.gz (HuggingFace)',
               href: distributions?.[DistributionType.linuxHF]?.url || '#',
               available: !!distributions?.[DistributionType.linuxHF],
               version: distributions?.[DistributionType.linuxHF]?.version,
             },
             {
               type: 'linuxAF',
-              label: 'Aifasthub',
+              label: 'tar.gz (Aifasthub)',
               href: distributions?.[DistributionType.linuxAF]?.url || '#',
               available: !!distributions?.[DistributionType.linuxAF],
               version: distributions?.[DistributionType.linuxAF]?.version,
             },
             {
               type: 'linuxGR',
-              label: 'GitHub Release',
+              label: 'tar.gz (GitHub Release)',
               href: distributions?.[DistributionType.linuxGR]?.url || '#',
               available: !!distributions?.[DistributionType.linuxGR],
               version: distributions?.[DistributionType.linuxGR]?.version,
             },
             {
               type: 'linuxHFM',
-              label: 'HF-Mirror',
+              label: 'tar.gz (HF-Mirror)',
               href: distributions?.[DistributionType.linuxHFM]?.url || '#',
               available: !!distributions?.[DistributionType.linuxHFM],
               version: distributions?.[DistributionType.linuxHFM]?.version,
@@ -382,6 +382,34 @@ export default function Home() {
   };
 
   const smartDownloadOptions = getSmartDownloadOptions();
+
+  // 判断是否为中文语言
+  const isChineseLocale = locale === 'zh-CN' || locale === 'zh-TW';
+
+  // 对下载选项进行排序（中文时将 AI FastLab 和 HF Mirror 提前）
+  const sortDownloadsForChinese = <T extends { type: string }>(downloads: T[]): T[] => {
+    if (!isChineseLocale) {
+      return downloads;
+    }
+
+    // 创建排序函数
+    const getSortPriority = (type: string): number => {
+      // AF (Aifasthub) 和 HFM (HF-Mirror) 优先级最高
+      if (type.includes('AF')) return 1;
+      if (type.includes('HFM')) return 2;
+      // HF (HuggingFace) 和 GR (GitHub Release) 优先级较低
+      if (type.includes('HF') && !type.includes('HFM')) return 3;
+      if (type.includes('GR')) return 4;
+      // 其他选项保持原顺序
+      return 5;
+    };
+
+    return [...downloads].sort((a, b) => {
+      const priorityA = getSortPriority(a.type);
+      const priorityB = getSortPriority(b.type);
+      return priorityA - priorityB;
+    });
+  };
 
   // 滚动到所有平台区域
   const scrollToAllPlatforms = () => {
@@ -542,28 +570,28 @@ export default function Home() {
           },
           {
             type: 'winZipHF',
-            label: 'Zip (HuggingFace)',
+            label: 'Zip 免安装 (HuggingFace)',
             href: distributions?.[DistributionType.winZipHF]?.url || '#',
             available: !!distributions?.[DistributionType.winZipHF],
             version: distributions?.[DistributionType.winZipHF]?.version,
           },
           {
             type: 'winZipAF',
-            label: 'Zip (Aifasthub)',
+            label: 'Zip 免安装 (Aifasthub)',
             href: distributions?.[DistributionType.winZipAF]?.url || '#',
             available: !!distributions?.[DistributionType.winZipAF],
             version: distributions?.[DistributionType.winZipAF]?.version,
           },
           {
             type: 'winZipGR',
-            label: 'Zip (GitHub Release)',
+            label: 'Zip 免安装 (GitHub Release)',
             href: distributions?.[DistributionType.winZipGR]?.url || '#',
             available: !!distributions?.[DistributionType.winZipGR],
             version: distributions?.[DistributionType.winZipGR]?.version,
           },
           {
             type: 'winZipHFM',
-            label: 'Zip (HF-Mirror)',
+            label: 'Zip 免安装 (HF-Mirror)',
             href: distributions?.[DistributionType.winZipHFM]?.url || '#',
             available: !!distributions?.[DistributionType.winZipHFM],
             version: distributions?.[DistributionType.winZipHFM]?.version,
@@ -600,28 +628,28 @@ export default function Home() {
           },
           {
             type: 'winZipHF',
-            label: 'Zip (HuggingFace)',
+            label: 'Zip 免安装 (HuggingFace)',
             href: distributions?.[DistributionType.winZipHF]?.url || '#',
             available: !!distributions?.[DistributionType.winZipHF],
             version: distributions?.[DistributionType.winZipHF]?.version,
           },
           {
             type: 'winZipAF',
-            label: 'Zip (Aifasthub)',
+            label: 'Zip 免安装 (Aifasthub)',
             href: distributions?.[DistributionType.winZipAF]?.url || '#',
             available: !!distributions?.[DistributionType.winZipAF],
             version: distributions?.[DistributionType.winZipAF]?.version,
           },
           {
             type: 'winZipGR',
-            label: 'Zip (GitHub Release)',
+            label: 'Zip 免安装 (GitHub Release)',
             href: distributions?.[DistributionType.winZipGR]?.url || '#',
             available: !!distributions?.[DistributionType.winZipGR],
             version: distributions?.[DistributionType.winZipGR]?.version,
           },
           {
             type: 'winZipHFM',
-            label: 'Zip (HF-Mirror)',
+            label: 'Zip 免安装 (HF-Mirror)',
             href: distributions?.[DistributionType.winZipHFM]?.url || '#',
             available: !!distributions?.[DistributionType.winZipHFM],
             version: distributions?.[DistributionType.winZipHFM]?.version,
@@ -658,28 +686,28 @@ export default function Home() {
           },
           {
             type: 'winArm64ZipHF',
-            label: 'Zip (HuggingFace)',
+            label: 'Zip 免安装 (HuggingFace)',
             href: distributions?.[DistributionType.winArm64ZipHF]?.url || '#',
             available: !!distributions?.[DistributionType.winArm64ZipHF],
             version: distributions?.[DistributionType.winArm64ZipHF]?.version,
           },
           {
             type: 'winArm64ZipAF',
-            label: 'Zip (Aifasthub)',
+            label: 'Zip 免安装 (Aifasthub)',
             href: distributions?.[DistributionType.winArm64ZipAF]?.url || '#',
             available: !!distributions?.[DistributionType.winArm64ZipAF],
             version: distributions?.[DistributionType.winArm64ZipAF]?.version,
           },
           {
             type: 'winArm64ZipGR',
-            label: 'Zip (GitHub Release)',
+            label: 'Zip 免安装 (GitHub Release)',
             href: distributions?.[DistributionType.winArm64ZipGR]?.url || '#',
             available: !!distributions?.[DistributionType.winArm64ZipGR],
             version: distributions?.[DistributionType.winArm64ZipGR]?.version,
           },
           {
             type: 'winArm64ZipHFM',
-            label: 'Zip (HF-Mirror)',
+            label: 'Zip 免安装 (HF-Mirror)',
             href: distributions?.[DistributionType.winArm64ZipHFM]?.url || '#',
             available: !!distributions?.[DistributionType.winArm64ZipHFM],
             version: distributions?.[DistributionType.winArm64ZipHFM]?.version,
@@ -693,28 +721,28 @@ export default function Home() {
         downloads: [
           {
             type: 'linuxHF',
-            label: 'HuggingFace',
+            label: 'tar.gz (HuggingFace)',
             href: distributions?.[DistributionType.linuxHF]?.url || '#',
             available: !!distributions?.[DistributionType.linuxHF],
             version: distributions?.[DistributionType.linuxHF]?.version,
           },
           {
             type: 'linuxAF',
-            label: 'Aifasthub',
+            label: 'tar.gz (Aifasthub)',
             href: distributions?.[DistributionType.linuxAF]?.url || '#',
             available: !!distributions?.[DistributionType.linuxAF],
             version: distributions?.[DistributionType.linuxAF]?.version,
           },
           {
             type: 'linuxGR',
-            label: 'GitHub Release',
+            label: 'tar.gz (GitHub Release)',
             href: distributions?.[DistributionType.linuxGR]?.url || '#',
             available: !!distributions?.[DistributionType.linuxGR],
             version: distributions?.[DistributionType.linuxGR]?.version,
           },
           {
             type: 'linuxHFM',
-            label: 'HF-Mirror',
+            label: 'tar.gz (HF-Mirror)',
             href: distributions?.[DistributionType.linuxHFM]?.url || '#',
             available: !!distributions?.[DistributionType.linuxHFM],
             version: distributions?.[DistributionType.linuxHFM]?.version,
@@ -730,6 +758,7 @@ export default function Home() {
       <div className={styles.toolbar}>
         <LanguageSwitcher />
         <ThemeSwitcher />
+        <ReleaseNotesLink />
         <GitHubLink />
       </div>
 
@@ -767,8 +796,13 @@ export default function Home() {
                 <h2 className={styles.smartDownloadTitle}>{t.smartDownload}</h2>
               </div>
               <p className={styles.smartDownloadDesc}>{t.downloadForYourDevice}</p>
+              {isChineseLocale && t.chinaDownloadRecommendation && (
+                <p className={styles.chinaDownloadRecommendation}>
+                  {t.chinaDownloadRecommendation}
+                </p>
+              )}
               <div className={styles.smartDownloadButtons}>
-                {smartDownloadOptions.downloads.map((download) => {
+                {sortDownloadsForChinese(smartDownloadOptions.downloads).map((download) => {
                   const isAvailable = download.available !== false;
                   const version = download.version;
                   // Display version if it exists and is not empty, even if it's "latest"
@@ -885,7 +919,7 @@ export default function Home() {
                         </span>
                       </div>
                       <div className={styles.platformGroupButtons}>
-                        {platform.downloads.map((download) => {
+                        {sortDownloadsForChinese(platform.downloads).map((download) => {
                           const isAvailable = (download as any).available !== false;
                           const version = (download as any).version;
                           const displayLabel =
@@ -1002,7 +1036,7 @@ export default function Home() {
                             <div className={styles.platformSubsection}>
                               <div className={styles.platformSubsectionTitle}>x64</div>
                               <div className={styles.platformGroupButtons}>
-                                {platformWithSubsections.x64Downloads.map((download: any) => {
+                                {sortDownloadsForChinese(platformWithSubsections.x64Downloads).map((download: any) => {
                                   const isAvailable = download.available !== false;
                                   const version = download.version;
                                   const displayLabel =
@@ -1062,7 +1096,7 @@ export default function Home() {
                             <div className={styles.platformSubsection}>
                               <div className={styles.platformSubsectionTitle}>ARM64</div>
                               <div className={styles.platformGroupButtons}>
-                                {platformWithSubsections.arm64Downloads.map((download: any) => {
+                                {sortDownloadsForChinese(platformWithSubsections.arm64Downloads).map((download: any) => {
                                   const isAvailable = download.available !== false;
                                   const version = download.version;
                                   const displayLabel =
@@ -1121,7 +1155,7 @@ export default function Home() {
                           </>
                         ) : (
                           <div className={styles.platformGroupButtons}>
-                            {platform.downloads.map((download) => {
+                            {sortDownloadsForChinese(platform.downloads).map((download) => {
                               const isAvailable = (download as any).available !== false;
                               const version = (download as any).version;
                               const displayLabel =
