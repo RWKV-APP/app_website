@@ -479,7 +479,7 @@ export class ReleaseNotesService {
   /**
    * Get all release notes with version filtering
    * Only returns the latest patch version for each major.minor version
-   * Only includes versions: 3.0, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7 and 1.6, 1.7, 1.8, 1.9
+   * Supports all major versions (no version range restrictions)
    * @param locale - Optional locale string (e.g., "en", "zh-CN"). Defaults to "zh-CN"
    * @returns Array of release notes sorted by version (descending)
    */
@@ -530,36 +530,15 @@ export class ReleaseNotesService {
                 const minor = parseInt(versionMatch[2], 10);
                 const patch = parseInt(versionMatch[3], 10);
 
-                // Filter by allowed version ranges
-                const allowedVersions = [
-                  { major: 3, minor: 0 },
-                  { major: 3, minor: 1 },
-                  { major: 3, minor: 2 },
-                  { major: 3, minor: 3 },
-                  { major: 3, minor: 4 },
-                  { major: 3, minor: 5 },
-                  { major: 3, minor: 6 },
-                  { major: 3, minor: 7 },
-                  { major: 1, minor: 6 },
-                  { major: 1, minor: 7 },
-                  { major: 1, minor: 8 },
-                  { major: 1, minor: 9 },
-                ];
-
-                const isAllowed = allowedVersions.some(
-                  (allowed) => allowed.major === major && allowed.minor === minor,
-                );
-
-                if (isAllowed) {
-                  releaseNotes.push({
-                    fileName: file,
-                    buildNumber,
-                    version,
-                    major,
-                    minor,
-                    patch,
-                  });
-                }
+                // Include all versions (no filtering by version range)
+                releaseNotes.push({
+                  fileName: file,
+                  buildNumber,
+                  version,
+                  major,
+                  minor,
+                  patch,
+                });
               }
             }
           }
@@ -660,36 +639,15 @@ export class ReleaseNotesService {
             const minor = parseInt(versionMatch[2], 10);
             const patch = parseInt(versionMatch[3], 10);
 
-            // Filter by allowed version ranges
-            const allowedVersions = [
-              { major: 3, minor: 0 },
-              { major: 3, minor: 1 },
-              { major: 3, minor: 2 },
-              { major: 3, minor: 3 },
-              { major: 3, minor: 4 },
-              { major: 3, minor: 5 },
-              { major: 3, minor: 6 },
-              { major: 3, minor: 7 },
-              { major: 1, minor: 6 },
-              { major: 1, minor: 7 },
-              { major: 1, minor: 8 },
-              { major: 1, minor: 9 },
-            ];
-
-            const isAllowed = allowedVersions.some(
-              (allowed) => allowed.major === major && allowed.minor === minor,
-            );
-
-            if (isAllowed) {
-              releaseNotes.push({
-                fileName: file,
-                buildNumber,
-                version,
-                major,
-                minor,
-                patch,
-              });
-            }
+            // Include all versions (no filtering by version range)
+            releaseNotes.push({
+              fileName: file,
+              buildNumber,
+              version,
+              major,
+              minor,
+              patch,
+            });
           }
         }
       }
