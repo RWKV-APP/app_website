@@ -17,7 +17,6 @@
   width: 100%;
   max-width: 1000px;
   margin-bottom: 2rem;
-  padding: 1rem 1.5rem 0;
   position: relative;
   z-index: 2;
 }
@@ -25,7 +24,14 @@
 @media (min-width: 640px) {
   .toolbar {
     margin-bottom: 3rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .main {
     padding-top: 0.5rem;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
   }
 }
 
