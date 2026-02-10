@@ -3,12 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useAtom, useAtomValue } from 'jotai';
-import {
-  translationsAtom,
-  localeAtom,
-  locationAtom,
-  detectLocale,
-} from '@/atoms';
+import { translationsAtom, localeAtom, locationAtom, detectLocale } from '@/atoms';
 import { fetchAllReleaseNotes, type ReleaseNote } from '@/utils/api';
 import { fetchLocation } from '@/utils';
 import { detectLocaleFromLocation, type Locale } from '@/i18n/locales';

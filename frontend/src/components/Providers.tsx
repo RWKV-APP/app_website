@@ -6,7 +6,11 @@ import { useEffect, useState } from 'react';
 import { localeAtom, themePreferenceAtom, detectLocale, getInitialThemePreference } from '@/atoms';
 import type { Locale } from '@/i18n/locales';
 
-function HydrateAtoms(props: { locale: Locale; themePreference: string; children: React.ReactNode }) {
+function HydrateAtoms(props: {
+  locale: Locale;
+  themePreference: string;
+  children: React.ReactNode;
+}) {
   useHydrateAtoms([
     [localeAtom, props.locale],
     [themePreferenceAtom, props.themePreference as any],
@@ -40,4 +44,3 @@ export function Providers({ children }: { children: React.ReactNode }) {
     </Provider>
   );
 }
-

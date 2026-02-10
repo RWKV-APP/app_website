@@ -1036,67 +1036,71 @@ export default function Home() {
                             <div className={styles.platformSubsection}>
                               <div className={styles.platformSubsectionTitle}>x64</div>
                               <div className={styles.platformGroupButtons}>
-                                {sortDownloadsForChinese(platformWithSubsections.x64Downloads).map((download: any) => {
-                                  const isAvailable = download.available !== false;
-                                  const version = download.version;
-                                  const displayLabel =
-                                    version && version !== 'latest'
-                                      ? `${download.label} (${version})`
-                                      : download.label;
+                                {sortDownloadsForChinese(platformWithSubsections.x64Downloads).map(
+                                  (download: any) => {
+                                    const isAvailable = download.available !== false;
+                                    const version = download.version;
+                                    const displayLabel =
+                                      version && version !== 'latest'
+                                        ? `${download.label} (${version})`
+                                        : download.label;
 
-                                  return (
-                                    <a
-                                      key={download.type}
-                                      href={
-                                        isAvailable && download.href !== '#' ? download.href : '#'
-                                      }
-                                      className={`${styles.downloadButton} ${!isAvailable ? styles.disabled : ''}`}
-                                      target={
-                                        isAvailable && download.href.startsWith('http')
-                                          ? '_blank'
-                                          : undefined
-                                      }
-                                      rel={
-                                        isAvailable && download.href.startsWith('http')
-                                          ? 'noopener noreferrer'
-                                          : undefined
-                                      }
-                                      onClick={(e) => {
-                                        if (!isAvailable || download.href === '#') {
-                                          e.preventDefault();
+                                    return (
+                                      <a
+                                        key={download.type}
+                                        href={
+                                          isAvailable && download.href !== '#' ? download.href : '#'
                                         }
-                                      }}
-                                      style={
-                                        !isAvailable
-                                          ? { opacity: 0.5, cursor: 'not-allowed' }
-                                          : undefined
-                                      }
-                                    >
-                                      <span>{displayLabel}</span>
-                                      {isAvailable && (
-                                        <svg
-                                          className={styles.arrowIcon}
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="2"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        >
-                                          <line x1="5" y1="12" x2="19" y2="12" />
-                                          <polyline points="12 5 19 12 12 19" />
-                                        </svg>
-                                      )}
-                                    </a>
-                                  );
-                                })}
+                                        className={`${styles.downloadButton} ${!isAvailable ? styles.disabled : ''}`}
+                                        target={
+                                          isAvailable && download.href.startsWith('http')
+                                            ? '_blank'
+                                            : undefined
+                                        }
+                                        rel={
+                                          isAvailable && download.href.startsWith('http')
+                                            ? 'noopener noreferrer'
+                                            : undefined
+                                        }
+                                        onClick={(e) => {
+                                          if (!isAvailable || download.href === '#') {
+                                            e.preventDefault();
+                                          }
+                                        }}
+                                        style={
+                                          !isAvailable
+                                            ? { opacity: 0.5, cursor: 'not-allowed' }
+                                            : undefined
+                                        }
+                                      >
+                                        <span>{displayLabel}</span>
+                                        {isAvailable && (
+                                          <svg
+                                            className={styles.arrowIcon}
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          >
+                                            <line x1="5" y1="12" x2="19" y2="12" />
+                                            <polyline points="12 5 19 12 12 19" />
+                                          </svg>
+                                        )}
+                                      </a>
+                                    );
+                                  },
+                                )}
                               </div>
                             </div>
                             {/* ARM64 Subsection */}
                             <div className={styles.platformSubsection}>
                               <div className={styles.platformSubsectionTitle}>ARM64</div>
                               <div className={styles.platformGroupButtons}>
-                                {sortDownloadsForChinese(platformWithSubsections.arm64Downloads).map((download: any) => {
+                                {sortDownloadsForChinese(
+                                  platformWithSubsections.arm64Downloads,
+                                ).map((download: any) => {
                                   const isAvailable = download.available !== false;
                                   const version = download.version;
                                   const displayLabel =

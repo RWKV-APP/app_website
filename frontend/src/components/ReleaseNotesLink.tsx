@@ -5,7 +5,12 @@ import styles from './ReleaseNotesLink.module.css';
 
 export function ReleaseNotesLink() {
   return (
-    <Link href="/release-notes" className={styles.releaseNotesLink} aria-label="Release Notes" title="Release Notes">
+    <Link
+      href="/release-notes"
+      className={styles.releaseNotesLink}
+      aria-label="Release Notes"
+      title="Release Notes"
+    >
       <svg
         className={styles.icon}
         viewBox="0 0 24 24"

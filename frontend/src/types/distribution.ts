@@ -44,5 +44,6 @@ export interface DistributionRecord {
   updatedAt: string;
 }
 
-export type LatestDistributionsResponse = Partial<Record<DistributionType, DistributionRecord | null>>;
-
+export type LatestDistributionsResponse = Partial<
+  Record<DistributionType, DistributionRecord | null>
+>;

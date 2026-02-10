@@ -85,14 +85,14 @@ export const themeAtom = atom(
   },
   (get, set, update: Theme) => {
     if (typeof window === 'undefined') return;
-    
+
     // Get current system theme
     const systemTheme = getSystemTheme();
-    
+
     // If the user-selected theme matches system theme, save as 'system'
     // Otherwise, save as the selected theme
     const newPreference: ThemePreference = update === systemTheme ? 'system' : update;
-    
+
     set(themePreferenceAtom, newPreference);
     applyThemeToDocument(update, newPreference);
   },
@@ -190,18 +190,12 @@ export async function detectCpuArchitecture(): Promise<CpuArchitecture> {
   const platformStr = navigator.platform.toLowerCase();
 
   // Check for ARM indicators in userAgent
-  if (
-    /arm64|aarch64|armv8/.test(userAgent) ||
-    /arm64|aarch64/.test(platformStr)
-  ) {
+  if (/arm64|aarch64|armv8/.test(userAgent) || /arm64|aarch64/.test(platformStr)) {
     return 'arm64';
   }
 
   // Check for x64 indicators
-  if (
-    /x64|win64|wow64|amd64/.test(userAgent) ||
-    /x64|win64/.test(platformStr)
-  ) {
+  if (/x64|win64|wow64|amd64/.test(userAgent) || /x64|win64/.test(platformStr)) {
     return 'x64';
   }
 

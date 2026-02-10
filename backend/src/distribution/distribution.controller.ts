@@ -23,7 +23,7 @@ export class DistributionController {
     // Manually extract 'key' parameter from query string
     // NestJS may not properly handle multiple query params with same name
     const keyArray: string[] = [];
-    
+
     // Method 1: Try to get from request.query (NestJS parsed)
     if (request.query.key) {
       if (Array.isArray(request.query.key)) {
@@ -32,7 +32,7 @@ export class DistributionController {
         keyArray.push(request.query.key as string);
       }
     }
-    
+
     // Method 2: Parse from raw query string if method 1 didn't work or only got one value
     if (keyArray.length <= 1 && request.url) {
       // Extract query string from URL

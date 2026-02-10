@@ -65,8 +65,8 @@ export function DistributionButtons({ distributions }: DistributionButtonsProps)
             ? record.version === 'latest'
               ? 'Available'
               : record.build
-              ? `${record.version} (${record.build})`
-              : record.version
+                ? `${record.version} (${record.build})`
+                : record.version
             : 'Not available';
 
           return (
@@ -103,4 +103,3 @@ export function DistributionButtons({ distributions }: DistributionButtonsProps)
     </div>
   );
 }
-

@@ -23,7 +23,11 @@ export class ReleaseNotesService {
   private getLanguageFolder(locale: string): string {
     if (locale.startsWith('zh-CN') || locale === 'zh') {
       return 'zh-Hans'; // Simplified Chinese
-    } else if (locale.startsWith('zh-TW') || locale.startsWith('zh-HK') || locale.startsWith('zh-MO')) {
+    } else if (
+      locale.startsWith('zh-TW') ||
+      locale.startsWith('zh-HK') ||
+      locale.startsWith('zh-MO')
+    ) {
       return 'zh-Hant'; // Traditional Chinese
     } else if (locale === 'en') {
       return 'en';
@@ -86,7 +90,7 @@ export class ReleaseNotesService {
     content: string;
   } | null> {
     const { fallbackVersions, locale = 'zh-CN' } = options;
-    
+
     // Get language-specific directory
     const langDir = this.getLanguageDir(locale);
     try {
@@ -95,9 +99,7 @@ export class ReleaseNotesService {
         await fs.access(langDir);
       } catch {
         // Language directory doesn't exist, fallback to zh-Hans
-        this.logger.debug(
-          `Language directory ${langDir} not found, falling back to zh-Hans`,
-        );
+        this.logger.debug(`Language directory ${langDir} not found, falling back to zh-Hans`);
         const fallbackLangDir = this.getLanguageDir('zh-CN');
         try {
           await fs.access(fallbackLangDir);
@@ -173,7 +175,7 @@ export class ReleaseNotesService {
           return null;
         }
       }
-      
+
       const files = await fs.readdir(langDir);
       const matchingFiles: Array<{
         fileName: string;
@@ -266,7 +268,7 @@ export class ReleaseNotesService {
     content: string;
   } | null> {
     const { buildNumber, version: requestedVersion, locale = 'zh-CN' } = options;
-    
+
     // Get language-specific directory
     const langDir = this.getLanguageDir(locale);
 
@@ -276,64 +278,62 @@ export class ReleaseNotesService {
       return null;
     }
 
-      // Try to find file with new format: {buildNumber}-{version}.md in language-specific directory
+    // Try to find file with new format: {buildNumber}-{version}.md in language-specific directory
+    try {
+      // Check if language directory exists
       try {
-        // Check if language directory exists
+        await fs.access(langDir);
+      } catch {
+        // Language directory doesn't exist, fallback to zh-Hans
+        this.logger.debug(`Language directory ${langDir} not found, falling back to zh-Hans`);
+        const fallbackLangDir = this.getLanguageDir('zh-CN');
         try {
-          await fs.access(langDir);
-        } catch {
-          // Language directory doesn't exist, fallback to zh-Hans
-          this.logger.debug(
-            `Language directory ${langDir} not found, falling back to zh-Hans`,
-          );
-          const fallbackLangDir = this.getLanguageDir('zh-CN');
-          try {
-            await fs.access(fallbackLangDir);
-            const files = await fs.readdir(fallbackLangDir);
-            const matchingFiles = files.filter((file) => {
-              const match = file.match(/^(\d+)-(.+)\.md$/);
-              if (match) {
-                const fileBuildNumber = parseInt(match[1], 10);
-                return fileBuildNumber === buildNumber;
-              }
-              return false;
-            });
-            
-            if (matchingFiles.length > 0) {
-              const fileName = matchingFiles[0];
-              const filePath = path.join(fallbackLangDir, fileName);
-              const resolvedPath = path.resolve(filePath);
-              const resolvedDir = path.resolve(fallbackLangDir);
-              if (resolvedPath.startsWith(resolvedDir)) {
-                const content = await fs.readFile(filePath, 'utf-8');
-                const filenameMatch = fileName.match(/^(\d+)-(.+)\.md$/);
-                const version = filenameMatch ? filenameMatch[2] : null;
-                this.logger.debug(
-                  `Using zh-Hans fallback for build ${buildNumber} (requested ${locale})`,
-                );
-                return {
-                  build: buildNumber,
-                  version,
-                  content: content.trim(),
-                };
-              }
+          await fs.access(fallbackLangDir);
+          const files = await fs.readdir(fallbackLangDir);
+          const matchingFiles = files.filter((file) => {
+            const match = file.match(/^(\d+)-(.+)\.md$/);
+            if (match) {
+              const fileBuildNumber = parseInt(match[1], 10);
+              return fileBuildNumber === buildNumber;
             }
-          } catch {
-            // Fallback directory also doesn't exist
+            return false;
+          });
+
+          if (matchingFiles.length > 0) {
+            const fileName = matchingFiles[0];
+            const filePath = path.join(fallbackLangDir, fileName);
+            const resolvedPath = path.resolve(filePath);
+            const resolvedDir = path.resolve(fallbackLangDir);
+            if (resolvedPath.startsWith(resolvedDir)) {
+              const content = await fs.readFile(filePath, 'utf-8');
+              const filenameMatch = fileName.match(/^(\d+)-(.+)\.md$/);
+              const version = filenameMatch ? filenameMatch[2] : null;
+              this.logger.debug(
+                `Using zh-Hans fallback for build ${buildNumber} (requested ${locale})`,
+              );
+              return {
+                build: buildNumber,
+                version,
+                content: content.trim(),
+              };
+            }
           }
-          return null;
+        } catch {
+          // Fallback directory also doesn't exist
         }
-        
-        const files = await fs.readdir(langDir);
-        const matchingFiles = files.filter((file) => {
-          // Match pattern: {buildNumber}-{version}.md
-          const match = file.match(/^(\d+)-(.+)\.md$/);
-          if (match) {
-            const fileBuildNumber = parseInt(match[1], 10);
-            return fileBuildNumber === buildNumber;
-          }
-          return false;
-        });
+        return null;
+      }
+
+      const files = await fs.readdir(langDir);
+      const matchingFiles = files.filter((file) => {
+        // Match pattern: {buildNumber}-{version}.md
+        const match = file.match(/^(\d+)-(.+)\.md$/);
+        if (match) {
+          const fileBuildNumber = parseInt(match[1], 10);
+          return fileBuildNumber === buildNumber;
+        }
+        return false;
+      });
 
       if (matchingFiles.length === 0) {
         // If no matching file found, try fallback to zh-Hans (Simplified Chinese)
@@ -353,7 +353,7 @@ export class ReleaseNotesService {
               }
               return false;
             });
-            
+
             if (fallbackFiles.length > 0) {
               const filePath = path.join(fallbackLangDir, fallbackFiles[0]);
               const resolvedPath = path.resolve(filePath);
@@ -376,25 +376,21 @@ export class ReleaseNotesService {
             // Fallback directory doesn't exist
           }
         }
-        
+
         // Fallback: try old format {buildNumber}.md for backward compatibility (in root directory)
         const oldFormatFile = `${buildNumber}.md`;
         try {
           const oldFilePath = path.join(this.releaseNotesDir, oldFormatFile);
           await fs.access(oldFilePath);
           const content = await fs.readFile(oldFilePath, 'utf-8');
-          this.logger.debug(
-            `Found release notes in old format for build ${buildNumber}`,
-          );
+          this.logger.debug(`Found release notes in old format for build ${buildNumber}`);
           return {
             build: buildNumber,
             version: null,
             content: content.trim(),
           };
         } catch {
-          this.logger.debug(
-            `Release notes file not found for build ${buildNumber}`,
-          );
+          this.logger.debug(`Release notes file not found for build ${buildNumber}`);
 
           // Try fallback if version is provided
           if (requestedVersion && requestedVersion.trim().length > 0) {
@@ -402,9 +398,7 @@ export class ReleaseNotesService {
               `Attempting fallback for build ${buildNumber} with version ${requestedVersion}`,
             );
             const fallbackVersions = this.generateFallbackVersions(requestedVersion);
-            this.logger.debug(
-              `Generated fallback versions: ${fallbackVersions.join(', ')}`,
-            );
+            this.logger.debug(`Generated fallback versions: ${fallbackVersions.join(', ')}`);
             const fallbackResult = await this.findReleaseNotesByVersion({
               fallbackVersions,
               locale,
@@ -421,9 +415,7 @@ export class ReleaseNotesService {
               `No release notes found via fallback for version ${requestedVersion}`,
             );
           } else {
-            this.logger.debug(
-              `No version provided for fallback (version: ${requestedVersion})`,
-            );
+            this.logger.debug(`No version provided for fallback (version: ${requestedVersion})`);
           }
 
           return null;
@@ -469,9 +461,7 @@ export class ReleaseNotesService {
     } catch (error: unknown) {
       // Directory read error or other errors
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(
-        `Error reading release notes for build ${buildNumber}: ${errorMessage}`,
-      );
+      this.logger.error(`Error reading release notes for build ${buildNumber}: ${errorMessage}`);
       return null;
     }
   }
@@ -491,7 +481,7 @@ export class ReleaseNotesService {
     }>
   > {
     const locale = options?.locale || 'zh-CN';
-    
+
     // Get language-specific directory
     const langDir = this.getLanguageDir(locale);
     try {
@@ -500,9 +490,7 @@ export class ReleaseNotesService {
         await fs.access(langDir);
       } catch {
         // Language directory doesn't exist, fallback to zh-Hans
-        this.logger.debug(
-          `Language directory ${langDir} not found, falling back to zh-Hans`,
-        );
+        this.logger.debug(`Language directory ${langDir} not found, falling back to zh-Hans`);
         const fallbackLangDir = this.getLanguageDir('zh-CN');
         try {
           await fs.access(fallbackLangDir);
@@ -522,7 +510,7 @@ export class ReleaseNotesService {
             if (match) {
               const buildNumber = parseInt(match[1], 10);
               const version = match[2];
-              
+
               const versionMatch = version.match(/^(\d+)\.(\d+)\.(\d+)$/);
 
               if (versionMatch) {
@@ -544,7 +532,7 @@ export class ReleaseNotesService {
           }
 
           // Group by major.minor and keep only the highest patch version
-          const fallbackVersionMap = new Map<string, typeof releaseNotes[0]>();
+          const fallbackVersionMap = new Map<string, (typeof releaseNotes)[0]>();
           for (const note of releaseNotes) {
             const key = `${note.major}.${note.minor}`;
             const existing = fallbackVersionMap.get(key);
@@ -607,14 +595,16 @@ export class ReleaseNotesService {
             return bParts[2] - aParts[2];
           });
 
-          this.logger.debug(`Returning ${fallbackResult.length} filtered release notes (fallback to zh-Hans)`);
+          this.logger.debug(
+            `Returning ${fallbackResult.length} filtered release notes (fallback to zh-Hans)`,
+          );
           return fallbackResult;
         } catch {
           // Fallback directory also doesn't exist
           return [];
         }
       }
-      
+
       const files = await fs.readdir(langDir);
       const releaseNotes: Array<{
         fileName: string;
@@ -631,7 +621,7 @@ export class ReleaseNotesService {
         if (match) {
           const buildNumber = parseInt(match[1], 10);
           const version = match[2];
-          
+
           const versionMatch = version.match(/^(\d+)\.(\d+)\.(\d+)$/);
 
           if (versionMatch) {
@@ -653,7 +643,7 @@ export class ReleaseNotesService {
       }
 
       // Group by major.minor and keep only the highest patch version
-      const versionMap = new Map<string, typeof releaseNotes[0]>();
+      const versionMap = new Map<string, (typeof releaseNotes)[0]>();
       for (const note of releaseNotes) {
         const key = `${note.major}.${note.minor}`;
         const existing = versionMap.get(key);

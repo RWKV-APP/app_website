@@ -11,9 +11,7 @@ export const metadata: Metadata = {
       { url: '/images/app-icon/app-icon-light.png', sizes: '32x32', type: 'image/png' },
       { url: '/images/app-icon/app-icon-light.png', sizes: '16x16', type: 'image/png' },
     ],
-    apple: [
-      { url: '/images/app-icon/app-icon-light.png', sizes: '180x180', type: 'image/png' },
-    ],
+    apple: [{ url: '/images/app-icon/app-icon-light.png', sizes: '180x180', type: 'image/png' }],
     shortcut: '/images/app-icon/app-icon-light.png',
   },
 };

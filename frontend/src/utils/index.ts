@@ -9,4 +9,3 @@ export {
 } from './getAssetPath';
 
 export { fetchLatestDistributions, fetchLocation } from './api';
-

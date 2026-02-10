@@ -60,9 +60,7 @@ export function getAppIconPath(): string {
  * 根据当前主题获取 Branding 图片的路径
  */
 export function getBrandingPath({ theme }: { theme: Theme }): string {
-  return theme === 'dark'
-    ? '/images/logos/branding-dark.png'
-    : '/images/logos/branding-light.png';
+  return theme === 'dark' ? '/images/logos/branding-dark.png' : '/images/logos/branding-light.png';
 }
 
 /**
@@ -85,4 +83,3 @@ export function getGooglePlayBadgePath(options: { locale: Locale }): string {
   const fileName = localeToFileName[locale] || localeToFileName['en'];
   return `/images/badges/playstore/GetItOnGooglePlay_Badge_Web_color_${fileName}.svg`;
 }
-

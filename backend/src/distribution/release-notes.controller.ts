@@ -51,7 +51,9 @@ export class ReleaseNotesController {
     // If file doesn't exist, return empty content instead of 404
     // This allows the app to handle missing release notes gracefully
     if (result === null) {
-      this.logger.debug(`Release notes not found for build ${buildNumber}, returning empty content`);
+      this.logger.debug(
+        `Release notes not found for build ${buildNumber}, returning empty content`,
+      );
       return {
         build: buildNumber,
         version: null,
@@ -64,7 +66,9 @@ export class ReleaseNotesController {
 
   @Get('release-notes/all')
   async getAllReleaseNotes(@Query('locale') localeParam?: string) {
-    this.logger.debug(`Getting all release notes${localeParam ? ` with locale ${localeParam}` : ' (default locale)'}`);
+    this.logger.debug(
+      `Getting all release notes${localeParam ? ` with locale ${localeParam}` : ' (default locale)'}`,
+    );
     const result = await this.releaseNotesService.getAllReleaseNotes({
       locale: localeParam,
     });
