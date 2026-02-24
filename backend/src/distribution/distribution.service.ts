@@ -817,10 +817,13 @@ export class DistributionService implements OnModuleInit {
     const build: number | null = null;
 
     try {
-      // Use iTunes Search API to get app version
-      const response = await axios.get(`https://itunes.apple.com/lookup?id=${appId}`, {
-        timeout: 10000,
-      });
+      // Use iTunes Lookup API with country=us so we get the US App Store version
+      // (matches our appStoreUrl). Without country, Apple returns the store version
+      // for the request's region, which can lag (e.g. 3.9.6 vs 4.0.7).
+      const response = await axios.get(
+        `https://itunes.apple.com/lookup?id=${appId}&country=us`,
+        { timeout: 10000 },
+      );
 
       if (response.data && response.data.results && response.data.results.length > 0) {
         const appInfo = response.data.results[0];
