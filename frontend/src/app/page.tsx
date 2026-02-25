@@ -10,6 +10,8 @@ import {
   devicePlatformAtom,
   locationAtom,
   detectLocale,
+  detectCpuArchitecture,
+  type CpuArchitecture,
 } from '@/atoms';
 import { ThemeSwitcher, LanguageSwitcher, GitHubLink, ReleaseNotesLink } from '@/components';
 import {
@@ -34,6 +36,7 @@ export default function Home() {
   const allPlatformsRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
   const [distributions, setDistributions] = useState<LatestDistributionsResponse | null>(null);
+  const [cpuArchitecture, setCpuArchitecture] = useState<CpuArchitecture>('unknown');
   const [loading, setLoading] = useState(true);
   const locationDetectedRef = useRef(false);
   const browserDefaultLocaleRef = useRef<Locale | null>(null);
@@ -84,6 +87,31 @@ export default function Home() {
       }
     }
   }, [mounted, location, setLocation, setLocale, locale]);
+
+  useEffect(() => {
+    if (!mounted || platform !== 'windows') {
+      setCpuArchitecture('unknown');
+      return;
+    }
+
+    let isCancelled = false;
+
+    detectCpuArchitecture()
+      .then((arch) => {
+        if (!isCancelled) {
+          setCpuArchitecture(arch);
+        }
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setCpuArchitecture('unknown');
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [mounted, platform]);
 
   const features = [
     { icon: '📴', title: t.featureOffline, desc: t.featureOfflineDesc },
@@ -385,6 +413,7 @@ export default function Home() {
 
   // 判断是否为中文语言
   const isChineseLocale = locale === 'zh-CN' || locale === 'zh-TW';
+  const shouldHideWindowsX64Destinations = platform === 'windows' && cpuArchitecture === 'arm64';
 
   // 对下载选项进行排序（中文时将 AI FastLab 和 HF Mirror 提前）
   const sortDownloadsForChinese = <T extends { type: string }>(downloads: T[]): T[] => {
@@ -409,6 +438,13 @@ export default function Home() {
       const priorityB = getSortPriority(b.type);
       return priorityA - priorityB;
     });
+  };
+
+  const filterWindowsDownloadsForCurrentDevice = <T extends { type: string }>(downloads: T[]): T[] => {
+    if (!shouldHideWindowsX64Destinations) {
+      return downloads;
+    }
+    return downloads.filter((download) => download.type.toLowerCase().includes('arm64'));
   };
 
   // 滚动到所有平台区域
@@ -802,7 +838,11 @@ export default function Home() {
                 </p>
               )}
               <div className={styles.smartDownloadButtons}>
-                {sortDownloadsForChinese(smartDownloadOptions.downloads).map((download) => {
+                {sortDownloadsForChinese(
+                  platform === 'windows'
+                    ? filterWindowsDownloadsForCurrentDevice(smartDownloadOptions.downloads)
+                    : smartDownloadOptions.downloads,
+                ).map((download) => {
                   const isAvailable = download.available !== false;
                   const version = download.version;
                   // Display version if it exists and is not empty, even if it's "latest"
@@ -1011,6 +1051,8 @@ export default function Home() {
                     const hasSubsections =
                       platformWithSubsections.x64Downloads &&
                       platformWithSubsections.arm64Downloads;
+                    const hideX64Subsection =
+                      hasSubsections && shouldHideWindowsX64Destinations;
 
                     return (
                       <div key={platform.name} className={styles.platformGroup}>
@@ -1033,67 +1075,71 @@ export default function Home() {
                         {hasSubsections ? (
                           <>
                             {/* x64/x86 Subsection */}
-                            <div className={styles.platformSubsection}>
-                              <div className={styles.platformSubsectionTitle}>x64</div>
-                              <div className={styles.platformGroupButtons}>
-                                {sortDownloadsForChinese(platformWithSubsections.x64Downloads).map(
-                                  (download: any) => {
-                                    const isAvailable = download.available !== false;
-                                    const version = download.version;
-                                    const displayLabel =
-                                      version && version !== 'latest'
-                                        ? `${download.label} (${version})`
-                                        : download.label;
+                            {!hideX64Subsection && (
+                              <div className={styles.platformSubsection}>
+                                <div className={styles.platformSubsectionTitle}>x64</div>
+                                <div className={styles.platformGroupButtons}>
+                                  {sortDownloadsForChinese(platformWithSubsections.x64Downloads).map(
+                                    (download: any) => {
+                                      const isAvailable = download.available !== false;
+                                      const version = download.version;
+                                      const displayLabel =
+                                        version && version !== 'latest'
+                                          ? `${download.label} (${version})`
+                                          : download.label;
 
-                                    return (
-                                      <a
-                                        key={download.type}
-                                        href={
-                                          isAvailable && download.href !== '#' ? download.href : '#'
-                                        }
-                                        className={`${styles.downloadButton} ${!isAvailable ? styles.disabled : ''}`}
-                                        target={
-                                          isAvailable && download.href.startsWith('http')
-                                            ? '_blank'
-                                            : undefined
-                                        }
-                                        rel={
-                                          isAvailable && download.href.startsWith('http')
-                                            ? 'noopener noreferrer'
-                                            : undefined
-                                        }
-                                        onClick={(e) => {
-                                          if (!isAvailable || download.href === '#') {
-                                            e.preventDefault();
+                                      return (
+                                        <a
+                                          key={download.type}
+                                          href={
+                                            isAvailable && download.href !== '#'
+                                              ? download.href
+                                              : '#'
                                           }
-                                        }}
-                                        style={
-                                          !isAvailable
-                                            ? { opacity: 0.5, cursor: 'not-allowed' }
-                                            : undefined
-                                        }
-                                      >
-                                        <span>{displayLabel}</span>
-                                        {isAvailable && (
-                                          <svg
-                                            className={styles.arrowIcon}
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                          >
-                                            <line x1="5" y1="12" x2="19" y2="12" />
-                                            <polyline points="12 5 19 12 12 19" />
-                                          </svg>
-                                        )}
-                                      </a>
-                                    );
-                                  },
-                                )}
+                                          className={`${styles.downloadButton} ${!isAvailable ? styles.disabled : ''}`}
+                                          target={
+                                            isAvailable && download.href.startsWith('http')
+                                              ? '_blank'
+                                              : undefined
+                                          }
+                                          rel={
+                                            isAvailable && download.href.startsWith('http')
+                                              ? 'noopener noreferrer'
+                                              : undefined
+                                          }
+                                          onClick={(e) => {
+                                            if (!isAvailable || download.href === '#') {
+                                              e.preventDefault();
+                                            }
+                                          }}
+                                          style={
+                                            !isAvailable
+                                              ? { opacity: 0.5, cursor: 'not-allowed' }
+                                              : undefined
+                                          }
+                                        >
+                                          <span>{displayLabel}</span>
+                                          {isAvailable && (
+                                            <svg
+                                              className={styles.arrowIcon}
+                                              viewBox="0 0 24 24"
+                                              fill="none"
+                                              stroke="currentColor"
+                                              strokeWidth="2"
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                            >
+                                              <line x1="5" y1="12" x2="19" y2="12" />
+                                              <polyline points="12 5 19 12 12 19" />
+                                            </svg>
+                                          )}
+                                        </a>
+                                      );
+                                    },
+                                  )}
+                                </div>
                               </div>
-                            </div>
+                            )}
                             {/* ARM64 Subsection */}
                             <div className={styles.platformSubsection}>
                               <div className={styles.platformSubsectionTitle}>ARM64</div>
