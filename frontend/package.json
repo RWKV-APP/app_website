@@ -10,7 +10,9 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "jotai": "^2.0.0",
+    "monaco-editor": "^0.55.1",
     "next": "^14.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -22,6 +24,7 @@
     "@types/react-dom": "^18.2.6",
     "eslint": "^8.42.0",
     "eslint-config-next": "^14.0.0",
+    "eslint-plugin-import": "^2.32.0",
     "prettier": "^3.0.0",
     "typescript": "^5.1.3"
   }

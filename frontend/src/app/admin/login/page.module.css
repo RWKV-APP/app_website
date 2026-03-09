@@ -1,0 +1,85 @@
+.page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background:
+    radial-gradient(circle at top, rgba(20, 184, 166, 0.18), transparent 34%),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-background) 92%, #052e2b 8%) 0%,
+      var(--color-surface) 100%
+    );
+}
+
+.card {
+  width: min(100%, 28rem);
+  padding: 2rem;
+  border-radius: 1.4rem;
+  border: 1px solid color-mix(in srgb, var(--color-border) 72%, var(--color-primary) 28%);
+  background: color-mix(in srgb, var(--color-background) 88%, var(--color-surface) 12%);
+  box-shadow: 0 28px 56px rgba(15, 23, 42, 0.12);
+}
+
+.eyebrow {
+  margin-bottom: 0.55rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-secondary);
+}
+
+.title {
+  font-size: clamp(2rem, 5vw, 2.8rem);
+  line-height: 0.95;
+}
+
+.description,
+.note,
+.status {
+  margin-top: 0.9rem;
+  color: var(--color-secondary);
+  line-height: 1.6;
+}
+
+.form {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.4rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.field span {
+  font-size: 0.92rem;
+  color: var(--color-foreground);
+}
+
+.field input {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: 0.85rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-size: 1rem;
+}
+
+.field input:focus {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 48%, transparent);
+  outline-offset: 1px;
+}
+
+.error {
+  margin-top: 1rem;
+  color: #dc2626;
+}
+
+@media (max-width: 520px) {
+  .card {
+    padding: 1.4rem;
+  }
+}

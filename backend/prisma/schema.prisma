@@ -14,7 +14,7 @@ datasource db {
 
 model AppConfig {
   id        Int      @id @default(autoincrement())
-  key       String    @unique
+  key       String   @unique
   value     String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -28,4 +28,35 @@ model Distribution {
   build     Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model RemoteConfig {
+  id             Int                    @id @default(autoincrement())
+  type           String
+  fileName       String
+  effectiveBuild Int?
+  content        String
+  published      Boolean                @default(false)
+  createdBy      String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  activities     RemoteConfigActivity[]
+
+  @@index([type, fileName, published])
+  @@index([type, effectiveBuild, published])
+}
+
+model RemoteConfigActivity {
+  id             Int           @id @default(autoincrement())
+  action         String
+  username       String
+  fileName       String?
+  detail         String?
+  remoteConfigId Int?
+  createdAt      DateTime      @default(now())
+  remoteConfig   RemoteConfig? @relation(fields: [remoteConfigId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([fileName])
+  @@index([remoteConfigId])
 }

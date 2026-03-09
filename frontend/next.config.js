@@ -1,12 +1,13 @@
 /** @type {import('next').NextConfig} */
 const isDev = process.env.NODE_ENV === 'development';
+const devBackendOrigin = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: [],
   // Only use static export in production
   ...(isDev ? {} : { output: 'export' }),
-  distDir: 'out',
+  ...(isDev ? {} : { distDir: 'out' }),
   images: {
     unoptimized: true,
   },
@@ -18,11 +19,23 @@ const nextConfig = {
             // Proxy API requests to backend, but exclude Next.js internal paths
             {
               source: '/distributions/:path*',
-              destination: 'http://localhost:3462/distributions/:path*',
+              destination: `${devBackendOrigin}/distributions/:path*`,
             },
             {
               source: '/location',
-              destination: 'http://localhost:3462/location',
+              destination: `${devBackendOrigin}/location`,
+            },
+            {
+              source: '/get-demo-config',
+              destination: `${devBackendOrigin}/get-demo-config`,
+            },
+            {
+              source: '/suggestions.json',
+              destination: `${devBackendOrigin}/suggestions.json`,
+            },
+            {
+              source: '/admin-api/:path*',
+              destination: `${devBackendOrigin}/admin-api/:path*`,
             },
           ];
         },

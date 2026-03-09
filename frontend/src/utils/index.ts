@@ -8,4 +8,18 @@ export {
   getGooglePlayBadgePath,
 } from './getAssetPath';
 
-export { fetchLatestDistributions, fetchLocation } from './api';
+export {
+  fetchLatestDistributions,
+  fetchLocation,
+  clearAdminToken,
+  downloadRemoteConfigArchive,
+  downloadRemoteConfigVersion,
+  fetchAdminRemoteConfigActivities,
+  fetchAdminRemoteConfigFiles,
+  fetchAdminSession,
+  fetchRemoteConfigVersionContent,
+  loginAdmin,
+  logoutAdmin,
+  publishRemoteConfigVersion,
+  uploadRemoteConfig,
+} from './api';

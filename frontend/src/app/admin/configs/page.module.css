@@ -1,0 +1,558 @@
+.page {
+  min-height: 100vh;
+  padding: 2.5rem 1.5rem 4rem;
+  background:
+    radial-gradient(circle at top left, rgba(20, 184, 166, 0.18), transparent 28%),
+    radial-gradient(circle at right top, rgba(59, 130, 246, 0.12), transparent 26%),
+    linear-gradient(
+      180deg,
+      var(--color-background) 0%,
+      color-mix(in srgb, var(--color-surface) 72%, #0f172a 8%) 100%
+    );
+  color: var(--color-foreground);
+}
+
+.hero,
+.panel,
+.loadingPanel {
+  margin: 0 auto 1.25rem;
+  border: 1px solid color-mix(in srgb, var(--color-border) 78%, var(--color-primary) 22%);
+  border-radius: 1.25rem;
+  background: color-mix(in srgb, var(--color-background) 88%, var(--color-surface) 12%);
+  box-shadow: 0 28px 56px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.hero {
+  padding: 1.5rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.25rem;
+}
+
+.loadingPanel {
+  padding: 2rem;
+}
+
+.heroText {
+  max-width: 760px;
+}
+
+.heroActions,
+.actionRow,
+.inlineActions,
+.metaRow,
+.badgeRow,
+.fileCardActions,
+.editorActions,
+.editorMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.heroActions {
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+.eyebrow {
+  margin-bottom: 0.55rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-secondary);
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 0.95;
+}
+
+.description,
+.panelDescription,
+.fileHint,
+.dropZoneText,
+.empty,
+.editorNote {
+  color: var(--color-secondary);
+  line-height: 1.6;
+}
+
+.description {
+  margin-top: 0.9rem;
+  max-width: 52rem;
+}
+
+.metaRow {
+  margin-top: 1rem;
+}
+
+.metaPill,
+.typeBadge,
+.neutralBadge,
+.successBadge,
+.warningBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  border: 1px solid transparent;
+}
+
+.metaPill,
+.neutralBadge {
+  background: color-mix(in srgb, var(--color-surface) 82%, var(--color-primary) 18%);
+  color: var(--color-foreground);
+}
+
+.typeBadge {
+  background: color-mix(in srgb, var(--color-primary) 18%, var(--color-background) 82%);
+  color: var(--color-primary-hover);
+  border-color: color-mix(in srgb, var(--color-primary) 48%, transparent);
+}
+
+.successBadge {
+  background: rgba(20, 184, 166, 0.16);
+  color: #0f766e;
+  border-color: rgba(20, 184, 166, 0.28);
+}
+
+.warningBadge {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+  border-color: rgba(245, 158, 11, 0.26);
+}
+
+.panel {
+  padding: 1.35rem;
+}
+
+.panelHeader,
+.selectionHeader,
+.fileCardHeader,
+.modalHeader,
+.editorHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.panelTitle,
+.selectionTitle,
+.fileName,
+.modalTitle,
+.editorTitle {
+  margin: 0;
+}
+
+.panelDescription {
+  margin-top: 0.35rem;
+}
+
+.checkboxRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--color-foreground);
+  font-size: 0.95rem;
+}
+
+.checkboxRow input {
+  accent-color: var(--color-primary);
+}
+
+.dropZone {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 1.15rem;
+  padding: 2rem 1.25rem;
+  border: 1.5px dashed color-mix(in srgb, var(--color-border) 60%, var(--color-primary) 40%);
+  border-radius: 1rem;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--color-background) 78%, var(--color-primary) 22%),
+      transparent
+    ),
+    color-mix(in srgb, var(--color-surface) 84%, var(--color-background) 16%);
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    transform 0.15s ease,
+    background 0.2s ease;
+}
+
+.dropZone:hover,
+.dropZoneActive {
+  border-color: var(--color-primary);
+  transform: translateY(-1px);
+}
+
+.dropZoneTitle {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.fileInput {
+  display: none;
+}
+
+.selectionPanel {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--color-surface) 82%, var(--color-background) 18%);
+}
+
+.selectionHeader {
+  margin-bottom: 0.85rem;
+}
+
+.fileList {
+  list-style: none;
+  display: grid;
+  gap: 0.65rem;
+  padding: 0;
+  margin: 0;
+}
+
+.fileListItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.9rem;
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+}
+
+.linkButton,
+.ghostButton,
+.secondaryButton,
+.smallButton,
+.smallSecondaryButton,
+.menuButton {
+  border-radius: 0.75rem;
+}
+
+.linkButton {
+  padding: 0;
+  background: transparent;
+  color: var(--color-primary);
+}
+
+.linkButton:hover {
+  background: transparent;
+}
+
+.ghostButton {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-foreground);
+}
+
+.ghostButton:hover {
+  background: var(--color-surface);
+}
+
+.secondaryButton,
+.smallSecondaryButton,
+.menuButton {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-foreground);
+}
+
+.secondaryButton:hover,
+.smallSecondaryButton:hover,
+.menuButton:hover {
+  background: var(--color-surface-hover);
+}
+
+.smallButton,
+.smallSecondaryButton {
+  padding: 0.55rem 0.85rem;
+  font-size: 0.92rem;
+}
+
+.menuButton {
+  width: 2.75rem;
+  min-width: 2.75rem;
+  padding: 0;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.success,
+.error {
+  margin-top: 0.9rem;
+  white-space: pre-wrap;
+}
+
+.success {
+  color: #0f766e;
+}
+
+.error {
+  color: #dc2626;
+}
+
+.fileCardList {
+  display: grid;
+  gap: 1rem;
+}
+
+.fileCard {
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--color-background) 86%, var(--color-surface) 14%);
+  overflow: hidden;
+}
+
+.fileCardHeader {
+  padding: 1rem;
+}
+
+.fileCardLead {
+  flex: 1;
+  min-width: 0;
+}
+
+.fileHint {
+  margin-top: 0.45rem;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.85rem;
+  padding: 0 1rem 1rem;
+}
+
+.summaryItem {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.95rem 1rem;
+  border-radius: 0.95rem;
+  background: color-mix(in srgb, var(--color-background) 84%, var(--color-surface) 16%);
+  border: 1px solid var(--color-border);
+}
+
+.summaryItemWide {
+  grid-column: span 2;
+}
+
+.summaryLabel {
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-secondary);
+}
+
+.tableWrapper {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: 0.85rem 1rem;
+  text-align: left;
+  border-top: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.table th {
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-secondary);
+}
+
+.versionCell {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.warningCell {
+  min-width: 16rem;
+  color: var(--color-secondary);
+}
+
+.modalBackdrop,
+.editorBackdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.44);
+  backdrop-filter: blur(8px);
+}
+
+.modalBackdrop {
+  z-index: 50;
+}
+
+.editorBackdrop {
+  z-index: 60;
+}
+
+.modal,
+.editorModal {
+  width: min(100%, 1200px);
+  max-height: calc(100vh - 4rem);
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, var(--color-primary) 30%);
+  border-radius: 1.25rem;
+  background: var(--color-background);
+  box-shadow: 0 32px 64px rgba(15, 23, 42, 0.24);
+}
+
+.modalHeader,
+.editorHeader {
+  position: sticky;
+  top: 0;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--color-background) 92%, var(--color-surface) 8%);
+  border-bottom: 1px solid var(--color-border);
+  z-index: 1;
+}
+
+.modalTitle {
+  font-size: 1.65rem;
+}
+
+.editorModal {
+  width: calc(100vw - 2rem);
+  height: calc(100vh - 2rem);
+  max-width: none;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.editorTitle {
+  font-size: 1.9rem;
+}
+
+.editorTitleBlock {
+  flex: 1;
+  min-width: 0;
+}
+
+.editorMetaRow,
+.editorFooter {
+  padding: 1rem;
+}
+
+.editorMetaRow {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.editorSurface {
+  flex: 1;
+  min-height: 0;
+  background: #111827;
+}
+
+.editorPlaceholder {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #cbd5e1;
+}
+
+.editorFooter {
+  border-top: 1px solid var(--color-border);
+}
+
+.page button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@media (max-width: 900px) {
+  .hero,
+  .panelHeader,
+  .selectionHeader,
+  .fileCardHeader,
+  .modalHeader,
+  .editorHeader {
+    flex-direction: column;
+  }
+
+  .heroActions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .summaryItemWide {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding-inline: 1rem;
+  }
+
+  .hero,
+  .panel,
+  .loadingPanel {
+    padding: 1rem;
+  }
+
+  .metaRow,
+  .badgeRow,
+  .inlineActions,
+  .actionRow,
+  .fileCardActions,
+  .editorActions,
+  .editorMetaRow {
+    width: 100%;
+  }
+
+  .inlineActions > button,
+  .heroActions > button,
+  .actionRow > button,
+  .fileCardActions > button,
+  .editorActions > button {
+    width: 100%;
+  }
+
+  .summaryGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .summaryItemWide {
+    grid-column: span 1;
+  }
+
+  .modalBackdrop,
+  .editorBackdrop {
+    padding: 0.6rem;
+  }
+
+  .editorModal {
+    width: calc(100vw - 1.2rem);
+    height: calc(100vh - 1.2rem);
+  }
+}
