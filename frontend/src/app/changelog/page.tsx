@@ -62,12 +62,14 @@ export default function ChangelogPage() {
   return (
     <main className={styles.main}>
       <div className={styles.container}>
-        <Link href="/" className={styles.backLink}>
-          {t.backToDownload}
-        </Link>
-
-        <h1 className={styles.title}>{t.changelog}</h1>
-        <p className={styles.description}>{t.changelogDescription}</p>
+        <section className={styles.hero}>
+          <Link href="/" className={styles.backLink}>
+            {t.backToDownload}
+          </Link>
+          <div className={styles.badge}>{t.changelog}</div>
+          <h1 className={styles.title}>{t.changelog}</h1>
+          <p className={styles.description}>{t.changelogDescription}</p>
+        </section>
 
         <div className={styles.timeline}>
           {changelog.map((entry) => (

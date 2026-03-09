@@ -2,13 +2,16 @@
   min-height: 100vh;
   padding: 2.5rem 1.5rem 4rem;
   background:
-    radial-gradient(circle at top left, rgba(20, 184, 166, 0.18), transparent 28%),
-    radial-gradient(circle at right top, rgba(59, 130, 246, 0.12), transparent 26%),
-    linear-gradient(
+    radial-gradient(circle at top left, rgba(20, 184, 166, 0.16), transparent 24%),
+    radial-gradient(circle at right top, rgba(20, 184, 166, 0.08), transparent 18%),
+    repeating-linear-gradient(
       180deg,
-      var(--color-background) 0%,
-      color-mix(in srgb, var(--color-surface) 72%, #0f172a 8%) 100%
-    );
+      transparent 0,
+      transparent 94px,
+      rgba(110, 96, 86, 0.06) 94px,
+      rgba(110, 96, 86, 0.06) 95px
+    ),
+    linear-gradient(180deg, var(--color-background-elevated) 0%, var(--color-background) 100%);
   color: var(--color-foreground);
 }
 
@@ -16,11 +19,11 @@
 .panel,
 .loadingPanel {
   margin: 0 auto 1.25rem;
-  border: 1px solid color-mix(in srgb, var(--color-border) 78%, var(--color-primary) 22%);
-  border-radius: 1.25rem;
-  background: color-mix(in srgb, var(--color-background) 88%, var(--color-surface) 12%);
-  box-shadow: 0 28px 56px rgba(15, 23, 42, 0.08);
-  backdrop-filter: blur(10px);
+  border: 1px solid color-mix(in srgb, var(--color-border) 68%, var(--color-primary) 32%);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-surface) 90%, transparent);
+  box-shadow: var(--color-shadow-soft);
+  backdrop-filter: blur(18px);
 }
 
 .hero {
@@ -207,8 +210,8 @@
   margin-top: 1rem;
   padding: 1rem;
   border: 1px solid var(--color-border);
-  border-radius: 1rem;
-  background: color-mix(in srgb, var(--color-surface) 82%, var(--color-background) 18%);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-background-elevated) 82%, transparent);
 }
 
 .selectionHeader {
@@ -229,8 +232,8 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 0.85rem 1rem;
-  border-radius: 0.9rem;
-  background: var(--color-background);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--color-background-elevated) 92%, transparent);
   border: 1px solid var(--color-border);
 }
 
@@ -312,8 +315,8 @@
 
 .fileCard {
   border: 1px solid var(--color-border);
-  border-radius: 1rem;
-  background: color-mix(in srgb, var(--color-background) 86%, var(--color-surface) 14%);
+  border-radius: calc(var(--radius-md) + 0.05rem);
+  background: color-mix(in srgb, var(--color-background-elevated) 88%, transparent);
   overflow: hidden;
 }
 
@@ -341,8 +344,8 @@
   display: grid;
   gap: 0.35rem;
   padding: 0.95rem 1rem;
-  border-radius: 0.95rem;
-  background: color-mix(in srgb, var(--color-background) 84%, var(--color-surface) 16%);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--color-background-elevated) 84%, transparent);
   border: 1px solid var(--color-border);
 }
 
@@ -417,9 +420,9 @@
   max-height: calc(100vh - 4rem);
   overflow: auto;
   border: 1px solid color-mix(in srgb, var(--color-border) 70%, var(--color-primary) 30%);
-  border-radius: 1.25rem;
-  background: var(--color-background);
-  box-shadow: 0 32px 64px rgba(15, 23, 42, 0.24);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-background-elevated) 96%, transparent);
+  box-shadow: var(--color-shadow-strong);
 }
 
 .modalHeader,

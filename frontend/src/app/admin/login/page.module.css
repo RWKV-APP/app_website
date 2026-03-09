@@ -1,24 +1,38 @@
 .page {
+  position: relative;
   min-height: 100vh;
   display: grid;
   place-items: center;
   padding: 1.5rem;
+  overflow: hidden;
+}
+
+.page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
   background:
-    radial-gradient(circle at top, rgba(20, 184, 166, 0.18), transparent 34%),
-    linear-gradient(
+    radial-gradient(circle at top, rgba(20, 184, 166, 0.16), transparent 28%),
+    repeating-linear-gradient(
       180deg,
-      color-mix(in srgb, var(--color-background) 92%, #052e2b 8%) 0%,
-      var(--color-surface) 100%
+      transparent 0,
+      transparent 88px,
+      rgba(110, 96, 86, 0.06) 88px,
+      rgba(110, 96, 86, 0.06) 89px
     );
+  pointer-events: none;
 }
 
 .card {
+  position: relative;
+  z-index: 1;
   width: min(100%, 28rem);
-  padding: 2rem;
-  border-radius: 1.4rem;
-  border: 1px solid color-mix(in srgb, var(--color-border) 72%, var(--color-primary) 28%);
-  background: color-mix(in srgb, var(--color-background) 88%, var(--color-surface) 12%);
-  box-shadow: 0 28px 56px rgba(15, 23, 42, 0.12);
+  padding: 2.1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--color-border) 68%, var(--color-primary) 32%);
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  box-shadow: var(--color-shadow-strong);
+  backdrop-filter: blur(20px);
 }
 
 .eyebrow {
@@ -38,7 +52,7 @@
 .note,
 .status {
   margin-top: 0.9rem;
-  color: var(--color-secondary);
+  color: var(--color-foreground-muted);
   line-height: 1.6;
 }
 
@@ -61,9 +75,9 @@
 .field input {
   width: 100%;
   padding: 0.85rem 1rem;
-  border-radius: 0.85rem;
-  border: 1px solid var(--color-border);
-  background: var(--color-background);
+  border-radius: 1rem;
+  border: 1px solid color-mix(in srgb, var(--color-border) 72%, var(--color-primary) 28%);
+  background: color-mix(in srgb, var(--color-background-elevated) 88%, transparent);
   color: var(--color-foreground);
   font-size: 1rem;
 }

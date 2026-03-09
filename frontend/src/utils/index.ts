@@ -10,6 +10,7 @@ export {
 
 export {
   fetchLatestDistributions,
+  readCachedLatestDistributions,
   fetchLocation,
   clearAdminToken,
   downloadRemoteConfigArchive,

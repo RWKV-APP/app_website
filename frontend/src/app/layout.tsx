@@ -1,6 +1,19 @@
 import type { Metadata } from 'next';
+import { Manrope, Space_Grotesk } from 'next/font/google';
 import { Providers } from '@/components';
 import './globals.css';
+
+const bodyFont = Manrope({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-body',
+});
+
+const displayFont = Space_Grotesk({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-display',
+});
 
 export const metadata: Metadata = {
   title: 'Download RWKV Chat',
@@ -52,7 +65,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body suppressHydrationWarning>
+      <body
+        suppressHydrationWarning
+        className={`${bodyFont.variable} ${displayFont.variable}`}
+      >
         <Providers>{children}</Providers>
       </body>
     </html>

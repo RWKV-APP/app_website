@@ -1,42 +1,47 @@
 .wrapper {
   position: relative;
-  z-index: 100;
+  z-index: 10;
 }
 
 .select {
-  padding: 0.75rem 1rem;
-  font-size: 0.875rem;
-  background-color: var(--color-surface);
+  min-height: 2.9rem;
+  padding: 0.78rem 1rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--color-surface) 86%, transparent);
   color: var(--color-foreground);
-  border: 1px solid var(--color-border);
-  border-radius: 0.375rem;
+  border: 1px solid color-mix(in srgb, var(--color-border) 72%, var(--color-primary) 28%);
+  border-radius: 999px;
   cursor: pointer;
   transition:
     border-color 0.2s ease,
-    box-shadow 0.2s ease;
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    background-color 0.2s ease;
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M3 4.5L6 7.5L9 4.5'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.75rem center;
   padding-right: 2rem;
+  box-shadow: var(--color-shadow-soft);
+  backdrop-filter: blur(12px);
 }
 
 .select:hover {
   border-color: var(--color-primary);
+  transform: translateY(-1px);
 }
 
 .select:focus {
   outline: none;
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--color-primary) 14%, transparent),
+    var(--color-shadow-soft);
 }
 
 @media (prefers-color-scheme: dark) {
   .select {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239ca3af' d='M3 4.5L6 7.5L9 4.5'/%3E%3C/svg%3E");
-  }
-
-  .select:focus {
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
   }
 }

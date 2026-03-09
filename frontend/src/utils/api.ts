@@ -40,6 +40,14 @@ const getApiBaseUrl = (): string => {
 
 const API_BASE_URL = getApiBaseUrl();
 const ADMIN_TOKEN_STORAGE_KEY = 'rwkv-admin-token';
+const LATEST_DISTRIBUTIONS_CACHE_KEY = 'rwkv-latest-distributions-cache-v1';
+
+interface LatestDistributionsCacheEntry {
+  updatedAt: number;
+  data: LatestDistributionsResponse;
+}
+
+let latestDistributionsRequest: Promise<LatestDistributionsResponse> | null = null;
 
 function getAdminToken(): string | null {
   if (typeof window === 'undefined') {
@@ -48,18 +56,75 @@ function getAdminToken(): string | null {
   return localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
 }
 
-export function clearAdminToken() {
+function readStorageItem(key: string): string | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorageItem(key: string, value: string) {
   if (typeof window === 'undefined') {
     return;
   }
-  localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage failures. The request should still succeed.
+  }
+}
+
+function removeStorageItem(key: string) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+export function clearAdminToken() {
+  removeStorageItem(ADMIN_TOKEN_STORAGE_KEY);
 }
 
 function saveAdminToken(token: string) {
-  if (typeof window === 'undefined') {
-    return;
+  writeStorageItem(ADMIN_TOKEN_STORAGE_KEY, token);
+}
+
+export function readCachedLatestDistributions(): LatestDistributionsResponse | null {
+  const rawCache = readStorageItem(LATEST_DISTRIBUTIONS_CACHE_KEY);
+  if (!rawCache) {
+    return null;
   }
-  localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token);
+
+  try {
+    const parsed = JSON.parse(rawCache) as LatestDistributionsCacheEntry;
+    if (!parsed || typeof parsed !== 'object' || !parsed.data || typeof parsed.data !== 'object') {
+      removeStorageItem(LATEST_DISTRIBUTIONS_CACHE_KEY);
+      return null;
+    }
+    return parsed.data;
+  } catch {
+    removeStorageItem(LATEST_DISTRIBUTIONS_CACHE_KEY);
+    return null;
+  }
+}
+
+function cacheLatestDistributions(data: LatestDistributionsResponse) {
+  const payload: LatestDistributionsCacheEntry = {
+    updatedAt: Date.now(),
+    data,
+  };
+  writeStorageItem(LATEST_DISTRIBUTIONS_CACHE_KEY, JSON.stringify(payload));
 }
 
 async function parseErrorResponse(response: Response): Promise<string> {
@@ -103,16 +168,29 @@ async function adminFetch(path: string, options?: RequestInit): Promise<Response
 }
 
 export async function fetchLatestDistributions(): Promise<LatestDistributionsResponse> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/distributions/latest`);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('Failed to fetch latest distributions:', error);
-    return {} as LatestDistributionsResponse;
+  if (latestDistributionsRequest) {
+    return latestDistributionsRequest;
   }
+
+  latestDistributionsRequest = (async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/distributions/latest`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = (await response.json()) as LatestDistributionsResponse;
+      cacheLatestDistributions(data);
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch latest distributions:', error);
+      return readCachedLatestDistributions() || ({} as LatestDistributionsResponse);
+    } finally {
+      latestDistributionsRequest = null;
+    }
+  })();
+
+  return latestDistributionsRequest;
 }
 
 export async function fetchLocation(): Promise<LocationInfo | null> {

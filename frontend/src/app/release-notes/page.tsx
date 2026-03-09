@@ -80,12 +80,14 @@ export default function ReleaseNotesPage() {
   return (
     <main className={styles.main}>
       <div className={styles.container}>
-        <Link href="/" className={styles.backLink}>
-          {t.backToDownload}
-        </Link>
-
-        <h1 className={styles.title}>{t.releaseNotes}</h1>
-        <p className={styles.description}>{t.releaseNotesDescription}</p>
+        <section className={styles.hero}>
+          <Link href="/" className={styles.backLink}>
+            {t.backToDownload}
+          </Link>
+          <div className={styles.badge}>{t.releaseNotes}</div>
+          <h1 className={styles.title}>{t.releaseNotes}</h1>
+          <p className={styles.description}>{t.releaseNotesDescription}</p>
+        </section>
 
         {loading && <div className={styles.loading}>Loading...</div>}
         {error && <div className={styles.error}>Error: {error}</div>}
