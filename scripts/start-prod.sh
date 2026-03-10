@@ -23,10 +23,10 @@ cd backend
 echo "   📦 生成 Prisma Client..."
 pnpm prisma:generate
 
-# 检查是否有迁移文件，如果没有则创建初始迁移
+# 检查是否有迁移文件。没有迁移时，直接同步 schema，避免在生产环境创建开发迁移。
 if [ ! -d "prisma/migrations" ] || [ -z "$(ls -A prisma/migrations 2>/dev/null)" ]; then
-  echo "   📝 创建初始数据库迁移..."
-  pnpm prisma migrate dev --name init
+  echo "   📐 未检测到迁移文件，使用 prisma db push 同步 schema..."
+  pnpm exec prisma db push --accept-data-loss
 else
   # 如果有迁移文件，使用 deploy 应用迁移（生产环境推荐）
   echo "   🚀 应用数据库迁移..."
@@ -54,8 +54,8 @@ mkdir -p backend/logs
 # 6. 停止已存在的进程（如果存在）
 echo "🛑 停止已存在的进程..."
 cd backend
-pm2 stop app-website-prod 2>/dev/null || true
-pm2 delete app-website-prod 2>/dev/null || true
+pm2 stop rwkv-backend 2>/dev/null || true
+pm2 delete rwkv-backend 2>/dev/null || true
 
 # 7. 使用 PM2 启动生产服务器
 echo "▶️  启动生产服务器..."
@@ -68,12 +68,12 @@ echo ""
 echo "✅ 部署完成！"
 echo ""
 echo "📊 查看状态: pm2 status"
-echo "📝 查看日志: pm2 logs app-website-prod"
-echo "🔄 重启服务: pm2 restart app-website-prod"
-echo "🛑 停止服务: pm2 stop app-website-prod"
+echo "📝 查看日志: pm2 logs rwkv-backend"
+echo "🔄 重启服务: pm2 restart rwkv-backend"
+echo "🛑 停止服务: pm2 stop rwkv-backend"
 echo ""
 echo "📂 日志文件位置:"
-echo "   - 输出日志: backend/logs/app-website-prod-out.log"
-echo "   - 错误日志: backend/logs/app-website-prod-error.log"
+echo "   - 输出日志: backend/logs/rwkv-backend-out.log"
+echo "   - 错误日志: backend/logs/rwkv-backend-error.log"
 echo ""
 
