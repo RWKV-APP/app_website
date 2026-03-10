@@ -869,6 +869,28 @@ export default function Home() {
     platforms.desktop.find((item) => item.name === t.linux),
   ].filter(Boolean) as PlatformOption[];
 
+  const smartDownloadPreviewLabels = (() => {
+    const previewDownloads = smartDownloads.slice(0, 3).map((download) => {
+      const parsed = parseDownloadLabel(download.label);
+      return {
+        title: parsed.title,
+        source: parsed.source,
+      };
+    });
+    const duplicatedTitles = new Set(
+      previewDownloads
+        .filter(
+          ({ title }, index) =>
+            previewDownloads.findIndex((download) => download.title === title) !== index,
+        )
+        .map(({ title }) => title),
+    );
+
+    return previewDownloads.map(({ title, source }) =>
+      duplicatedTitles.has(title) && source ? `${title} · ${source}` : title,
+    );
+  })();
+
   const renderDownloadAction = (download: DownloadOption, featured = false) => {
     const parsed = parseDownloadLabel(download.label);
     const version = getDownloadVersion(download.version);
@@ -915,70 +937,6 @@ export default function Home() {
             {isAvailable && (
               <svg
                 className={styles.downloadArrow}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <line x1="5" y1="12" x2="19" y2="12" />
-                <polyline points="12 5 19 12 12 19" />
-              </svg>
-            )}
-          </>
-        )}
-      </a>
-    );
-  };
-
-  const renderShowcaseDownload = (download: DownloadOption) => {
-    const parsed = parseDownloadLabel(download.label);
-    const version = getDownloadVersion(download.version);
-    const meta = [parsed.architecture, parsed.source].filter(Boolean).join(' · ');
-    const isAvailable = download.available !== false;
-    const href = isAvailable && download.href !== '#' ? download.href : '#';
-    const isExternal = href.startsWith('http');
-
-    return (
-      <a
-        key={download.type}
-        href={href}
-        className={`${styles.showcaseLink} ${download.badge ? styles.showcaseLinkBadge : ''} ${!isAvailable ? styles.showcaseLinkDisabled : ''}`}
-        target={isExternal ? '_blank' : undefined}
-        rel={isExternal ? 'noopener noreferrer' : undefined}
-        onClick={(event) => {
-          if (!isAvailable || href === '#') {
-            event.preventDefault();
-          }
-        }}
-      >
-        {download.badge ? (
-          <div className={styles.showcaseBadgeShell}>
-            <Image
-              src={download.badge}
-              alt={download.label}
-              width={145}
-              height={56}
-              className={styles.showcaseBadgeImage}
-              unoptimized
-            />
-            <div className={styles.showcaseBadgeMeta}>
-              <span className={styles.showcaseItemTitle}>{download.label}</span>
-              {version && <span className={styles.showcaseItemMeta}>{version}</span>}
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className={styles.showcaseLinkText}>
-              <span className={styles.showcaseItemTitle}>{parsed.title}</span>
-              <span className={styles.showcaseItemMeta}>
-                {[meta, version].filter(Boolean).join(' · ') || download.label}
-              </span>
-            </div>
-            {isAvailable && (
-              <svg
-                className={styles.showcaseArrow}
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -1131,53 +1089,49 @@ export default function Home() {
             </div>
           </div>
 
-          <div className={styles.heroShowcase}>
-            <div className={styles.showcaseCardPrimary}>
-              <div className={styles.sectionBadge}>
-                {smartDownloadOptions?.platformName || t.downloadForYourDevice}
-              </div>
-              <div className={styles.showcaseHeader}>
-                {smartDownloadOptions && (
+          <aside className={styles.heroRail}>
+            {smartDownloadOptions && (
+              <div className={`${styles.heroRailCard} ${styles.heroRailCardPrimary}`}>
+                <div className={styles.sectionBadge}>{smartDownloadOptions.platformName}</div>
+                <div className={styles.heroDeviceHeader}>
                   <Image
-                    key={`${smartDownloadOptions.platformIcon}-${theme}`}
+                    key={`${smartDownloadOptions.platformIcon}-${theme}-compact`}
                     src={smartDownloadOptions.platformIcon}
                     alt={smartDownloadOptions.platformName}
                     width={28}
                     height={28}
-                    className={styles.showcasePlatformIcon}
+                    className={styles.heroDeviceIcon}
                   />
-                )}
-                <h2 className={styles.showcaseTitle}>{t.downloadForYourDevice}</h2>
+                  <div className={styles.heroDeviceCopy}>
+                    <h2 className={styles.heroDeviceTitle}>{t.smartDownload}</h2>
+                    <p className={styles.heroDeviceSubtitle}>{smartDownloadOptions.platformName}</p>
+                  </div>
+                </div>
+                <div className={styles.heroDevicePills}>
+                  {smartDownloadPreviewLabels.length > 0
+                    ? smartDownloadPreviewLabels.map((label) => (
+                        <span key={`smart-preview-${label}`} className={styles.heroDevicePill}>
+                          {label}
+                        </span>
+                      ))
+                    : Array.from({ length: 3 }).map((_, index) => (
+                        <span
+                          key={`smart-preview-loading-${index}`}
+                          className={`${styles.heroDevicePill} ${styles.heroDevicePillLoading}`}
+                          aria-hidden="true"
+                        />
+                      ))}
+                </div>
+                <button
+                  type="button"
+                  className={styles.heroRailButton}
+                  onClick={scrollToSmartDownload}
+                >
+                  {t.downloadNow}
+                </button>
               </div>
-              <div className={styles.showcaseList}>
-                {smartDownloads.length > 0
-                  ? smartDownloads.slice(0, 3).map((download) => renderShowcaseDownload(download))
-                  : Array.from({ length: 3 }).map((_, index) => (
-                      <div
-                        key={`showcase-loading-${index}`}
-                        className={`${styles.showcaseItem} ${styles.showcaseItemLoading}`}
-                        aria-hidden="true"
-                      >
-                        <span className={styles.showcaseLoadingTitle} />
-                        <span className={styles.showcaseLoadingMeta} />
-                      </div>
-                    ))}
-              </div>
-            </div>
+            )}
 
-            <div className={styles.showcaseCardSecondary}>
-              <div className={styles.sectionBadge}>{t.featureCrossplatform}</div>
-              <div className={styles.platformChipRow}>
-                {[t.android, t.ios, t.windows, t.macos, t.linux].map((platformName) => (
-                  <span key={platformName} className={styles.platformChip}>
-                    {platformName}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <aside className={styles.heroRail}>
             <div className={styles.heroRailCard}>
               <div className={styles.sectionBadge}>{t.featureCrossplatform}</div>
               <p className={styles.heroRailText}>{t.featureCrossplatformDesc}</p>

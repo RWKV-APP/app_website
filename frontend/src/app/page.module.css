@@ -127,14 +127,12 @@
 
 .hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.72fr) minmax(260px, 0.48fr);
+  grid-template-columns: minmax(0, 1.28fr) minmax(320px, 0.72fr);
   gap: 1.75rem;
   align-items: stretch;
 }
 
 .heroCopy,
-.showcaseCardPrimary,
-.showcaseCardSecondary,
 .heroRailCard,
 .featuredSection,
 .contentSection,
@@ -245,24 +243,18 @@
   font-size: 1rem;
 }
 
-.heroShowcase {
-  display: grid;
-  gap: 1rem;
-}
-
 .heroRail {
   display: grid;
   gap: 1rem;
+  align-content: start;
+  grid-auto-rows: min-content;
 }
 
-.showcaseCardPrimary,
-.showcaseCardSecondary,
 .heroRailCard {
   border-radius: calc(var(--radius-lg) - 0.15rem);
   padding: 1.4rem;
 }
 
-.showcaseCardPrimary,
 .heroRailCard {
   display: grid;
   gap: 1rem;
@@ -284,43 +276,54 @@
   color: var(--color-secondary);
 }
 
-.showcaseHeader {
+.heroDeviceHeader {
   display: flex;
   align-items: center;
   gap: 0.8rem;
 }
 
-.showcasePlatformIcon {
+.heroDeviceIcon {
   object-fit: contain;
 }
 
-.showcaseTitle {
+.heroDeviceCopy {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.heroDeviceTitle {
   margin: 0;
-  font-size: clamp(1.6rem, 3vw, 2.25rem);
+  font-size: clamp(1.35rem, 2vw, 1.8rem);
   line-height: 1;
 }
 
-.showcaseList {
-  display: grid;
-  gap: 0.8rem;
+.heroDeviceSubtitle {
+  font-size: 0.95rem;
+  color: var(--color-secondary);
 }
 
-.showcaseItem {
-  display: grid;
-  gap: 0.22rem;
-  padding: 1rem 1.05rem;
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-background-elevated) 74%, transparent);
-  border: 1px solid var(--color-border);
+.heroDevicePills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
 }
 
-.showcaseItemLoading {
-  min-height: 5.2rem;
+.heroDevicePill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.35rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 68%, var(--color-primary) 32%);
+  background: color-mix(in srgb, var(--color-background-elevated) 84%, transparent);
+  color: var(--color-foreground);
+  font-size: 0.88rem;
+  font-weight: 700;
 }
 
-.showcaseLoadingTitle,
-.showcaseLoadingMeta {
-  display: block;
+.heroDevicePillLoading {
+  min-width: 7rem;
+  color: transparent;
   border-radius: 999px;
   background: linear-gradient(
     90deg,
@@ -332,112 +335,15 @@
   animation: showcasePulse 1.6s ease-in-out infinite;
 }
 
-.showcaseLoadingTitle {
-  width: 58%;
-  height: 1rem;
+.heroRailCardPrimary {
+  border-color: color-mix(in srgb, var(--color-primary) 34%, var(--color-border) 66%);
+  gap: 0.9rem;
 }
 
-.showcaseLoadingMeta {
-  width: 76%;
-  height: 0.8rem;
-}
-
-.showcaseLink {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  min-height: 5.2rem;
-  padding: 1rem 1.05rem;
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-background-elevated) 74%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-border) 72%, var(--color-primary) 28%);
-  color: var(--color-foreground);
-  transition:
-    transform 0.18s ease,
-    border-color 0.18s ease,
-    box-shadow 0.18s ease,
-    background-color 0.18s ease;
-}
-
-.showcaseLink:hover {
-  color: var(--color-foreground);
-  transform: translateY(-2px);
-  border-color: var(--color-primary);
-  box-shadow: 0 16px 28px rgba(20, 184, 166, 0.1);
-  background: color-mix(in srgb, var(--color-background-elevated) 88%, transparent);
-}
-
-.showcaseLinkDisabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.showcaseLinkDisabled:hover {
-  transform: none;
-  box-shadow: none;
-  border-color: color-mix(in srgb, var(--color-border) 72%, var(--color-primary) 28%);
-  background: color-mix(in srgb, var(--color-background-elevated) 74%, transparent);
-}
-
-.showcaseLinkText {
-  display: grid;
-  gap: 0.26rem;
-}
-
-.showcaseArrow {
-  width: 1.05rem;
-  height: 1.05rem;
-  color: var(--color-primary);
-  flex-shrink: 0;
-}
-
-.showcaseLinkBadge {
-  justify-content: flex-start;
-}
-
-.showcaseBadgeShell {
-  display: flex;
-  align-items: center;
-  gap: 0.8rem;
-}
-
-.showcaseBadgeImage {
-  width: auto;
-  height: 3rem;
-  object-fit: contain;
-}
-
-.showcaseBadgeMeta {
-  display: grid;
-  gap: 0.26rem;
-}
-
-@keyframes showcasePulse {
-  0% {
-    background-position: 100% 50%;
-  }
-
-  100% {
-    background-position: 0 50%;
-  }
-}
-
-.showcaseItemTitle {
-  font-weight: 800;
-  color: var(--color-foreground);
-}
-
-.showcaseItemMeta {
-  font-size: 0.9rem;
-  line-height: 1.55;
-  color: var(--color-secondary);
-}
-
-.showcaseCardSecondary {
-  display: grid;
-  gap: 1rem;
-  align-content: start;
+.heroRailButton {
+  width: 100%;
+  justify-content: center;
+  margin-top: 0.1rem;
 }
 
 .heroRailText {
@@ -874,6 +780,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .heroRailCardPrimary {
+    grid-column: 1 / -1;
+  }
+
   .featureGrid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -924,8 +834,6 @@
   }
 
   .heroCopy,
-  .showcaseCardPrimary,
-  .showcaseCardSecondary,
   .featuredSection,
   .contentSection,
   .platformCard,
@@ -956,6 +864,10 @@
     grid-template-columns: 1fr;
   }
 
+  .heroRailCardPrimary {
+    grid-column: span 1;
+  }
+
   .sectionHeader {
     margin-bottom: 1.35rem;
   }
@@ -968,13 +880,9 @@
     width: 100%;
   }
 
-  .showcaseLink,
-  .showcaseBadgeShell {
-    width: 100%;
-  }
-
   .heroActions > button,
   .heroRailLink,
+  .heroRailButton,
   .inlineLinkCard,
   .githubButton {
     width: 100%;
@@ -987,10 +895,15 @@
   .badgeShell {
     flex-direction: column;
   }
+}
 
-  .showcaseBadgeShell {
-    flex-direction: column;
-    align-items: flex-start;
+@keyframes showcasePulse {
+  0% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0 50%;
   }
 }
 
