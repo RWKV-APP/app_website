@@ -15,11 +15,9 @@ import {
 } from '@/atoms';
 import { ThemeSwitcher, LanguageSwitcher, GitHubLink, ReleaseNotesLink } from '@/components';
 import {
-  getAppStoreBadgePath,
   getAppleLogoPath,
   getAppIconPath,
   getPlatformIconPath,
-  getGooglePlayBadgePath,
   fetchLatestDistributions,
   fetchLocation,
 } from '@/utils';
@@ -27,13 +25,121 @@ import { detectLocaleFromLocation, type Locale } from '@/i18n/locales';
 import { LatestDistributionsResponse, DistributionType } from '@/types/distribution';
 import styles from './page.module.css';
 
+// SVG feature icons — monoline, consistent weight
+function FeatureIcon({ name }: { name: string }) {
+  const style = { width: '1.375rem', height: '1.375rem', strokeWidth: 1.5, stroke: 'var(--color-primary)', fill: 'none' } as const;
+  switch (name) {
+    case 'offline':
+      return (
+        <svg viewBox="0 0 24 24" style={style} strokeLinecap="round" strokeLinejoin="round">
+          <line x1="1" y1="1" x2="23" y2="23" />
+          <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" />
+          <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" />
+          <path d="M10.71 5.05A16 16 0 0 1 22.56 9" />
+          <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" />
+          <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+          <line x1="12" y1="20" x2="12.01" y2="20" />
+        </svg>
+      );
+    case 'privacy':
+      return (
+        <svg viewBox="0 0 24 24" style={style} strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+      );
+    case 'crossplatform':
+      return (
+        <svg viewBox="0 0 24 24" style={style} strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <line x1="2" y1="12" x2="22" y2="12" />
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+        </svg>
+      );
+    case 'acceleration':
+      return (
+        <svg viewBox="0 0 24 24" style={style} strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </svg>
+      );
+    case 'multimodal':
+      return (
+        <svg viewBox="0 0 24 24" style={style} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5z" />
+          <path d="M2 17l10 5 10-5" />
+          <path d="M2 12l10 5 10-5" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
+// Step icons — SF Symbols style: thin, monoline, subtle
+function StepIcon({ name }: { name: 'platform' | 'arch' | 'format' | 'download' }) {
+  const s = { width: '1.125rem', height: '1.125rem', strokeWidth: 1.5, stroke: 'var(--color-secondary)', fill: 'none', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+  switch (name) {
+    case 'platform':
+      return (
+        <svg viewBox="0 0 24 24" style={s}>
+          <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+          <line x1="12" y1="18" x2="12.01" y2="18" />
+        </svg>
+      );
+    case 'arch':
+      return (
+        <svg viewBox="0 0 24 24" style={s}>
+          <rect x="4" y="4" width="16" height="16" rx="2" />
+          <rect x="9" y="9" width="6" height="6" />
+          <line x1="9" y1="1" x2="9" y2="4" />
+          <line x1="15" y1="1" x2="15" y2="4" />
+          <line x1="9" y1="20" x2="9" y2="23" />
+          <line x1="15" y1="20" x2="15" y2="23" />
+          <line x1="20" y1="9" x2="23" y2="9" />
+          <line x1="20" y1="14" x2="23" y2="14" />
+          <line x1="1" y1="9" x2="4" y2="9" />
+          <line x1="1" y1="14" x2="4" y2="14" />
+        </svg>
+      );
+    case 'format':
+      return (
+        <svg viewBox="0 0 24 24" style={s}>
+          <path d="M21 8v13H3V8" />
+          <path d="M1 3h22v5H1z" />
+          <path d="M10 12h4" />
+        </svg>
+      );
+    case 'download':
+      return (
+        <svg viewBox="0 0 24 24" style={s}>
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
+type Platform = 'android' | 'ios' | 'windows' | 'macos' | 'linux';
+type WinArch = 'x64' | 'arm64';
+type WinFormat = 'installer' | 'zip';
+type DownloadSource = 'HF' | 'AF' | 'GR' | 'HFM' | 'Pgyer' | 'TestFlight' | 'AppStore' | 'GooglePlay';
+
+interface SourceOption {
+  key: DownloadSource;
+  label: string;
+  desc: string;
+  recommended?: boolean;
+}
+
 export default function Home() {
   const t = useAtomValue(translationsAtom);
   const [locale, setLocale] = useAtom(localeAtom);
   const theme = useAtomValue(themeAtom);
-  const platform = useAtomValue(devicePlatformAtom);
+  const detectedPlatform = useAtomValue(devicePlatformAtom);
   const [location, setLocation] = useAtom(locationAtom);
-  const allPlatformsRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
   const [distributions, setDistributions] = useState<LatestDistributionsResponse | null>(null);
   const [cpuArchitecture, setCpuArchitecture] = useState<CpuArchitecture>('unknown');
@@ -41,1249 +147,617 @@ export default function Home() {
   const locationDetectedRef = useRef(false);
   const browserDefaultLocaleRef = useRef<Locale | null>(null);
 
+  // Wizard state
+  const [selectedPlatform, setSelectedPlatform] = useState<Platform | null>(null);
+  const [winArch, setWinArch] = useState<WinArch | null>(null);
+  const [winFormat, setWinFormat] = useState<WinFormat | null>(null);
+  const [selectedSource, setSelectedSource] = useState<DownloadSource | null>(null);
+  const [showMoreSources, setShowMoreSources] = useState(false);
+
+  // Refs for scroll
+  const step2Ref = useRef<HTMLDivElement>(null);
+  const step3Ref = useRef<HTMLDivElement>(null);
+  const stepWinFormatRef = useRef<HTMLDivElement>(null);
+  const resultRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     setMounted(true);
-    // Store browser default locale on mount
     if (typeof window !== 'undefined') {
       browserDefaultLocaleRef.current = detectLocale();
     }
   }, []);
 
   useEffect(() => {
-    if (mounted) {
-      fetchLatestDistributions()
-        .then((data) => {
+    let isCancelled = false;
+    fetchLatestDistributions()
+      .then((data) => {
+        if (!isCancelled) {
           setDistributions(data);
           setLoading(false);
-        })
-        .catch((error) => {
-          console.error('Failed to load distributions:', error);
-          setLoading(false);
-        });
-
-      // Detect user location
-      if (!location && !locationDetectedRef.current) {
-        locationDetectedRef.current = true;
-        fetchLocation()
-          .then((locationData) => {
-            if (locationData) {
-              setLocation(locationData);
-
-              // Auto-detect locale from location
-              // Only set if current locale is still the browser default (user hasn't manually changed it)
-              const currentLocale = locale;
-              const browserDefault = browserDefaultLocaleRef.current;
-              if (browserDefault && currentLocale === browserDefault) {
-                const detectedLocale = detectLocaleFromLocation(locationData);
-                if (detectedLocale && detectedLocale !== currentLocale) {
-                  setLocale(detectedLocale);
-                }
-              }
-            }
-          })
-          .catch((error) => {
-            console.error('Failed to detect location:', error);
-          });
-      }
-    }
-  }, [mounted, location, setLocation, setLocale, locale]);
-
-  useEffect(() => {
-    if (!mounted || platform !== 'windows') {
-      setCpuArchitecture('unknown');
-      return;
-    }
-
-    let isCancelled = false;
-
-    detectCpuArchitecture()
-      .then((arch) => {
-        if (!isCancelled) {
-          setCpuArchitecture(arch);
         }
       })
       .catch(() => {
-        if (!isCancelled) {
-          setCpuArchitecture('unknown');
-        }
+        if (!isCancelled) setLoading(false);
       });
+    return () => { isCancelled = true; };
+  }, []);
 
-    return () => {
-      isCancelled = true;
-    };
-  }, [mounted, platform]);
+  useEffect(() => {
+    let isCancelled = false;
+    if (!mounted) return;
+    fetchLocation()
+      .then((loc) => {
+        if (!isCancelled && loc) {
+          setLocation(loc);
+          if (!locationDetectedRef.current) {
+            locationDetectedRef.current = true;
+            const detectedFromLocation = detectLocaleFromLocation(loc);
+            if (detectedFromLocation && detectedFromLocation !== browserDefaultLocaleRef.current) {
+              setLocale(detectedFromLocation);
+            }
+          }
+        }
+      })
+      .catch(() => {});
+    return () => { isCancelled = true; };
+  }, [mounted, setLocation, setLocale]);
+
+  useEffect(() => {
+    let isCancelled = false;
+    if (!mounted || detectedPlatform !== 'windows') return;
+    detectCpuArchitecture()
+      .then((arch) => { if (!isCancelled) setCpuArchitecture(arch); })
+      .catch(() => { if (!isCancelled) setCpuArchitecture('unknown'); });
+    return () => { isCancelled = true; };
+  }, [mounted, detectedPlatform]);
+
+  // Auto-select detected platform
+  useEffect(() => {
+    if (mounted && detectedPlatform && !selectedPlatform) {
+      setSelectedPlatform(detectedPlatform as Platform);
+    }
+  }, [mounted, detectedPlatform, selectedPlatform]);
+
+  // Auto-select win arch from detection
+  useEffect(() => {
+    if (selectedPlatform === 'windows' && cpuArchitecture !== 'unknown' && !winArch) {
+      setWinArch(cpuArchitecture === 'arm64' ? 'arm64' : 'x64');
+    }
+  }, [selectedPlatform, cpuArchitecture, winArch]);
+
+  const isChineseLocale = locale === 'zh-CN' || locale === 'zh-TW';
+
+  // Determine which steps to show (defined early for use in useEffect below)
+  const showWinArchStep = selectedPlatform === 'windows';
+  const showWinFormatStep = selectedPlatform === 'windows' && winArch !== null;
+  const showSourceStep =
+    selectedPlatform !== null &&
+    (selectedPlatform !== 'windows' || (winArch !== null && winFormat !== null));
 
   const features = [
-    { icon: '📴', title: t.featureOffline, desc: t.featureOfflineDesc },
-    { icon: '🔒', title: t.featurePrivacy, desc: t.featurePrivacyDesc },
-    { icon: '🌐', title: t.featureCrossplatform, desc: t.featureCrossplatformDesc },
-    { icon: '⚡', title: t.featureAcceleration, desc: t.featureAccelerationDesc },
-    { icon: '🎨', title: t.featureMultimodal, desc: t.featureMultimodalDesc },
+    { icon: 'offline', title: t.featureOffline, desc: t.featureOfflineDesc },
+    { icon: 'privacy', title: t.featurePrivacy, desc: t.featurePrivacyDesc },
+    { icon: 'crossplatform', title: t.featureCrossplatform, desc: t.featureCrossplatformDesc },
+    { icon: 'acceleration', title: t.featureAcceleration, desc: t.featureAccelerationDesc },
+    { icon: 'multimodal', title: t.featureMultimodal, desc: t.featureMultimodalDesc },
   ];
 
-  // Only compute theme-dependent paths after mounting to avoid hydration mismatch
-  const appleLogoPath = mounted
-    ? getAppleLogoPath({ theme })
-    : getAppleLogoPath({ theme: 'light' });
-  const appStoreBadgePath = mounted
-    ? getAppStoreBadgePath({ locale, theme })
-    : getAppStoreBadgePath({ locale, theme: 'light' });
+  const appleLogoPath = mounted ? getAppleLogoPath({ theme }) : getAppleLogoPath({ theme: 'light' });
 
-  const googlePlayBadgePath = getGooglePlayBadgePath({ locale });
+  // Scroll helper
+  const scrollTo = (ref: React.RefObject<HTMLDivElement | null>) => {
+    setTimeout(() => {
+      ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+  };
 
-  // 根据设备平台获取对应的下载选项
-  const getSmartDownloadOptions = () => {
-    if (!mounted || !distributions) {
-      return null;
-    }
-    switch (platform) {
-      case 'ios':
-        return {
-          platformName: t.ios,
-          platformIcon: getAppleLogoPath({ theme }),
-          downloads: [
-            {
-              type: 'iOSTF',
-              label: t.testFlight,
-              href:
-                distributions?.[DistributionType.iOSTF]?.url ||
-                'https://testflight.apple.com/join/DaMqCNKh',
-              available: true, // TestFlight link is always available
-              version: distributions?.[DistributionType.iOSTF]?.version,
-            },
-            {
-              type: 'iOSAS',
-              label: t.appStore,
-              href:
-                distributions?.[DistributionType.iOSAS]?.url ||
-                'https://apps.apple.com/app/rwkv-chat/id6740192639',
-              badge: appStoreBadgePath,
-              available: !!distributions?.[DistributionType.iOSAS],
-              version: distributions?.[DistributionType.iOSAS]?.version,
-            },
-          ],
-        };
-      case 'android':
-        return {
-          platformName: t.android,
-          platformIcon: getPlatformIconPath({ platform: 'android' }),
-          downloads: [
-            {
-              type: 'androidHF',
-              label: 'HuggingFace',
-              href: distributions?.[DistributionType.androidHF]?.url || '#',
-              available: !!distributions?.[DistributionType.androidHF],
-              version: distributions?.[DistributionType.androidHF]?.version,
-            },
-            {
-              type: 'androidAF',
-              label: 'Aifasthub',
-              href: distributions?.[DistributionType.androidAF]?.url || '#',
-              available: !!distributions?.[DistributionType.androidAF],
-              version: distributions?.[DistributionType.androidAF]?.version,
-            },
-            {
-              type: 'androidGR',
-              label: 'GitHub Release',
-              href: distributions?.[DistributionType.androidGR]?.url || '#',
-              available: !!distributions?.[DistributionType.androidGR],
-              version: distributions?.[DistributionType.androidGR]?.version,
-            },
-            {
-              type: 'androidHFM',
-              label: 'HF-Mirror',
-              href: distributions?.[DistributionType.androidHFM]?.url || '#',
-              available: !!distributions?.[DistributionType.androidHFM],
-              version: distributions?.[DistributionType.androidHFM]?.version,
-            },
-            {
-              type: 'androidPgyer',
-              label: 'Pgyer',
-              href: distributions?.[DistributionType.androidPgyer]?.url || '#',
-              available: !!distributions?.[DistributionType.androidPgyer],
-              version: distributions?.[DistributionType.androidPgyer]?.version,
-            },
-            {
-              type: 'androidGooglePlay',
-              label: t.playStore,
-              href:
-                distributions?.[DistributionType.androidGooglePlay]?.url ||
-                'https://play.google.com/store/apps/details?id=com.rwkvzone.chat',
-              badge: googlePlayBadgePath,
-              available: !!distributions?.[DistributionType.androidGooglePlay],
-              version: distributions?.[DistributionType.androidGooglePlay]?.version,
-            },
-          ],
-        };
-      case 'windows':
-        return {
-          platformName: t.windows,
-          platformIcon: getPlatformIconPath({ platform: 'windows' }),
-          downloads: [
-            {
-              type: 'winHF',
-              label: 'Installer (HuggingFace)',
-              href: distributions?.[DistributionType.winHF]?.url || '#',
-              available: !!distributions?.[DistributionType.winHF],
-              version: distributions?.[DistributionType.winHF]?.version,
-            },
-            {
-              type: 'winAF',
-              label: 'Installer (Aifasthub)',
-              href: distributions?.[DistributionType.winAF]?.url || '#',
-              available: !!distributions?.[DistributionType.winAF],
-              version: distributions?.[DistributionType.winAF]?.version,
-            },
-            {
-              type: 'winGR',
-              label: 'Installer (GitHub Release)',
-              href: distributions?.[DistributionType.winGR]?.url || '#',
-              available: !!distributions?.[DistributionType.winGR],
-              version: distributions?.[DistributionType.winGR]?.version,
-            },
-            {
-              type: 'winHFM',
-              label: 'Installer (HF-Mirror)',
-              href: distributions?.[DistributionType.winHFM]?.url || '#',
-              available: !!distributions?.[DistributionType.winHFM],
-              version: distributions?.[DistributionType.winHFM]?.version,
-            },
-            {
-              type: 'winZipHF',
-              label: 'Zip 免安装 (HuggingFace)',
-              href: distributions?.[DistributionType.winZipHF]?.url || '#',
-              available: !!distributions?.[DistributionType.winZipHF],
-              version: distributions?.[DistributionType.winZipHF]?.version,
-            },
-            {
-              type: 'winZipAF',
-              label: 'Zip 免安装 (Aifasthub)',
-              href: distributions?.[DistributionType.winZipAF]?.url || '#',
-              available: !!distributions?.[DistributionType.winZipAF],
-              version: distributions?.[DistributionType.winZipAF]?.version,
-            },
-            {
-              type: 'winZipGR',
-              label: 'Zip 免安装 (GitHub Release)',
-              href: distributions?.[DistributionType.winZipGR]?.url || '#',
-              available: !!distributions?.[DistributionType.winZipGR],
-              version: distributions?.[DistributionType.winZipGR]?.version,
-            },
-            {
-              type: 'winZipHFM',
-              label: 'Zip 免安装 (HF-Mirror)',
-              href: distributions?.[DistributionType.winZipHFM]?.url || '#',
-              available: !!distributions?.[DistributionType.winZipHFM],
-              version: distributions?.[DistributionType.winZipHFM]?.version,
-            },
-            {
-              type: 'winArm64HF',
-              label: 'Installer ARM64 (HuggingFace)',
-              href: distributions?.[DistributionType.winArm64HF]?.url || '#',
-              available: !!distributions?.[DistributionType.winArm64HF],
-              version: distributions?.[DistributionType.winArm64HF]?.version,
-            },
-            {
-              type: 'winArm64AF',
-              label: 'Installer ARM64 (Aifasthub)',
-              href: distributions?.[DistributionType.winArm64AF]?.url || '#',
-              available: !!distributions?.[DistributionType.winArm64AF],
-              version: distributions?.[DistributionType.winArm64AF]?.version,
-            },
-            {
-              type: 'winArm64GR',
-              label: 'Installer ARM64 (GitHub Release)',
-              href: distributions?.[DistributionType.winArm64GR]?.url || '#',
-              available: !!distributions?.[DistributionType.winArm64GR],
-              version: distributions?.[DistributionType.winArm64GR]?.version,
-            },
-            {
-              type: 'winArm64HFM',
-              label: 'Installer ARM64 (HF-Mirror)',
-              href: distributions?.[DistributionType.winArm64HFM]?.url || '#',
-              available: !!distributions?.[DistributionType.winArm64HFM],
-              version: distributions?.[DistributionType.winArm64HFM]?.version,
-            },
-            {
-              type: 'winArm64ZipHF',
-              label: 'Zip 免安装 ARM64 (HuggingFace)',
-              href: distributions?.[DistributionType.winArm64ZipHF]?.url || '#',
-              available: !!distributions?.[DistributionType.winArm64ZipHF],
-              version: distributions?.[DistributionType.winArm64ZipHF]?.version,
-            },
-            {
-              type: 'winArm64ZipAF',
-              label: 'Zip 免安装 ARM64 (Aifasthub)',
-              href: distributions?.[DistributionType.winArm64ZipAF]?.url || '#',
-              available: !!distributions?.[DistributionType.winArm64ZipAF],
-              version: distributions?.[DistributionType.winArm64ZipAF]?.version,
-            },
-            {
-              type: 'winArm64ZipGR',
-              label: 'Zip 免安装 ARM64 (GitHub Release)',
-              href: distributions?.[DistributionType.winArm64ZipGR]?.url || '#',
-              available: !!distributions?.[DistributionType.winArm64ZipGR],
-              version: distributions?.[DistributionType.winArm64ZipGR]?.version,
-            },
-            {
-              type: 'winArm64ZipHFM',
-              label: 'Zip 免安装 ARM64 (HF-Mirror)',
-              href: distributions?.[DistributionType.winArm64ZipHFM]?.url || '#',
-              available: !!distributions?.[DistributionType.winArm64ZipHFM],
-              version: distributions?.[DistributionType.winArm64ZipHFM]?.version,
-            },
-          ],
-        };
-      case 'macos':
-        return {
-          platformName: t.macos,
-          platformIcon: getAppleLogoPath({ theme }),
-          downloads: [
-            {
-              type: 'macosHF',
-              label: 'HuggingFace',
-              href: distributions?.[DistributionType.macosHF]?.url || '#',
-              available: !!distributions?.[DistributionType.macosHF],
-              version: distributions?.[DistributionType.macosHF]?.version,
-            },
-            {
-              type: 'macosAF',
-              label: 'Aifasthub',
-              href: distributions?.[DistributionType.macosAF]?.url || '#',
-              available: !!distributions?.[DistributionType.macosAF],
-              version: distributions?.[DistributionType.macosAF]?.version,
-            },
-            {
-              type: 'macosGR',
-              label: 'GitHub Release',
-              href: distributions?.[DistributionType.macosGR]?.url || '#',
-              available: !!distributions?.[DistributionType.macosGR],
-              version: distributions?.[DistributionType.macosGR]?.version,
-            },
-            {
-              type: 'macosHFM',
-              label: 'HF-Mirror',
-              href: distributions?.[DistributionType.macosHFM]?.url || '#',
-              available: !!distributions?.[DistributionType.macosHFM],
-              version: distributions?.[DistributionType.macosHFM]?.version,
-            },
-          ],
-        };
-      case 'linux':
-        return {
-          platformName: t.linux,
-          platformIcon: getPlatformIconPath({ platform: 'linux' }),
-          downloads: [
-            {
-              type: 'linuxHF',
-              label: 'tar.gz (HuggingFace)',
-              href: distributions?.[DistributionType.linuxHF]?.url || '#',
-              available: !!distributions?.[DistributionType.linuxHF],
-              version: distributions?.[DistributionType.linuxHF]?.version,
-            },
-            {
-              type: 'linuxAF',
-              label: 'tar.gz (Aifasthub)',
-              href: distributions?.[DistributionType.linuxAF]?.url || '#',
-              available: !!distributions?.[DistributionType.linuxAF],
-              version: distributions?.[DistributionType.linuxAF]?.version,
-            },
-            {
-              type: 'linuxGR',
-              label: 'tar.gz (GitHub Release)',
-              href: distributions?.[DistributionType.linuxGR]?.url || '#',
-              available: !!distributions?.[DistributionType.linuxGR],
-              version: distributions?.[DistributionType.linuxGR]?.version,
-            },
-            {
-              type: 'linuxHFM',
-              label: 'tar.gz (HF-Mirror)',
-              href: distributions?.[DistributionType.linuxHFM]?.url || '#',
-              available: !!distributions?.[DistributionType.linuxHFM],
-              version: distributions?.[DistributionType.linuxHFM]?.version,
-            },
-          ],
-        };
-      default:
-        return null;
+  // Platform selection handler
+  const handlePlatformSelect = (p: Platform) => {
+    setSelectedPlatform(p);
+    setWinArch(null);
+    setWinFormat(null);
+    setSelectedSource(null);
+    setShowMoreSources(false);
+
+    if (p === 'windows') {
+      // Auto-select arch (default to x64 if unknown)
+      const arch = cpuArchitecture === 'arm64' ? 'arm64' : 'x64';
+      setWinArch(arch);
+      // Default to installer
+      setWinFormat('installer');
+      scrollTo(step2Ref);
+    } else if (p === 'ios') {
+      // iOS goes straight to source selection (TestFlight / App Store)
+      scrollTo(step2Ref);
+    } else {
+      // android, macos, linux → go to source selection
+      scrollTo(step2Ref);
     }
   };
 
-  const smartDownloadOptions = getSmartDownloadOptions();
+  const handleWinArchSelect = (arch: WinArch) => {
+    setWinArch(arch);
+    setWinFormat(null);
+    setSelectedSource(null);
+    setShowMoreSources(false);
+    scrollTo(stepWinFormatRef);
+  };
 
-  // 判断是否为中文语言
-  const isChineseLocale = locale === 'zh-CN' || locale === 'zh-TW';
-  const shouldHideWindowsX64Destinations = platform === 'windows' && cpuArchitecture === 'arm64';
+  const handleWinFormatSelect = (fmt: WinFormat) => {
+    setWinFormat(fmt);
+    setSelectedSource(null);
+    setShowMoreSources(false);
+    scrollTo(step3Ref);
+  };
 
-  // 对下载选项进行排序（中文时将 AI FastLab 和 HF Mirror 提前）
-  const sortDownloadsForChinese = <T extends { type: string }>(downloads: T[]): T[] => {
-    if (!isChineseLocale) {
-      return downloads;
+  const handleSourceSelect = (src: DownloadSource) => {
+    setSelectedSource(src);
+    setShowMoreSources(false);
+    scrollTo(resultRef);
+  };
+
+  // Get the recommended source based on locale/region
+  const getRecommendedSource = (): DownloadSource | null => {
+    if (!selectedPlatform) return null;
+    if (selectedPlatform === 'ios') return 'TestFlight';
+    if (isChineseLocale) return 'AF';
+    return 'HF';
+  };
+
+  // Auto-select recommended source when the source step becomes visible
+  useEffect(() => {
+    if (!showSourceStep || selectedSource) return;
+    const recommended = getRecommendedSource();
+    if (recommended) {
+      setSelectedSource(recommended);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSourceStep, selectedPlatform, winArch, winFormat]);
+
+  // Get available sources for the current platform
+  const getSourceOptions = (): SourceOption[] => {
+    if (!selectedPlatform) return [];
+
+    if (selectedPlatform === 'ios') {
+      return [
+        { key: 'TestFlight', label: 'TestFlight', desc: isChineseLocale ? '抢先体验最新版本' : 'Get early access to new versions' },
+        { key: 'AppStore', label: 'App Store', desc: isChineseLocale ? '稳定正式版' : 'Stable release' },
+      ];
     }
 
-    // 创建排序函数
-    const getSortPriority = (type: string): number => {
-      // AF (Aifasthub) 和 HFM (HF-Mirror) 优先级最高
-      if (type.includes('AF')) return 1;
-      if (type.includes('HFM')) return 2;
-      // HF (HuggingFace) 和 GR (GitHub Release) 优先级较低
-      if (type.includes('HF') && !type.includes('HFM')) return 3;
-      if (type.includes('GR')) return 4;
-      // 其他选项保持原顺序
-      return 5;
+    if (selectedPlatform === 'android') {
+      const sources: SourceOption[] = isChineseLocale
+        ? [
+            { key: 'AF', label: 'AI FastLab', desc: '国内高速下载', recommended: true },
+            { key: 'HFM', label: 'HF Mirror', desc: '国内镜像' },
+            { key: 'Pgyer', label: '蒲公英', desc: '国内分发平台' },
+            { key: 'HF', label: 'HuggingFace', desc: '海外源' },
+            { key: 'GR', label: 'GitHub Release', desc: '海外源' },
+            { key: 'GooglePlay', label: 'Google Play', desc: '应用商店' },
+          ]
+        : [
+            { key: 'HF', label: 'HuggingFace', desc: 'Primary source', recommended: true },
+            { key: 'GR', label: 'GitHub Release', desc: 'Alternative source' },
+            { key: 'AF', label: 'AI FastLab', desc: 'Fast in China' },
+            { key: 'HFM', label: 'HF Mirror', desc: 'Mirror for China' },
+            { key: 'Pgyer', label: 'Pgyer', desc: 'Distribution platform' },
+            { key: 'GooglePlay', label: 'Google Play', desc: 'App store' },
+          ];
+      return sources;
+    }
+
+    // macOS, Linux, Windows all share HF/AF/GR/HFM
+    const sources: SourceOption[] = isChineseLocale
+      ? [
+          { key: 'AF', label: 'AI FastLab', desc: '国内高速下载', recommended: true },
+          { key: 'HFM', label: 'HF Mirror', desc: '国内镜像' },
+          { key: 'HF', label: 'HuggingFace', desc: '海外源' },
+          { key: 'GR', label: 'GitHub Release', desc: '海外源' },
+        ]
+      : [
+          { key: 'HF', label: 'HuggingFace', desc: 'Primary source', recommended: true },
+          { key: 'GR', label: 'GitHub Release', desc: 'Alternative source' },
+          { key: 'AF', label: 'AI FastLab', desc: 'Fast in China' },
+          { key: 'HFM', label: 'HF Mirror', desc: 'Mirror for China' },
+        ];
+    return sources;
+  };
+
+  // Resolve the final download URL
+  const getDownloadUrl = (): string | null => {
+    if (!selectedPlatform || !selectedSource || !distributions) return null;
+
+    const d = distributions;
+    const sourceMap: Record<string, Record<string, DistributionType>> = {
+      android: {
+        HF: DistributionType.androidHF,
+        AF: DistributionType.androidAF,
+        GR: DistributionType.androidGR,
+        HFM: DistributionType.androidHFM,
+        Pgyer: DistributionType.androidPgyer,
+      },
+      macos: {
+        HF: DistributionType.macosHF,
+        AF: DistributionType.macosAF,
+        GR: DistributionType.macosGR,
+        HFM: DistributionType.macosHFM,
+      },
+      linux: {
+        HF: DistributionType.linuxHF,
+        AF: DistributionType.linuxAF,
+        GR: DistributionType.linuxGR,
+        HFM: DistributionType.linuxHFM,
+      },
     };
 
-    return [...downloads].sort((a, b) => {
-      const priorityA = getSortPriority(a.type);
-      const priorityB = getSortPriority(b.type);
-      return priorityA - priorityB;
-    });
-  };
-
-  const filterWindowsDownloadsForCurrentDevice = <T extends { type: string }>(downloads: T[]): T[] => {
-    if (!shouldHideWindowsX64Destinations) {
-      return downloads;
+    // iOS special cases
+    if (selectedPlatform === 'ios') {
+      if (selectedSource === 'TestFlight') {
+        return d[DistributionType.iOSTF]?.url || 'https://testflight.apple.com/join/DaMqCNKh';
+      }
+      if (selectedSource === 'AppStore') {
+        return d[DistributionType.iOSAS]?.url || 'https://apps.apple.com/app/rwkv-chat/id6740192639';
+      }
+      return null;
     }
-    return downloads.filter((download) => download.type.toLowerCase().includes('arm64'));
-  };
 
-  // 滚动到所有平台区域
-  const scrollToAllPlatforms = () => {
-    if (allPlatformsRef.current) {
-      allPlatformsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Android special cases
+    if (selectedPlatform === 'android') {
+      if (selectedSource === 'GooglePlay') {
+        return d[DistributionType.androidGooglePlay]?.url || 'https://play.google.com/store/apps/details?id=com.rwkvzone.chat';
+      }
+      const type = sourceMap.android[selectedSource];
+      return type ? d[type]?.url || null : null;
     }
+
+    // Windows
+    if (selectedPlatform === 'windows' && winArch && winFormat) {
+      const winKey = winArch === 'arm64'
+        ? (winFormat === 'zip'
+          ? { HF: DistributionType.winArm64ZipHF, AF: DistributionType.winArm64ZipAF, GR: DistributionType.winArm64ZipGR, HFM: DistributionType.winArm64ZipHFM }
+          : { HF: DistributionType.winArm64HF, AF: DistributionType.winArm64AF, GR: DistributionType.winArm64GR, HFM: DistributionType.winArm64HFM })
+        : (winFormat === 'zip'
+          ? { HF: DistributionType.winZipHF, AF: DistributionType.winZipAF, GR: DistributionType.winZipGR, HFM: DistributionType.winZipHFM }
+          : { HF: DistributionType.winHF, AF: DistributionType.winAF, GR: DistributionType.winGR, HFM: DistributionType.winHFM });
+      const type = winKey[selectedSource as keyof typeof winKey];
+      return type ? d[type]?.url || null : null;
+    }
+
+    // macOS, Linux
+    if (selectedPlatform === 'macos' || selectedPlatform === 'linux') {
+      const type = sourceMap[selectedPlatform]?.[selectedSource];
+      return type ? d[type]?.url || null : null;
+    }
+
+    return null;
   };
 
-  const platforms = {
-    mobile: [
-      {
-        name: t.android,
-        icon: '/images/platforms/android.svg',
-        minOs: t.androidRequirement,
-        downloads: [
-          {
-            type: 'androidHF',
-            label: 'HuggingFace',
-            href: distributions?.[DistributionType.androidHF]?.url || '#',
-            available: !!distributions?.[DistributionType.androidHF],
-            version: distributions?.[DistributionType.androidHF]?.version,
-          },
-          {
-            type: 'androidAF',
-            label: 'Aifasthub',
-            href: distributions?.[DistributionType.androidAF]?.url || '#',
-            available: !!distributions?.[DistributionType.androidAF],
-            version: distributions?.[DistributionType.androidAF]?.version,
-          },
-          {
-            type: 'androidGR',
-            label: 'GitHub Release',
-            href: distributions?.[DistributionType.androidGR]?.url || '#',
-            available: !!distributions?.[DistributionType.androidGR],
-            version: distributions?.[DistributionType.androidGR]?.version,
-          },
-          {
-            type: 'androidHFM',
-            label: 'HF-Mirror',
-            href: distributions?.[DistributionType.androidHFM]?.url || '#',
-            available: !!distributions?.[DistributionType.androidHFM],
-            version: distributions?.[DistributionType.androidHFM]?.version,
-          },
-          {
-            type: 'androidPgyer',
-            label: 'Pgyer',
-            href: distributions?.[DistributionType.androidPgyer]?.url || '#',
-            available: !!distributions?.[DistributionType.androidPgyer],
-            version: distributions?.[DistributionType.androidPgyer]?.version,
-          },
-          {
-            type: 'androidGooglePlay',
-            label: t.playStore,
-            href:
-              distributions?.[DistributionType.androidGooglePlay]?.url ||
-              'https://play.google.com/store/apps/details?id=com.rwkvzone.chat',
-            badge: googlePlayBadgePath,
-            available: !!distributions?.[DistributionType.androidGooglePlay],
-            version: distributions?.[DistributionType.androidGooglePlay]?.version,
-          },
-        ],
-      },
-      {
-        name: t.ios,
-        icon: appleLogoPath,
-        minOs: t.iosRequirement,
-        downloads: [
-          {
-            type: 'iOSTF',
-            label: t.testFlight,
-            href:
-              distributions?.[DistributionType.iOSTF]?.url ||
-              'https://testflight.apple.com/join/DaMqCNKh',
-            available: true, // TestFlight link is always available
-            version: distributions?.[DistributionType.iOSTF]?.version,
-          },
-          {
-            type: 'iOSAS',
-            label: t.appStore,
-            href:
-              distributions?.[DistributionType.iOSAS]?.url ||
-              'https://apps.apple.com/app/rwkv-chat/id6740192639',
-            badge: appStoreBadgePath,
-            available: !!distributions?.[DistributionType.iOSAS],
-            version: distributions?.[DistributionType.iOSAS]?.version,
-          },
-        ],
-      },
-    ],
-    desktop: [
-      {
-        name: t.macos,
-        icon: appleLogoPath,
-        minOs: t.macosRequirement,
-        downloads: [
-          {
-            type: 'macosHF',
-            label: 'HuggingFace',
-            href: distributions?.[DistributionType.macosHF]?.url || '#',
-            available: !!distributions?.[DistributionType.macosHF],
-            version: distributions?.[DistributionType.macosHF]?.version,
-          },
-          {
-            type: 'macosAF',
-            label: 'Aifasthub',
-            href: distributions?.[DistributionType.macosAF]?.url || '#',
-            available: !!distributions?.[DistributionType.macosAF],
-            version: distributions?.[DistributionType.macosAF]?.version,
-          },
-          {
-            type: 'macosGR',
-            label: 'GitHub Release',
-            href: distributions?.[DistributionType.macosGR]?.url || '#',
-            available: !!distributions?.[DistributionType.macosGR],
-            version: distributions?.[DistributionType.macosGR]?.version,
-          },
-          {
-            type: 'macosHFM',
-            label: 'HF-Mirror',
-            href: distributions?.[DistributionType.macosHFM]?.url || '#',
-            available: !!distributions?.[DistributionType.macosHFM],
-            version: distributions?.[DistributionType.macosHFM]?.version,
-          },
-        ],
-      },
-      {
-        name: t.windows,
-        icon: '/images/platforms/windows-logo.png',
-        minOs: t.windowsRequirement,
-        downloads: [
-          {
-            type: 'winHF',
-            label: 'Installer (HuggingFace)',
-            href: distributions?.[DistributionType.winHF]?.url || '#',
-            available: !!distributions?.[DistributionType.winHF],
-            version: distributions?.[DistributionType.winHF]?.version,
-          },
-          {
-            type: 'winAF',
-            label: 'Installer (Aifasthub)',
-            href: distributions?.[DistributionType.winAF]?.url || '#',
-            available: !!distributions?.[DistributionType.winAF],
-            version: distributions?.[DistributionType.winAF]?.version,
-          },
-          {
-            type: 'winGR',
-            label: 'Installer (GitHub Release)',
-            href: distributions?.[DistributionType.winGR]?.url || '#',
-            available: !!distributions?.[DistributionType.winGR],
-            version: distributions?.[DistributionType.winGR]?.version,
-          },
-          {
-            type: 'winHFM',
-            label: 'Installer (HF-Mirror)',
-            href: distributions?.[DistributionType.winHFM]?.url || '#',
-            available: !!distributions?.[DistributionType.winHFM],
-            version: distributions?.[DistributionType.winHFM]?.version,
-          },
-          {
-            type: 'winZipHF',
-            label: 'Zip 免安装 (HuggingFace)',
-            href: distributions?.[DistributionType.winZipHF]?.url || '#',
-            available: !!distributions?.[DistributionType.winZipHF],
-            version: distributions?.[DistributionType.winZipHF]?.version,
-          },
-          {
-            type: 'winZipAF',
-            label: 'Zip 免安装 (Aifasthub)',
-            href: distributions?.[DistributionType.winZipAF]?.url || '#',
-            available: !!distributions?.[DistributionType.winZipAF],
-            version: distributions?.[DistributionType.winZipAF]?.version,
-          },
-          {
-            type: 'winZipGR',
-            label: 'Zip 免安装 (GitHub Release)',
-            href: distributions?.[DistributionType.winZipGR]?.url || '#',
-            available: !!distributions?.[DistributionType.winZipGR],
-            version: distributions?.[DistributionType.winZipGR]?.version,
-          },
-          {
-            type: 'winZipHFM',
-            label: 'Zip 免安装 (HF-Mirror)',
-            href: distributions?.[DistributionType.winZipHFM]?.url || '#',
-            available: !!distributions?.[DistributionType.winZipHFM],
-            version: distributions?.[DistributionType.winZipHFM]?.version,
-          },
-        ],
-        x64Downloads: [
-          {
-            type: 'winHF',
-            label: 'Installer (HuggingFace)',
-            href: distributions?.[DistributionType.winHF]?.url || '#',
-            available: !!distributions?.[DistributionType.winHF],
-            version: distributions?.[DistributionType.winHF]?.version,
-          },
-          {
-            type: 'winAF',
-            label: 'Installer (Aifasthub)',
-            href: distributions?.[DistributionType.winAF]?.url || '#',
-            available: !!distributions?.[DistributionType.winAF],
-            version: distributions?.[DistributionType.winAF]?.version,
-          },
-          {
-            type: 'winGR',
-            label: 'Installer (GitHub Release)',
-            href: distributions?.[DistributionType.winGR]?.url || '#',
-            available: !!distributions?.[DistributionType.winGR],
-            version: distributions?.[DistributionType.winGR]?.version,
-          },
-          {
-            type: 'winHFM',
-            label: 'Installer (HF-Mirror)',
-            href: distributions?.[DistributionType.winHFM]?.url || '#',
-            available: !!distributions?.[DistributionType.winHFM],
-            version: distributions?.[DistributionType.winHFM]?.version,
-          },
-          {
-            type: 'winZipHF',
-            label: 'Zip 免安装 (HuggingFace)',
-            href: distributions?.[DistributionType.winZipHF]?.url || '#',
-            available: !!distributions?.[DistributionType.winZipHF],
-            version: distributions?.[DistributionType.winZipHF]?.version,
-          },
-          {
-            type: 'winZipAF',
-            label: 'Zip 免安装 (Aifasthub)',
-            href: distributions?.[DistributionType.winZipAF]?.url || '#',
-            available: !!distributions?.[DistributionType.winZipAF],
-            version: distributions?.[DistributionType.winZipAF]?.version,
-          },
-          {
-            type: 'winZipGR',
-            label: 'Zip 免安装 (GitHub Release)',
-            href: distributions?.[DistributionType.winZipGR]?.url || '#',
-            available: !!distributions?.[DistributionType.winZipGR],
-            version: distributions?.[DistributionType.winZipGR]?.version,
-          },
-          {
-            type: 'winZipHFM',
-            label: 'Zip 免安装 (HF-Mirror)',
-            href: distributions?.[DistributionType.winZipHFM]?.url || '#',
-            available: !!distributions?.[DistributionType.winZipHFM],
-            version: distributions?.[DistributionType.winZipHFM]?.version,
-          },
-        ],
-        arm64Downloads: [
-          {
-            type: 'winArm64HF',
-            label: 'Installer (HuggingFace)',
-            href: distributions?.[DistributionType.winArm64HF]?.url || '#',
-            available: !!distributions?.[DistributionType.winArm64HF],
-            version: distributions?.[DistributionType.winArm64HF]?.version,
-          },
-          {
-            type: 'winArm64AF',
-            label: 'Installer (Aifasthub)',
-            href: distributions?.[DistributionType.winArm64AF]?.url || '#',
-            available: !!distributions?.[DistributionType.winArm64AF],
-            version: distributions?.[DistributionType.winArm64AF]?.version,
-          },
-          {
-            type: 'winArm64GR',
-            label: 'Installer (GitHub Release)',
-            href: distributions?.[DistributionType.winArm64GR]?.url || '#',
-            available: !!distributions?.[DistributionType.winArm64GR],
-            version: distributions?.[DistributionType.winArm64GR]?.version,
-          },
-          {
-            type: 'winArm64HFM',
-            label: 'Installer (HF-Mirror)',
-            href: distributions?.[DistributionType.winArm64HFM]?.url || '#',
-            available: !!distributions?.[DistributionType.winArm64HFM],
-            version: distributions?.[DistributionType.winArm64HFM]?.version,
-          },
-          {
-            type: 'winArm64ZipHF',
-            label: 'Zip 免安装 (HuggingFace)',
-            href: distributions?.[DistributionType.winArm64ZipHF]?.url || '#',
-            available: !!distributions?.[DistributionType.winArm64ZipHF],
-            version: distributions?.[DistributionType.winArm64ZipHF]?.version,
-          },
-          {
-            type: 'winArm64ZipAF',
-            label: 'Zip 免安装 (Aifasthub)',
-            href: distributions?.[DistributionType.winArm64ZipAF]?.url || '#',
-            available: !!distributions?.[DistributionType.winArm64ZipAF],
-            version: distributions?.[DistributionType.winArm64ZipAF]?.version,
-          },
-          {
-            type: 'winArm64ZipGR',
-            label: 'Zip 免安装 (GitHub Release)',
-            href: distributions?.[DistributionType.winArm64ZipGR]?.url || '#',
-            available: !!distributions?.[DistributionType.winArm64ZipGR],
-            version: distributions?.[DistributionType.winArm64ZipGR]?.version,
-          },
-          {
-            type: 'winArm64ZipHFM',
-            label: 'Zip 免安装 (HF-Mirror)',
-            href: distributions?.[DistributionType.winArm64ZipHFM]?.url || '#',
-            available: !!distributions?.[DistributionType.winArm64ZipHFM],
-            version: distributions?.[DistributionType.winArm64ZipHFM]?.version,
-          },
-        ],
-      },
-      {
-        name: t.linux,
-        icon: '/images/platforms/linux.png',
-        minOs: t.linuxRequirement,
-        downloads: [
-          {
-            type: 'linuxHF',
-            label: 'tar.gz (HuggingFace)',
-            href: distributions?.[DistributionType.linuxHF]?.url || '#',
-            available: !!distributions?.[DistributionType.linuxHF],
-            version: distributions?.[DistributionType.linuxHF]?.version,
-          },
-          {
-            type: 'linuxAF',
-            label: 'tar.gz (Aifasthub)',
-            href: distributions?.[DistributionType.linuxAF]?.url || '#',
-            available: !!distributions?.[DistributionType.linuxAF],
-            version: distributions?.[DistributionType.linuxAF]?.version,
-          },
-          {
-            type: 'linuxGR',
-            label: 'tar.gz (GitHub Release)',
-            href: distributions?.[DistributionType.linuxGR]?.url || '#',
-            available: !!distributions?.[DistributionType.linuxGR],
-            version: distributions?.[DistributionType.linuxGR]?.version,
-          },
-          {
-            type: 'linuxHFM',
-            label: 'tar.gz (HF-Mirror)',
-            href: distributions?.[DistributionType.linuxHFM]?.url || '#',
-            available: !!distributions?.[DistributionType.linuxHFM],
-            version: distributions?.[DistributionType.linuxHFM]?.version,
-          },
-        ],
-      },
-    ],
+  // Get version for current selection
+  const getDownloadVersion = (): string | null => {
+    if (!selectedPlatform || !selectedSource || !distributions) return null;
+    const url = getDownloadUrl();
+    if (!url) return null;
+
+    // Find matching distribution entry
+    for (const [, entry] of Object.entries(distributions)) {
+      if (entry && entry.url === url && entry.version) {
+        return entry.version;
+      }
+    }
+    return null;
   };
+
+  const downloadUrl = getDownloadUrl();
+  const downloadVersion = getDownloadVersion();
+
+  // Check if source is available
+  const isSourceAvailable = (src: DownloadSource): boolean => {
+    if (!distributions) return false;
+    if (selectedPlatform === 'ios') {
+      if (src === 'TestFlight') return true;
+      if (src === 'AppStore') return !!distributions[DistributionType.iOSAS];
+      return false;
+    }
+    if (selectedPlatform === 'android' && src === 'GooglePlay') {
+      return !!distributions[DistributionType.androidGooglePlay];
+    }
+    // Just check if there would be a URL
+    const d = distributions;
+    if (selectedPlatform === 'android') {
+      const map: Record<string, DistributionType> = {
+        HF: DistributionType.androidHF, AF: DistributionType.androidAF,
+        GR: DistributionType.androidGR, HFM: DistributionType.androidHFM,
+        Pgyer: DistributionType.androidPgyer,
+      };
+      return !!d[map[src]]?.url;
+    }
+    if (selectedPlatform === 'macos') {
+      const map: Record<string, DistributionType> = {
+        HF: DistributionType.macosHF, AF: DistributionType.macosAF,
+        GR: DistributionType.macosGR, HFM: DistributionType.macosHFM,
+      };
+      return !!d[map[src]]?.url;
+    }
+    if (selectedPlatform === 'linux') {
+      const map: Record<string, DistributionType> = {
+        HF: DistributionType.linuxHF, AF: DistributionType.linuxAF,
+        GR: DistributionType.linuxGR, HFM: DistributionType.linuxHFM,
+      };
+      return !!d[map[src]]?.url;
+    }
+    if (selectedPlatform === 'windows' && winArch && winFormat) {
+      const winKey = winArch === 'arm64'
+        ? (winFormat === 'zip'
+          ? { HF: DistributionType.winArm64ZipHF, AF: DistributionType.winArm64ZipAF, GR: DistributionType.winArm64ZipGR, HFM: DistributionType.winArm64ZipHFM }
+          : { HF: DistributionType.winArm64HF, AF: DistributionType.winArm64AF, GR: DistributionType.winArm64GR, HFM: DistributionType.winArm64HFM })
+        : (winFormat === 'zip'
+          ? { HF: DistributionType.winZipHF, AF: DistributionType.winZipAF, GR: DistributionType.winZipGR, HFM: DistributionType.winZipHFM }
+          : { HF: DistributionType.winHF, AF: DistributionType.winAF, GR: DistributionType.winGR, HFM: DistributionType.winHFM });
+      const type = winKey[src as keyof typeof winKey];
+      return type ? !!d[type]?.url : false;
+    }
+    return false;
+  };
+
+  // Platform display data
+  const platformOptions: { key: Platform; label: string; icon: string }[] = [
+    { key: 'android', label: 'Android', icon: getPlatformIconPath({ platform: 'android' }) },
+    { key: 'ios', label: 'iOS', icon: appleLogoPath },
+    { key: 'windows', label: 'Windows', icon: '/images/platforms/windows-logo.png' },
+    { key: 'macos', label: 'macOS', icon: appleLogoPath },
+    { key: 'linux', label: 'Linux', icon: '/images/platforms/linux.png' },
+  ];
+
+  const showResult = selectedSource !== null && downloadUrl !== null;
+
 
   return (
     <main className={styles.main}>
-      {/* Toolbar */}
-      <div className={styles.toolbar}>
-        <LanguageSwitcher />
-        <ThemeSwitcher />
-        <ReleaseNotesLink />
-        <GitHubLink />
+      {/* Navbar — floating frosted glass */}
+      <div className={styles.navbarWrap}>
+        <nav className={styles.navbar}>
+          <div className={styles.navLeft}>
+            <Image
+              src={getAppIconPath()}
+              alt={t.appName}
+              width={32}
+              height={32}
+              className={styles.navLogo}
+              priority
+            />
+            <span className={styles.navTitle}>{t.appName}</span>
+          </div>
+          <div className={styles.navRight}>
+            <LanguageSwitcher />
+            <ThemeSwitcher />
+            <ReleaseNotesLink />
+            <GitHubLink />
+          </div>
+        </nav>
       </div>
 
       <div className={styles.container}>
         {/* Hero Section */}
         <section className={styles.hero}>
-          <div className={styles.heroIcon}>
-            <Image
-              src={getAppIconPath()}
-              alt={t.appName}
-              width={120}
-              height={120}
-              className={styles.appIconImage}
-              priority
-            />
-          </div>
-          <h1 className={styles.appName}>{t.appName}</h1>
-          <p className={styles.tagline}>{t.appTagline}</p>
-          <p className={styles.description}>{t.appDescription}</p>
+          <h1 className={styles.heroTitle}>
+            {isChineseLocale ? `${t.downloadNow} ${t.appName}` : `Download ${t.appName}`}
+          </h1>
+          <p className={styles.heroTagline}>{t.appTagline}</p>
         </section>
 
-        {/* Smart Download Section */}
-        {mounted && smartDownloadOptions && (
-          <section className={styles.smartDownloadSection}>
-            <div className={styles.smartDownloadContent}>
-              <div className={styles.smartDownloadHeader}>
-                <Image
-                  key={`${smartDownloadOptions.platformIcon}-${theme}`}
-                  src={smartDownloadOptions.platformIcon}
-                  alt={smartDownloadOptions.platformName}
-                  width={32}
-                  height={32}
-                  className={styles.smartDownloadPlatformIcon}
-                />
-                <h2 className={styles.smartDownloadTitle}>{t.smartDownload}</h2>
-              </div>
-              <p className={styles.smartDownloadDesc}>{t.downloadForYourDevice}</p>
-              {isChineseLocale && t.chinaDownloadRecommendation && (
-                <p className={styles.chinaDownloadRecommendation}>
-                  {t.chinaDownloadRecommendation}
-                </p>
-              )}
-              <div className={styles.smartDownloadButtons}>
-                {sortDownloadsForChinese(
-                  platform === 'windows'
-                    ? filterWindowsDownloadsForCurrentDevice(smartDownloadOptions.downloads)
-                    : smartDownloadOptions.downloads,
-                ).map((download) => {
-                  const isAvailable = download.available !== false;
-                  const version = download.version;
-                  // Display version if it exists and is not empty, even if it's "latest"
-                  const displayVersion = version && version.trim() !== '' ? version : null;
-                  // For non-badge buttons, include version in label if available and not "latest"
-                  const displayLabel =
-                    !download.badge && version && version !== 'latest'
-                      ? `${download.label} (${version})`
-                      : download.label;
-                  return (
-                    <div key={download.type} className={download.badge ? styles.badgeWrapper : ''}>
-                      <a
-                        href={isAvailable && download.href !== '#' ? download.href : '#'}
-                        className={`${styles.downloadButton} ${download.badge ? styles.badgeButton : ''} ${!isAvailable ? styles.disabled : ''}`}
-                        target={
-                          isAvailable && download.href.startsWith('http') ? '_blank' : undefined
-                        }
-                        rel={
-                          isAvailable && download.href.startsWith('http')
-                            ? 'noopener noreferrer'
-                            : undefined
-                        }
-                        onClick={(e) => {
-                          if (!isAvailable || download.href === '#') {
-                            e.preventDefault();
-                          }
-                        }}
-                        style={!isAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
-                      >
-                        {download.badge ? (
-                          <Image
-                            src={download.badge}
-                            alt={download.label}
-                            width={155}
-                            height={60}
-                            className={styles.badgeImage}
-                            unoptimized
-                          />
-                        ) : (
-                          <>
-                            <span>{displayLabel}</span>
-                            {isAvailable && (
-                              <svg
-                                className={styles.arrowIcon}
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <line x1="5" y1="12" x2="19" y2="12" />
-                                <polyline points="12 5 19 12 12 19" />
-                              </svg>
-                            )}
-                          </>
-                        )}
-                      </a>
-                      {download.badge && displayVersion && (
-                        <div className={styles.badgeVersion}>{displayVersion}</div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              <button
-                onClick={scrollToAllPlatforms}
-                className={styles.otherPlatformsButton}
-                type="button"
-              >
-                {t.downloadOtherPlatforms}
-                <svg
-                  className={styles.arrowIcon}
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+        {/* Wizard */}
+        <div className={styles.wizard}>
+          {/* Step 1: Choose Platform */}
+          <div className={styles.wizardStep}>
+            <div className={styles.stepHeader}>
+              <StepIcon name="platform" />
+              <h2 className={styles.stepTitle}>
+                {isChineseLocale ? '选择你的平台' : 'Choose your platform'}
+              </h2>
+            </div>
+            <div className={styles.platformGrid}>
+              {platformOptions.map((p) => (
+                <button
+                  key={p.key}
+                  className={`${styles.optionCard} ${selectedPlatform === p.key ? styles.optionCardSelected : ''}`}
+                  onClick={() => handlePlatformSelect(p.key)}
+                  type="button"
                 >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <polyline points="19 12 12 19 5 12" />
-                </svg>
-              </button>
+                  <Image
+                    key={`${p.icon}-${theme}`}
+                    src={p.icon}
+                    alt={p.label}
+                    width={40}
+                    height={40}
+                    className={styles.optionIcon}
+                  />
+                  <span className={styles.optionLabel}>{p.label}</span>
+                </button>
+              ))}
             </div>
-          </section>
-        )}
+          </div>
 
-        {/* All Platforms Section */}
-        <div ref={allPlatformsRef}>
-          {/* Download Section - Mobile */}
-          <section className={styles.downloadSection}>
-            <div className={styles.downloadContent}>
-              <div className={styles.downloadText}>
-                <h2 className={styles.downloadTitle}>{t.mobile}</h2>
-                <p className={styles.downloadDesc}>{t.mobileDesc}</p>
-                <div className={styles.downloadButtons}>
-                  {platforms.mobile.map((platform) => (
-                    <div key={platform.name} className={styles.platformGroup}>
-                      <div className={styles.platformLabel}>
-                        <Image
-                          key={`${platform.icon}-${theme}`}
-                          src={platform.icon}
-                          alt={platform.name}
-                          width={16}
-                          height={16}
-                          className={styles.platformIcon}
-                        />
-                        <span>
-                          {platform.name}
-                          {platform.minOs && (
-                            <span className={styles.platformMinOs}> · {platform.minOs}</span>
-                          )}
-                        </span>
-                      </div>
-                      <div className={styles.platformGroupButtons}>
-                        {sortDownloadsForChinese(platform.downloads).map((download) => {
-                          const isAvailable = (download as any).available !== false;
-                          const version = (download as any).version;
-                          const displayLabel =
-                            version && version !== 'latest'
-                              ? `${download.label} (${version})`
-                              : download.label;
-                          // Display version if it exists and is not empty, even if it's "latest"
-                          const displayVersion = version && version.trim() !== '' ? version : null;
-
-                          return (
-                            <div
-                              key={download.type}
-                              className={download.badge ? styles.badgeWrapper : ''}
-                            >
-                              <a
-                                href={isAvailable && download.href !== '#' ? download.href : '#'}
-                                className={`${styles.downloadButton} ${download.badge ? styles.badgeButton : ''} ${!isAvailable ? styles.disabled : ''}`}
-                                target={
-                                  isAvailable && download.href.startsWith('http')
-                                    ? '_blank'
-                                    : undefined
-                                }
-                                rel={
-                                  isAvailable && download.href.startsWith('http')
-                                    ? 'noopener noreferrer'
-                                    : undefined
-                                }
-                                onClick={(e) => {
-                                  if (!isAvailable || download.href === '#') {
-                                    e.preventDefault();
-                                  }
-                                }}
-                                style={
-                                  !isAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : undefined
-                                }
-                              >
-                                {download.badge ? (
-                                  <Image
-                                    src={download.badge}
-                                    alt={download.label}
-                                    width={155}
-                                    height={60}
-                                    className={styles.badgeImage}
-                                    unoptimized
-                                  />
-                                ) : (
-                                  <>
-                                    <span>{displayLabel}</span>
-                                    {isAvailable && (
-                                      <svg
-                                        className={styles.arrowIcon}
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      >
-                                        <line x1="5" y1="12" x2="19" y2="12" />
-                                        <polyline points="12 5 19 12 12 19" />
-                                      </svg>
-                                    )}
-                                  </>
-                                )}
-                              </a>
-                              {download.badge && displayVersion && (
-                                <div className={styles.badgeVersion}>{displayVersion}</div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+          {/* Step 2 (Windows only): Choose Architecture */}
+          {showWinArchStep && (
+            <div className={styles.wizardStep} ref={step2Ref}>
+              <div className={styles.stepHeader}>
+                <StepIcon name="arch" />
+                <h2 className={styles.stepTitle}>
+                  {isChineseLocale ? '选择处理器架构' : 'Choose architecture'}
+                </h2>
+              </div>
+              <div className={styles.optionRow}>
+                <button
+                  className={`${styles.optionCard} ${styles.optionCardWide} ${winArch === 'x64' ? styles.optionCardSelected : ''}`}
+                  onClick={() => handleWinArchSelect('x64')}
+                  type="button"
+                >
+                  <span className={styles.optionLabel}>x64</span>
+                  <span className={styles.optionDesc}>Intel / AMD</span>
+                </button>
+                <button
+                  className={`${styles.optionCard} ${styles.optionCardWide} ${winArch === 'arm64' ? styles.optionCardSelected : ''}`}
+                  onClick={() => handleWinArchSelect('arm64')}
+                  type="button"
+                >
+                  <span className={styles.optionLabel}>ARM64</span>
+                  <span className={styles.optionDesc}>Snapdragon / Qualcomm</span>
+                </button>
               </div>
             </div>
-          </section>
+          )}
 
-          {/* Download Section - Desktop */}
-          <section className={styles.downloadSection}>
-            <div className={styles.downloadContent}>
-              <div className={styles.downloadText}>
-                <h2 className={styles.downloadTitle}>{t.desktop}</h2>
-                <p className={styles.downloadDesc}>{t.desktopDesc}</p>
-                <div className={styles.downloadButtons}>
-                  {platforms.desktop.map((platform) => {
-                    const platformWithSubsections = platform as any;
-                    const hasSubsections =
-                      platformWithSubsections.x64Downloads &&
-                      platformWithSubsections.arm64Downloads;
-                    const hideX64Subsection =
-                      hasSubsections && shouldHideWindowsX64Destinations;
+          {/* Step 3 (Windows only): Choose Format */}
+          {showWinFormatStep && (
+            <div className={styles.wizardStep} ref={stepWinFormatRef}>
+              <div className={styles.stepHeader}>
+                <StepIcon name="format" />
+                <h2 className={styles.stepTitle}>
+                  {isChineseLocale ? '选择安装方式' : 'Choose install type'}
+                </h2>
+              </div>
+              <div className={styles.optionRow}>
+                <button
+                  className={`${styles.optionCard} ${styles.optionCardWide} ${winFormat === 'installer' ? styles.optionCardSelected : ''}`}
+                  onClick={() => handleWinFormatSelect('installer')}
+                  type="button"
+                >
+                  <span className={styles.optionLabel}>{t.installer}</span>
+                  <span className={styles.optionDesc}>{isChineseLocale ? '推荐，自动安装' : 'Recommended, auto install'}</span>
+                </button>
+                <button
+                  className={`${styles.optionCard} ${styles.optionCardWide} ${winFormat === 'zip' ? styles.optionCardSelected : ''}`}
+                  onClick={() => handleWinFormatSelect('zip')}
+                  type="button"
+                >
+                  <span className={styles.optionLabel}>{t.zip}</span>
+                  <span className={styles.optionDesc}>{isChineseLocale ? '免安装，解压即用' : 'Portable, no install needed'}</span>
+                </button>
+              </div>
+            </div>
+          )}
 
+          {/* Download Result + Source Selection */}
+          {showSourceStep && (
+            <div className={styles.wizardStep} ref={selectedPlatform === 'windows' ? step3Ref : step2Ref}>
+              <div className={styles.stepHeader}>
+                <StepIcon name="download" />
+                <h2 className={styles.stepTitle}>
+                  {isChineseLocale ? '下载' : 'Download'}
+                </h2>
+              </div>
+
+              {/* Download button + current source */}
+              {selectedSource && (
+                <div className={styles.downloadResultBlock} ref={resultRef}>
+                  {downloadUrl ? (
+                    <a
+                      href={downloadUrl}
+                      className={styles.bigDownloadBtn}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <svg className={styles.bigDownloadIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                      </svg>
+                      <span>{isChineseLocale ? '立即下载' : 'Download Now'}</span>
+                    </a>
+                  ) : (
+                    <span className={`${styles.bigDownloadBtn} ${styles.bigDownloadBtnDisabled}`}>
+                      <svg className={styles.bigDownloadIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                      </svg>
+                      <span>{loading ? (isChineseLocale ? '加载中...' : 'Loading...') : (isChineseLocale ? '暂无下载链接' : 'No download link available')}</span>
+                    </span>
+                  )}
+                  <p className={styles.currentSourceText}>
+                    {isChineseLocale ? '下载源：' : 'Source: '}
+                    <strong>{getSourceOptions().find(s => s.key === selectedSource)?.label}</strong>
+                    {downloadVersion && downloadVersion !== 'latest' && (
+                      <span className={styles.versionInline}> &middot; v{downloadVersion}</span>
+                    )}
+                  </p>
+                </div>
+              )}
+
+              {/* Toggle for other sources */}
+              {getSourceOptions().length > 1 && (
+                <button
+                  className={styles.toggleSourcesBtn}
+                  onClick={() => setShowMoreSources(!showMoreSources)}
+                  type="button"
+                >
+                  <span>{isChineseLocale ? (showMoreSources ? '收起其他下载源' : '切换其他下载源') : (showMoreSources ? 'Hide other sources' : 'Switch download source')}</span>
+                  <svg
+                    className={`${styles.toggleChevron} ${showMoreSources ? styles.toggleChevronOpen : ''}`}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+              )}
+
+              {/* Expanded sources */}
+              {showMoreSources && (
+                <div className={styles.sourceGrid}>
+                  {getSourceOptions().map((src) => {
+                    const available = isSourceAvailable(src.key);
                     return (
-                      <div key={platform.name} className={styles.platformGroup}>
-                        <div className={styles.platformLabel}>
-                          <Image
-                            key={`${platform.icon}-${theme}`}
-                            src={platform.icon}
-                            alt={platform.name}
-                            width={16}
-                            height={16}
-                            className={styles.platformIcon}
-                          />
-                          <span>
-                            {platform.name}
-                            {platform.minOs && (
-                              <span className={styles.platformMinOs}> · {platform.minOs}</span>
-                            )}
-                          </span>
+                      <button
+                        key={src.key}
+                        className={`${styles.sourceCard} ${selectedSource === src.key ? styles.sourceCardSelected : ''} ${!available ? styles.sourceCardDisabled : ''}`}
+                        onClick={() => available && handleSourceSelect(src.key)}
+                        type="button"
+                        disabled={!available}
+                      >
+                        <div className={styles.sourceCardTop}>
+                          <span className={styles.sourceLabel}>{src.label}</span>
+                          {src.recommended && (
+                            <span className={styles.recommendedBadge}>
+                              {isChineseLocale ? '推荐' : 'Recommended'}
+                            </span>
+                          )}
                         </div>
-                        {hasSubsections ? (
-                          <>
-                            {/* x64/x86 Subsection */}
-                            {!hideX64Subsection && (
-                              <div className={styles.platformSubsection}>
-                                <div className={styles.platformSubsectionTitle}>x64</div>
-                                <div className={styles.platformGroupButtons}>
-                                  {sortDownloadsForChinese(platformWithSubsections.x64Downloads).map(
-                                    (download: any) => {
-                                      const isAvailable = download.available !== false;
-                                      const version = download.version;
-                                      const displayLabel =
-                                        version && version !== 'latest'
-                                          ? `${download.label} (${version})`
-                                          : download.label;
-
-                                      return (
-                                        <a
-                                          key={download.type}
-                                          href={
-                                            isAvailable && download.href !== '#'
-                                              ? download.href
-                                              : '#'
-                                          }
-                                          className={`${styles.downloadButton} ${!isAvailable ? styles.disabled : ''}`}
-                                          target={
-                                            isAvailable && download.href.startsWith('http')
-                                              ? '_blank'
-                                              : undefined
-                                          }
-                                          rel={
-                                            isAvailable && download.href.startsWith('http')
-                                              ? 'noopener noreferrer'
-                                              : undefined
-                                          }
-                                          onClick={(e) => {
-                                            if (!isAvailable || download.href === '#') {
-                                              e.preventDefault();
-                                            }
-                                          }}
-                                          style={
-                                            !isAvailable
-                                              ? { opacity: 0.5, cursor: 'not-allowed' }
-                                              : undefined
-                                          }
-                                        >
-                                          <span>{displayLabel}</span>
-                                          {isAvailable && (
-                                            <svg
-                                              className={styles.arrowIcon}
-                                              viewBox="0 0 24 24"
-                                              fill="none"
-                                              stroke="currentColor"
-                                              strokeWidth="2"
-                                              strokeLinecap="round"
-                                              strokeLinejoin="round"
-                                            >
-                                              <line x1="5" y1="12" x2="19" y2="12" />
-                                              <polyline points="12 5 19 12 12 19" />
-                                            </svg>
-                                          )}
-                                        </a>
-                                      );
-                                    },
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                            {/* ARM64 Subsection */}
-                            <div className={styles.platformSubsection}>
-                              <div className={styles.platformSubsectionTitle}>ARM64</div>
-                              <div className={styles.platformGroupButtons}>
-                                {sortDownloadsForChinese(
-                                  platformWithSubsections.arm64Downloads,
-                                ).map((download: any) => {
-                                  const isAvailable = download.available !== false;
-                                  const version = download.version;
-                                  const displayLabel =
-                                    version && version !== 'latest'
-                                      ? `${download.label} (${version})`
-                                      : download.label;
-
-                                  return (
-                                    <a
-                                      key={download.type}
-                                      href={
-                                        isAvailable && download.href !== '#' ? download.href : '#'
-                                      }
-                                      className={`${styles.downloadButton} ${!isAvailable ? styles.disabled : ''}`}
-                                      target={
-                                        isAvailable && download.href.startsWith('http')
-                                          ? '_blank'
-                                          : undefined
-                                      }
-                                      rel={
-                                        isAvailable && download.href.startsWith('http')
-                                          ? 'noopener noreferrer'
-                                          : undefined
-                                      }
-                                      onClick={(e) => {
-                                        if (!isAvailable || download.href === '#') {
-                                          e.preventDefault();
-                                        }
-                                      }}
-                                      style={
-                                        !isAvailable
-                                          ? { opacity: 0.5, cursor: 'not-allowed' }
-                                          : undefined
-                                      }
-                                    >
-                                      <span>{displayLabel}</span>
-                                      {isAvailable && (
-                                        <svg
-                                          className={styles.arrowIcon}
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="2"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        >
-                                          <line x1="5" y1="12" x2="19" y2="12" />
-                                          <polyline points="12 5 19 12 12 19" />
-                                        </svg>
-                                      )}
-                                    </a>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          </>
-                        ) : (
-                          <div className={styles.platformGroupButtons}>
-                            {sortDownloadsForChinese(platform.downloads).map((download) => {
-                              const isAvailable = (download as any).available !== false;
-                              const version = (download as any).version;
-                              const displayLabel =
-                                version && version !== 'latest'
-                                  ? `${download.label} (${version})`
-                                  : download.label;
-
-                              return (
-                                <a
-                                  key={download.type}
-                                  href={isAvailable && download.href !== '#' ? download.href : '#'}
-                                  className={`${styles.downloadButton} ${!isAvailable ? styles.disabled : ''}`}
-                                  target={
-                                    isAvailable && download.href.startsWith('http')
-                                      ? '_blank'
-                                      : undefined
-                                  }
-                                  rel={
-                                    isAvailable && download.href.startsWith('http')
-                                      ? 'noopener noreferrer'
-                                      : undefined
-                                  }
-                                  onClick={(e) => {
-                                    if (!isAvailable || download.href === '#') {
-                                      e.preventDefault();
-                                    }
-                                  }}
-                                  style={
-                                    !isAvailable
-                                      ? { opacity: 0.5, cursor: 'not-allowed' }
-                                      : undefined
-                                  }
-                                >
-                                  <span>{displayLabel}</span>
-                                  {isAvailable && (
-                                    <svg
-                                      className={styles.arrowIcon}
-                                      viewBox="0 0 24 24"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      strokeWidth="2"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                    >
-                                      <line x1="5" y1="12" x2="19" y2="12" />
-                                      <polyline points="12 5 19 12 12 19" />
-                                    </svg>
-                                  )}
-                                </a>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
+                        <span className={styles.sourceDesc}>{src.desc}</span>
+                      </button>
                     );
                   })}
                 </div>
-              </div>
+              )}
             </div>
-          </section>
+          )}
         </div>
 
-        {/* Features Section */}
-        <section className={styles.section}>
+      </div>
+
+      {/* Features Section — surface background band */}
+      <section className={styles.sectionBand}>
+        <div className={styles.sectionInner}>
           <h2 className={styles.sectionTitle}>{t.features}</h2>
           <div className={styles.featuresGrid}>
             {features.map((feature) => (
               <div key={feature.title} className={styles.featureCard}>
-                <span className={styles.featureIcon}>{feature.icon}</span>
+                <span className={styles.featureIcon}><FeatureIcon name={feature.icon} /></span>
                 <h3 className={styles.featureTitle}>{feature.title}</h3>
                 <p className={styles.featureDesc}>{feature.desc}</p>
               </div>
             ))}
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* Open Source Section */}
-        <section className={styles.section}>
+      {/* Open Source Section — default background band */}
+      <section className={styles.sectionBandAlt}>
+        <div className={styles.sectionInner}>
           <h2 className={styles.sectionTitle}>{t.openSource}</h2>
           <p className={styles.openSourceDesc}>{t.openSourceDesc}</p>
           <a
@@ -1297,8 +771,8 @@ export default function Home() {
             </svg>
             {t.viewOnGithub}
           </a>
-        </section>
-      </div>
+        </div>
+      </section>
     </main>
   );
 }
