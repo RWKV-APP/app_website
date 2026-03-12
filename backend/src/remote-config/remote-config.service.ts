@@ -278,23 +278,44 @@ export class RemoteConfigService {
       return null;
     }
 
+    const latestFallback = records.find((record) => record.fileName === 'latest.json') ?? null;
+
     if (buildNumber !== null) {
-      const matched = records.find((record) => {
-        return record.effectiveBuild !== null && record.effectiveBuild <= buildNumber;
-      });
+      const matched = [...records]
+        .filter((record) => {
+          return record.effectiveBuild !== null && record.effectiveBuild >= buildNumber;
+        })
+        .sort((left, right) => {
+          const leftBuild = left.effectiveBuild ?? Number.POSITIVE_INFINITY;
+          const rightBuild = right.effectiveBuild ?? Number.POSITIVE_INFINITY;
+          if (leftBuild !== rightBuild) {
+            return leftBuild - rightBuild;
+          }
+          return right.createdAt.getTime() - left.createdAt.getTime();
+        })[0];
       if (matched) {
         return matched;
       }
 
-      const oldestCompatible = [...records]
+      if (latestFallback) {
+        return latestFallback;
+      }
+
+      const highestBuildSpecific = [...records]
         .filter((record) => record.effectiveBuild !== null)
-        .sort((left, right) => (left.effectiveBuild ?? 0) - (right.effectiveBuild ?? 0))[0];
-      if (oldestCompatible) {
-        return oldestCompatible;
+        .sort((left, right) => {
+          const leftBuild = left.effectiveBuild ?? Number.NEGATIVE_INFINITY;
+          const rightBuild = right.effectiveBuild ?? Number.NEGATIVE_INFINITY;
+          if (leftBuild !== rightBuild) {
+            return rightBuild - leftBuild;
+          }
+          return right.createdAt.getTime() - left.createdAt.getTime();
+        })[0];
+      if (highestBuildSpecific) {
+        return highestBuildSpecific;
       }
     }
 
-    const latestFallback = records.find((record) => record.fileName === 'latest.json');
     if (latestFallback) {
       return latestFallback;
     }
