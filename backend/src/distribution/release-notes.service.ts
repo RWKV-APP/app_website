@@ -76,6 +76,81 @@ export class ReleaseNotesService {
     return versions;
   }
 
+  private async findReleaseNotesByVersionInLanguageDir(options: {
+    fallbackVersions: string[];
+    langDir: string;
+  }): Promise<{
+    build: number;
+    version: string;
+    content: string;
+  } | null> {
+    const { fallbackVersions, langDir } = options;
+
+    await fs.access(langDir);
+
+    const files = await fs.readdir(langDir);
+    const matchingFiles: Array<{
+      fileName: string;
+      buildNumber: number;
+      version: string;
+      patch: number;
+    }> = [];
+
+    for (const file of files) {
+      const match = file.match(/^(\d+)-(.+)\.md$/);
+      if (!match) {
+        continue;
+      }
+
+      const fileBuildNumber = parseInt(match[1], 10);
+      const fileVersion = match[2];
+      if (!fallbackVersions.includes(fileVersion)) {
+        continue;
+      }
+
+      const versionMatch = fileVersion.match(/^(\d+)\.(\d+)\.(\d+)$/);
+      const patch = versionMatch ? parseInt(versionMatch[3], 10) : 0;
+
+      matchingFiles.push({
+        fileName: file,
+        buildNumber: fileBuildNumber,
+        version: fileVersion,
+        patch,
+      });
+    }
+
+    if (matchingFiles.length === 0) {
+      return null;
+    }
+
+    matchingFiles.sort((a, b) => {
+      if (a.patch !== b.patch) {
+        return b.patch - a.patch;
+      }
+      return b.buildNumber - a.buildNumber;
+    });
+
+    const bestMatch = matchingFiles[0];
+    const filePath = path.join(langDir, bestMatch.fileName);
+    const resolvedPath = path.resolve(filePath);
+    const resolvedDir = path.resolve(langDir);
+    if (!resolvedPath.startsWith(resolvedDir)) {
+      this.logger.error(`Path traversal attempt detected: ${filePath} resolves to ${resolvedPath}`);
+      return null;
+    }
+
+    const content = await fs.readFile(filePath, 'utf-8');
+    this.logger.debug(
+      `Found release notes via fallback: build ${bestMatch.buildNumber}, version ${bestMatch.version}`,
+    );
+
+    return {
+      build: bestMatch.buildNumber,
+      version: bestMatch.version,
+      content: content.trim(),
+    };
+  }
+
   /**
    * Find release notes by version with fallback
    * @param options - Options object with fallbackVersions and locale
@@ -90,160 +165,38 @@ export class ReleaseNotesService {
     content: string;
   } | null> {
     const { fallbackVersions, locale = 'zh-CN' } = options;
-
-    // Get language-specific directory
     const langDir = this.getLanguageDir(locale);
+    const fallbackLangDir = this.getLanguageDir('zh-CN');
+
     try {
-      // Check if language directory exists
       try {
-        await fs.access(langDir);
+        const result = await this.findReleaseNotesByVersionInLanguageDir({
+          fallbackVersions,
+          langDir,
+        });
+        if (result) {
+          return result;
+        }
       } catch {
-        // Language directory doesn't exist, fallback to zh-Hans
         this.logger.debug(`Language directory ${langDir} not found, falling back to zh-Hans`);
-        const fallbackLangDir = this.getLanguageDir('zh-CN');
-        try {
-          await fs.access(fallbackLangDir);
-          const files = await fs.readdir(fallbackLangDir);
-          const matchingFiles: Array<{
-            fileName: string;
-            buildNumber: number;
-            version: string;
-            patch: number;
-          }> = [];
-
-          // Scan all files and find matches
-          for (const file of files) {
-            const match = file.match(/^(\d+)-(.+)\.md$/);
-            if (match) {
-              const fileBuildNumber = parseInt(match[1], 10);
-              const fileVersion = match[2];
-
-              // Check if this version is in our fallback list
-              if (fallbackVersions.includes(fileVersion)) {
-                // Parse patch version for sorting
-                const versionMatch = fileVersion.match(/^(\d+)\.(\d+)\.(\d+)$/);
-                const patch = versionMatch ? parseInt(versionMatch[3], 10) : 0;
-
-                matchingFiles.push({
-                  fileName: file,
-                  buildNumber: fileBuildNumber,
-                  version: fileVersion,
-                  patch,
-                });
-              }
-            }
-          }
-
-          if (matchingFiles.length === 0) {
-            return null;
-          }
-
-          // Sort by patch version (descending) and then by build number (descending)
-          matchingFiles.sort((a, b) => {
-            if (a.patch !== b.patch) {
-              return b.patch - a.patch; // Higher patch first
-            }
-            return b.buildNumber - a.buildNumber; // Higher build number first
-          });
-
-          // Use the first (highest patch version) match
-          const bestMatch = matchingFiles[0];
-          const filePath = path.join(fallbackLangDir, bestMatch.fileName);
-
-          // Security check
-          const resolvedPath = path.resolve(filePath);
-          const resolvedDir = path.resolve(fallbackLangDir);
-          if (!resolvedPath.startsWith(resolvedDir)) {
-            this.logger.error(
-              `Path traversal attempt detected: ${filePath} resolves to ${resolvedPath}`,
-            );
-            return null;
-          }
-
-          const content = await fs.readFile(filePath, 'utf-8');
-
-          this.logger.debug(
-            `Found release notes via fallback: build ${bestMatch.buildNumber}, version ${bestMatch.version}`,
-          );
-
-          return {
-            build: bestMatch.buildNumber,
-            version: bestMatch.version,
-            content: content.trim(),
-          };
-        } catch {
-          return null;
-        }
       }
 
-      const files = await fs.readdir(langDir);
-      const matchingFiles: Array<{
-        fileName: string;
-        buildNumber: number;
-        version: string;
-        patch: number;
-      }> = [];
-
-      // Scan all files and find matches
-      for (const file of files) {
-        const match = file.match(/^(\d+)-(.+)\.md$/);
-        if (match) {
-          const fileBuildNumber = parseInt(match[1], 10);
-          const fileVersion = match[2];
-
-          // Check if this version is in our fallback list
-          if (fallbackVersions.includes(fileVersion)) {
-            // Parse patch version for sorting
-            const versionMatch = fileVersion.match(/^(\d+)\.(\d+)\.(\d+)$/);
-            const patch = versionMatch ? parseInt(versionMatch[3], 10) : 0;
-
-            matchingFiles.push({
-              fileName: file,
-              buildNumber: fileBuildNumber,
-              version: fileVersion,
-              patch,
-            });
-          }
-        }
-      }
-
-      if (matchingFiles.length === 0) {
+      if (locale === 'zh-CN') {
         return null;
       }
-
-      // Sort by patch version (descending) and then by build number (descending)
-      matchingFiles.sort((a, b) => {
-        if (a.patch !== b.patch) {
-          return b.patch - a.patch; // Higher patch first
-        }
-        return b.buildNumber - a.buildNumber; // Higher build number first
-      });
-
-      // Use the first (highest patch version) match
-      const bestMatch = matchingFiles[0];
-      const filePath = path.join(langDir, bestMatch.fileName);
-
-      // Security check
-      const resolvedPath = path.resolve(filePath);
-      const resolvedDir = path.resolve(langDir);
-      if (!resolvedPath.startsWith(resolvedDir)) {
-        this.logger.error(
-          `Path traversal attempt detected: ${filePath} resolves to ${resolvedPath}`,
-        );
-        return null;
-      }
-
-      const content = await fs.readFile(filePath, 'utf-8');
 
       this.logger.debug(
-        `Found release notes via fallback: build ${bestMatch.buildNumber}, version ${bestMatch.version}`,
+        `No matching fallback release notes in ${langDir}, trying zh-Hans fallback`,
       );
 
-      return {
-        build: bestMatch.buildNumber,
-        version: bestMatch.version,
-        content: content.trim(),
-      };
+      try {
+        return await this.findReleaseNotesByVersionInLanguageDir({
+          fallbackVersions,
+          langDir: fallbackLangDir,
+        });
+      } catch {
+        return null;
+      }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Error finding release notes by version: ${errorMessage}`);
