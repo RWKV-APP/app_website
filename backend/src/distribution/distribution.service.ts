@@ -20,7 +20,7 @@ export class DistributionService implements OnModuleInit {
     });
   }
 
-  @Cron('0 */30 * * * *') // Every 30 minutes
+  @Cron('0 */5 * * * *') // Every 5 minutes
   async handleCron() {
     this.logger.log('Running scheduled allInOne check...');
     try {

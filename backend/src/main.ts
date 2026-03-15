@@ -5,7 +5,7 @@ import { Logger } from '@nestjs/common';
 import * as express from 'express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   const logger = new Logger('Bootstrap');
   const host = process.env.HOST || '0.0.0.0';
   const port = Number.parseInt(process.env.PORT || '3462', 10);

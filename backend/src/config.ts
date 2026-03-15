@@ -7,6 +7,7 @@ export const Config = {
   github: {
     repo: process.env.GITHUB_REPO || 'RWKV-APP/RWKV_APP',
     token: process.env.GITHUB_TOKEN || '',
+    webhookSecret: process.env.GITHUB_WEBHOOK_SECRET || '',
   },
   pgyer: {
     apiKey: process.env.PGYER_API_KEY || '',

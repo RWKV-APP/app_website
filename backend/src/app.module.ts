@@ -13,6 +13,7 @@ import { RemoteConfigAdminController } from './remote-config/remote-config.admin
 import { AdminAuthService } from './admin-auth/admin-auth.service';
 import { AdminAuthController } from './admin-auth/admin-auth.controller';
 import { AdminAuthGuard } from './admin-auth/admin-auth.guard';
+import { WebhookController } from './webhook/webhook.controller';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
@@ -23,6 +24,7 @@ import { AdminAuthGuard } from './admin-auth/admin-auth.guard';
     RemoteConfigPublicController,
     RemoteConfigAdminController,
     AdminAuthController,
+    WebhookController,
   ],
   providers: [
     AppService,
