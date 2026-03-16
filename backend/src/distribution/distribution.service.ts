@@ -4,12 +4,16 @@ import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { DistributionType } from '../types/distribution';
 import { Config } from '../config';
+import { ReleaseNotesService } from './release-notes.service';
 
 @Injectable()
 export class DistributionService implements OnModuleInit {
   private readonly logger = new Logger(DistributionService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly releaseNotesService: ReleaseNotesService,
+  ) {}
 
   async onModuleInit() {
     this.logger.log('DistributionService initialized, scheduling allInOne...');
@@ -820,10 +824,9 @@ export class DistributionService implements OnModuleInit {
       // Use iTunes Lookup API with country=us so we get the US App Store version
       // (matches our appStoreUrl). Without country, Apple returns the store version
       // for the request's region, which can lag (e.g. 3.9.6 vs 4.0.7).
-      const response = await axios.get(
-        `https://itunes.apple.com/lookup?id=${appId}&country=us`,
-        { timeout: 10000 },
-      );
+      const response = await axios.get(`https://itunes.apple.com/lookup?id=${appId}&country=us`, {
+        timeout: 10000,
+      });
 
       if (response.data && response.data.results && response.data.results.length > 0) {
         const appInfo = response.data.results[0];
@@ -1103,7 +1106,7 @@ export class DistributionService implements OnModuleInit {
     const playStoreUrl = 'https://play.google.com/store/apps/details?id=com.rwkvzone.chat';
 
     let version = 'latest';
-    const build: number | null = null;
+    let build: number | null = null;
 
     try {
       // Try to fetch version from Play Store page
@@ -1121,101 +1124,19 @@ export class DistributionService implements OnModuleInit {
       // Try multiple patterns to extract version from HTML
       const html = response.data;
 
-      // Pattern 1: Look for version in AF_initDataCallback (Google Play Store internal data)
-      // First, try to find the pattern [["3.3.1"]] directly in the HTML
-      const directVersionMatch = html.match(/\[\["(\d+\.\d+\.\d+)"\]\]/);
-      if (directVersionMatch && directVersionMatch[1]) {
-        version = directVersionMatch[1];
-        this.logger.log(
-          `✅ Fetched Play Store version from AF_initDataCallback (direct): ${version}`,
-        );
-      } else {
-        // Try to find AF_initDataCallback and extract data field
-        const afInitDataMatch = html.match(
-          /AF_initDataCallback\s*\([^)]*data:\s*(\[[\s\S]{0,50000}\])\s*[,}]/i,
-        );
-        if (afInitDataMatch) {
-          try {
-            const dataStr = afInitDataMatch[1];
-            // Try to find version pattern in the data string
-            const versionInDataMatch = dataStr.match(/\[\["(\d+\.\d+\.\d+)"\]\]/);
-            if (versionInDataMatch && versionInDataMatch[1]) {
-              version = versionInDataMatch[1];
-              this.logger.log(`✅ Fetched Play Store version from AF_initDataCallback: ${version}`);
-            } else {
-              // Try a more flexible search for version strings
-              const flexibleVersionMatch = dataStr.match(/"(\d+\.\d+\.\d+)"/);
-              if (flexibleVersionMatch && flexibleVersionMatch[1]) {
-                version = flexibleVersionMatch[1];
-                this.logger.log(
-                  `✅ Fetched Play Store version from AF_initDataCallback (flexible): ${version}`,
-                );
-              } else {
-                // Try to parse and search recursively
-                try {
-                  const dataArray = JSON.parse(dataStr);
-                  const versionFromData = this.extractVersionFromNestedArray(dataArray);
-                  if (versionFromData) {
-                    version = versionFromData;
-                    this.logger.log(
-                      `✅ Fetched Play Store version from AF_initDataCallback (parsed): ${version}`,
-                    );
-                  }
-                } catch (parseError) {
-                  // JSON parsing failed, continue to other patterns
-                  this.logger.debug(`Failed to parse AF_initDataCallback data: ${parseError}`);
-                }
-              }
-            }
-          } catch (e) {
-            // Continue to other patterns
-            this.logger.debug(`Failed to extract from AF_initDataCallback: ${e}`);
-          }
-        }
-      }
-
-      // Pattern 2: Look for version in JSON-LD structured data
-      if (version === 'latest') {
-        const jsonLdMatch = html.match(
-          /<script[^>]*type=["']application\/ld\+json["'][^>]*>(.*?)<\/script>/is,
-        );
-        if (jsonLdMatch) {
-          try {
-            const jsonLd = JSON.parse(jsonLdMatch[1]);
-            if (jsonLd.softwareVersion) {
-              version = jsonLd.softwareVersion;
-              this.logger.log(`✅ Fetched Play Store version from JSON-LD: ${version}`);
-            }
-          } catch (e) {
-            // Continue to other patterns
-          }
-        }
-      }
-
-      // Pattern 3: Look for version in the page content
-      if (version === 'latest') {
-        const versionPatterns = [
-          /Current Version[^>]*>(\d+\.\d+\.\d+)/i,
-          /Version[^>]*>(\d+\.\d+\.\d+)/i,
-          /"version":"(\d+\.\d+\.\d+)"/i,
-          /versionCode["\s]*:["\s]*(\d+)/i,
-          /<div[^>]*>(\d+\.\d+\.\d+)<\/div>[^<]*Current Version/i,
-        ];
-
-        for (const pattern of versionPatterns) {
-          const match = html.match(pattern);
-          if (match && match[1] && match[1].length > 1) {
-            // Ensure we have a valid version (not just a single dot)
-            version = match[1];
-            this.logger.log(`✅ Fetched Play Store version from HTML: ${version}`);
-            break;
-          }
-        }
+      const parsedVersion = this.parsePlayStoreVersionFromHtml(html);
+      if (parsedVersion) {
+        version = parsedVersion;
+        this.logger.log(`✅ Fetched Play Store version from HTML: ${version}`);
       }
     } catch (error: any) {
       this.logger.warn(`Failed to fetch Play Store version: ${error.message}`);
       // Fallback to 'latest' if API call fails
     }
+
+    const resolvedMetadata = await this.resolveStoreBuildMetadata(version);
+    version = resolvedMetadata.version;
+    build = resolvedMetadata.build;
 
     await this.saveDistribution({
       type: DistributionType.androidGooglePlay,
@@ -1225,36 +1146,109 @@ export class DistributionService implements OnModuleInit {
     });
 
     this.logger.log(
-      `✅ Updated ${DistributionType.androidGooglePlay}: Google Play Store link (version: ${version})`,
+      `✅ Updated ${DistributionType.androidGooglePlay}: Google Play Store link (version: ${version}, build: ${build ?? 'null'})`,
     );
   }
 
-  /**
-   * Recursively extract version number from nested array structure
-   * Looks for patterns like [["3.3.1"]] or nested arrays containing semantic version strings
-   */
-  private extractVersionFromNestedArray(arr: any): string | null {
-    if (!Array.isArray(arr)) {
-      return null;
+  private parsePlayStoreVersionFromHtml(html: string): string | null {
+    const jsonLdMatches = html.matchAll(
+      /<script[^>]*type=["']application\/ld\+json["'][^>]*>(.*?)<\/script>/gis,
+    );
+
+    for (const match of jsonLdMatches) {
+      try {
+        const jsonLd = JSON.parse(match[1]);
+        if (
+          typeof jsonLd?.softwareVersion === 'string' &&
+          this.isSemanticVersion(jsonLd.softwareVersion)
+        ) {
+          return jsonLd.softwareVersion;
+        }
+      } catch {
+        // Ignore malformed JSON-LD blobs and continue scanning.
+      }
     }
 
-    for (const item of arr) {
-      if (typeof item === 'string') {
-        // Check if it's a semantic version pattern (e.g., "3.3.1")
-        const versionMatch = item.match(/^(\d+\.\d+\.\d+)$/);
-        if (versionMatch) {
-          return versionMatch[1];
-        }
-      } else if (Array.isArray(item)) {
-        // Recursively search in nested arrays
-        const result = this.extractVersionFromNestedArray(item);
-        if (result) {
-          return result;
-        }
+    const versionPatterns = [
+      /"softwareVersion":"(\d+\.\d+\.\d+)"/i,
+      /"versionName":"(\d+\.\d+\.\d+)"/i,
+      /itemprop=["']softwareVersion["'][^>]*>(\d+\.\d+\.\d+)/i,
+      /Current Version[\s\S]{0,120}?(\d+\.\d+\.\d+)/i,
+      /Version[\s\S]{0,120}?(\d+\.\d+\.\d+)/i,
+    ];
+
+    for (const pattern of versionPatterns) {
+      const match = html.match(pattern);
+      if (match?.[1] && this.isSemanticVersion(match[1])) {
+        return match[1];
       }
     }
 
     return null;
+  }
+
+  private isSemanticVersion(value: string): boolean {
+    return /^\d+\.\d+\.\d+$/.test(value);
+  }
+
+  private async resolveStoreBuildMetadata(version: string): Promise<{
+    version: string;
+    build: number | null;
+  }> {
+    if (this.isSemanticVersion(version)) {
+      const exactBuild = await this.getHighestKnownBuildForVersion(version);
+      if (exactBuild !== null) {
+        return { version, build: exactBuild };
+      }
+
+      const exactReleaseNote = await this.releaseNotesService.getExactReleaseNoteMetadata({
+        version,
+      });
+      if (exactReleaseNote) {
+        return {
+          version: exactReleaseNote.version,
+          build: exactReleaseNote.build,
+        };
+      }
+
+      this.logger.warn(
+        `Could not map exact build for store version ${version}, falling back to latest release notes metadata`,
+      );
+    }
+
+    const latestReleaseNote = await this.releaseNotesService.getLatestReleaseNoteMetadata();
+    if (latestReleaseNote) {
+      return {
+        version: 'latest',
+        build: latestReleaseNote.build,
+      };
+    }
+
+    return {
+      version,
+      build: null,
+    };
+  }
+
+  private async getHighestKnownBuildForVersion(version: string): Promise<number | null> {
+    try {
+      const records = await this.prisma.distribution.findMany({
+        where: {
+          version,
+          build: { not: null },
+          type: {
+            notIn: [DistributionType.androidGooglePlay, DistributionType.iOSAS],
+          },
+        },
+        orderBy: [{ build: 'desc' }, { updatedAt: 'desc' }],
+        take: 1,
+      });
+
+      return records[0]?.build ?? null;
+    } catch (error: any) {
+      this.logger.warn(`Failed to infer build from existing distributions: ${error.message}`);
+      return null;
+    }
   }
 
   /**

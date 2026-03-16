@@ -204,6 +204,40 @@ export class ReleaseNotesService {
     }
   }
 
+  async getExactReleaseNoteMetadata(options: { version: string; locale?: string }): Promise<{
+    build: number;
+    version: string;
+  } | null> {
+    const result = await this.findReleaseNotesByVersion({
+      fallbackVersions: [options.version],
+      locale: options.locale,
+    });
+
+    if (!result) {
+      return null;
+    }
+
+    return {
+      build: result.build,
+      version: result.version,
+    };
+  }
+
+  async getLatestReleaseNoteMetadata(options?: { locale?: string }): Promise<{
+    build: number;
+    version: string;
+  } | null> {
+    const releaseNotes = await this.getAllReleaseNotes(options);
+    if (releaseNotes.length === 0) {
+      return null;
+    }
+
+    return {
+      build: releaseNotes[0].build,
+      version: releaseNotes[0].version,
+    };
+  }
+
   /**
    * Get release notes for a specific build number with optional version fallback
    * @param buildNumber - The build number to get release notes for
