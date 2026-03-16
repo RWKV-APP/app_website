@@ -10,41 +10,61 @@ interface DistributionButtonsProps {
 interface DistributionButtonConfig {
   type: DistributionType;
   label: string;
-  icon: string;
+  iconType: 'apple' | 'linux' | 'windows' | 'archive' | 'phone' | 'android';
   description?: string;
+}
+
+function PlatformIcon({ type }: { type: DistributionButtonConfig['iconType'] }) {
+  const s = { width: '1.25rem', height: '1.25rem', stroke: 'currentColor', fill: 'none', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+  switch (type) {
+    case 'apple':
+      return <svg viewBox="0 0 24 24" style={s}><path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 5-4 5-8s-2.25-4-3.5-4c-1.5 0-2.5 1-3.5 1s-2-1-3.5-1C9.25 10 7 10.94 7 14s2 8 5 6.94z" /><path d="M12 2c1.5 0 3 1.5 3 3-1.5 0-3-1.5-3-3z" /></svg>;
+    case 'linux':
+      return <svg viewBox="0 0 24 24" style={s}><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /></svg>;
+    case 'windows':
+      return <svg viewBox="0 0 24 24" style={s}><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="12" y1="3" x2="12" y2="21" /><line x1="3" y1="12" x2="21" y2="12" /></svg>;
+    case 'archive':
+      return <svg viewBox="0 0 24 24" style={s}><path d="M21 8v13H3V8" /><path d="M1 3h22v5H1z" /><path d="M10 12h4" /></svg>;
+    case 'phone':
+      return <svg viewBox="0 0 24 24" style={s}><rect x="5" y="2" width="14" height="20" rx="2" ry="2" /><line x1="12" y1="18" x2="12.01" y2="18" /></svg>;
+    case 'android':
+      return <svg viewBox="0 0 24 24" style={s}><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /><line x1="9" y1="4" x2="7" y2="2" /><line x1="15" y1="4" x2="17" y2="2" /></svg>;
+    default:
+      return null;
+  }
 }
 
 const distributionConfigs: DistributionButtonConfig[] = [
   // macOS
-  { type: DistributionType.macosHF, label: 'macOS (HuggingFace)', icon: '🍎' },
-  { type: DistributionType.macosAF, label: 'macOS (Aifasthub)', icon: '🍎' },
-  { type: DistributionType.macosGR, label: 'macOS (GitHub Release)', icon: '🍎' },
-  { type: DistributionType.macosHFM, label: 'macOS (HF-Mirror)', icon: '🍎' },
+  { type: DistributionType.macosHF, label: 'macOS (HuggingFace)', iconType: 'apple' },
+  { type: DistributionType.macosAF, label: 'macOS (Aifasthub)', iconType: 'apple' },
+  { type: DistributionType.macosGR, label: 'macOS (GitHub Release)', iconType: 'apple' },
+  { type: DistributionType.macosHFM, label: 'macOS (HF-Mirror)', iconType: 'apple' },
   // Linux
-  { type: DistributionType.linuxHF, label: 'Linux (HuggingFace)', icon: '🐧' },
-  { type: DistributionType.linuxAF, label: 'Linux (Aifasthub)', icon: '🐧' },
-  { type: DistributionType.linuxGR, label: 'Linux (GitHub Release)', icon: '🐧' },
-  { type: DistributionType.linuxHFM, label: 'Linux (HF-Mirror)', icon: '🐧' },
+  { type: DistributionType.linuxHF, label: 'Linux (HuggingFace)', iconType: 'linux' },
+  { type: DistributionType.linuxAF, label: 'Linux (Aifasthub)', iconType: 'linux' },
+  { type: DistributionType.linuxGR, label: 'Linux (GitHub Release)', iconType: 'linux' },
+  { type: DistributionType.linuxHFM, label: 'Linux (HF-Mirror)', iconType: 'linux' },
   // Windows Installer
-  { type: DistributionType.winHF, label: 'Windows Installer (HuggingFace)', icon: '🪟' },
-  { type: DistributionType.winAF, label: 'Windows Installer (Aifasthub)', icon: '🪟' },
-  { type: DistributionType.winGR, label: 'Windows Installer (GitHub Release)', icon: '🪟' },
-  { type: DistributionType.winHFM, label: 'Windows Installer (HF-Mirror)', icon: '🪟' },
+  { type: DistributionType.winHF, label: 'Windows Installer (HuggingFace)', iconType: 'windows' },
+  { type: DistributionType.winAF, label: 'Windows Installer (Aifasthub)', iconType: 'windows' },
+  { type: DistributionType.winGR, label: 'Windows Installer (GitHub Release)', iconType: 'windows' },
+  { type: DistributionType.winHFM, label: 'Windows Installer (HF-Mirror)', iconType: 'windows' },
   // Windows Zip
-  { type: DistributionType.winZipHF, label: 'Windows Zip (HuggingFace)', icon: '📦' },
-  { type: DistributionType.winZipAF, label: 'Windows Zip (Aifasthub)', icon: '📦' },
-  { type: DistributionType.winZipGR, label: 'Windows Zip (GitHub Release)', icon: '📦' },
-  { type: DistributionType.winZipHFM, label: 'Windows Zip (HF-Mirror)', icon: '📦' },
+  { type: DistributionType.winZipHF, label: 'Windows Zip (HuggingFace)', iconType: 'archive' },
+  { type: DistributionType.winZipAF, label: 'Windows Zip (Aifasthub)', iconType: 'archive' },
+  { type: DistributionType.winZipGR, label: 'Windows Zip (GitHub Release)', iconType: 'archive' },
+  { type: DistributionType.winZipHFM, label: 'Windows Zip (HF-Mirror)', iconType: 'archive' },
   // iOS
-  { type: DistributionType.iOSTF, label: 'iOS TestFlight', icon: '📱' },
-  { type: DistributionType.iOSAS, label: 'iOS App Store', icon: '📱' },
+  { type: DistributionType.iOSTF, label: 'iOS TestFlight', iconType: 'phone' },
+  { type: DistributionType.iOSAS, label: 'iOS App Store', iconType: 'phone' },
   // Android
-  { type: DistributionType.androidHF, label: 'Android APK (HuggingFace)', icon: '🤖' },
-  { type: DistributionType.androidAF, label: 'Android APK (Aifasthub)', icon: '🤖' },
-  { type: DistributionType.androidGR, label: 'Android APK (GitHub Release)', icon: '🤖' },
-  { type: DistributionType.androidHFM, label: 'Android APK (HF-Mirror)', icon: '🤖' },
-  { type: DistributionType.androidPgyer, label: 'Android (Pgyer)', icon: '🤖' },
-  { type: DistributionType.androidGooglePlay, label: 'Android (Google Play)', icon: '🤖' },
+  { type: DistributionType.androidHF, label: 'Android APK (HuggingFace)', iconType: 'android' },
+  { type: DistributionType.androidAF, label: 'Android APK (Aifasthub)', iconType: 'android' },
+  { type: DistributionType.androidGR, label: 'Android APK (GitHub Release)', iconType: 'android' },
+  { type: DistributionType.androidHFM, label: 'Android APK (HF-Mirror)', iconType: 'android' },
+  { type: DistributionType.androidPgyer, label: 'Android (Pgyer)', iconType: 'android' },
+  { type: DistributionType.androidGooglePlay, label: 'Android (Google Play)', iconType: 'android' },
 ];
 
 export function DistributionButtons({ distributions }: DistributionButtonsProps) {
@@ -77,7 +97,7 @@ export function DistributionButtons({ distributions }: DistributionButtonsProps)
               disabled={!isAvailable}
               title={isAvailable ? `Download ${versionText}` : 'Not available'}
             >
-              <span className={styles.icon}>{config.icon}</span>
+              <span className={styles.icon}><PlatformIcon type={config.iconType} /></span>
               <div className={styles.content}>
                 <div className={styles.label}>{config.label}</div>
                 <div className={styles.version}>{versionText}</div>
