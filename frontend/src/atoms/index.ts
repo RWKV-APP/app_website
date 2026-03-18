@@ -1,9 +1,35 @@
 import { atom } from 'jotai';
-import { type Locale, defaultLocale, detectLocale } from '@/i18n/locales';
+import { type Locale, defaultLocale, detectLocale, locales } from '@/i18n/locales';
 import { getTranslations, type Translations } from '@/i18n/translations';
 
 // Locale atom - initialized with default, will be updated on client
 export const localeAtom = atom<Locale>(defaultLocale);
+const LOCALE_STORAGE_KEY = 'rwkv-locale';
+
+export function getStoredLocalePreference(): Locale | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const storedLocale = localStorage.getItem(LOCALE_STORAGE_KEY);
+  if (storedLocale && locales.includes(storedLocale as Locale)) {
+    return storedLocale as Locale;
+  }
+
+  return null;
+}
+
+export function hasStoredLocalePreference(): boolean {
+  return getStoredLocalePreference() !== null;
+}
+
+export function saveLocalePreference(locale: Locale) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  localStorage.setItem(LOCALE_STORAGE_KEY, locale);
+}
 
 // Derived atom for translations
 export const translationsAtom = atom<Translations>((get) => {

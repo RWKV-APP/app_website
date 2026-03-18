@@ -23,3 +23,10 @@ export {
   publishRemoteConfigVersion,
   uploadRemoteConfig,
 } from './api';
+
+export {
+  areLatestDistributionsEqual,
+  areLocationsEqual,
+  loadHomepageCache,
+  saveHomepageCache,
+} from './homepageCache';

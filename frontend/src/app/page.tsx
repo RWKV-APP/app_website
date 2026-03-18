@@ -9,20 +9,30 @@ import {
   themeAtom,
   devicePlatformAtom,
   locationAtom,
+  hasStoredLocalePreference,
   detectLocale,
   detectCpuArchitecture,
   type CpuArchitecture,
+  type LocationInfo,
 } from '@/atoms';
 import { ThemeSwitcher, LanguageSwitcher, GitHubLink, ReleaseNotesLink } from '@/components';
 import {
+  areLatestDistributionsEqual,
+  areLocationsEqual,
   getAppleLogoPath,
   getAppIconPath,
   getPlatformIconPath,
   fetchLatestDistributions,
   fetchLocation,
+  loadHomepageCache,
+  saveHomepageCache,
 } from '@/utils';
-import { detectLocaleFromLocation, type Locale } from '@/i18n/locales';
-import { LatestDistributionsResponse, DistributionType } from '@/types/distribution';
+import { detectLocaleFromLocation, getHomePageCopy, type Locale } from '@/i18n';
+import {
+  DistributionRecord,
+  LatestDistributionsResponse,
+  DistributionType,
+} from '@/types/distribution';
 import styles from './page.module.css';
 
 // SVG feature icons — monoline, consistent weight
@@ -134,6 +144,117 @@ interface SourceOption {
   recommended?: boolean;
 }
 
+const SEMANTIC_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const TESTFLIGHT_FALLBACK_URL = 'https://testflight.apple.com/join/DaMqCNKh';
+const APP_STORE_FALLBACK_URL = 'https://apps.apple.com/app/rwkv-chat/id6740192639';
+const GOOGLE_PLAY_FALLBACK_URL = 'https://play.google.com/store/apps/details?id=com.rwkvzone.chat';
+
+function shouldPreferChinaDownloadSources(location: LocationInfo | null): boolean {
+  return location?.isMainlandChina ?? false;
+}
+
+function isOfficialStoreSource(source: DownloadSource): boolean {
+  return source === 'AppStore' || source === 'GooglePlay';
+}
+
+function getDisplaySemanticVersion(version: string | null | undefined): string | null {
+  if (!version) {
+    return null;
+  }
+
+  const normalizedVersion = version.trim().replace(/^v/i, '');
+  if (!normalizedVersion || normalizedVersion === 'latest') {
+    return null;
+  }
+
+  if (!SEMANTIC_VERSION_PATTERN.test(normalizedVersion)) {
+    return null;
+  }
+
+  return normalizedVersion;
+}
+
+function compareVersionStrings(left: string, right: string): number {
+  if (left === right) {
+    return 0;
+  }
+
+  if (left === 'latest') {
+    return 1;
+  }
+
+  if (right === 'latest') {
+    return -1;
+  }
+
+  const leftParts = left.split('.').map((part) => Number.parseInt(part, 10));
+  const rightParts = right.split('.').map((part) => Number.parseInt(part, 10));
+  const leftIsValid = leftParts.every((part) => Number.isFinite(part));
+  const rightIsValid = rightParts.every((part) => Number.isFinite(part));
+
+  if (!leftIsValid && !rightIsValid) {
+    return 0;
+  }
+
+  if (!leftIsValid) {
+    return -1;
+  }
+
+  if (!rightIsValid) {
+    return 1;
+  }
+
+  const maxLength = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < maxLength; index += 1) {
+    const leftPart = leftParts[index] || 0;
+    const rightPart = rightParts[index] || 0;
+
+    if (leftPart < rightPart) {
+      return -1;
+    }
+    if (leftPart > rightPart) {
+      return 1;
+    }
+  }
+
+  return 0;
+}
+
+function compareDistributionRecords(
+  left: DistributionRecord | null,
+  right: DistributionRecord | null,
+): number {
+  if (!left && !right) {
+    return 0;
+  }
+
+  if (!left) {
+    return -1;
+  }
+
+  if (!right) {
+    return 1;
+  }
+
+  const versionCompare = compareVersionStrings(left.version, right.version);
+  if (versionCompare !== 0) {
+    return versionCompare;
+  }
+
+  const leftBuild = left.build ?? -1;
+  const rightBuild = right.build ?? -1;
+
+  if (leftBuild < rightBuild) {
+    return -1;
+  }
+
+  if (leftBuild > rightBuild) {
+    return 1;
+  }
+
+  return 0;
+}
+
 export default function Home() {
   const t = useAtomValue(translationsAtom);
   const [locale, setLocale] = useAtom(localeAtom);
@@ -144,14 +265,18 @@ export default function Home() {
   const [distributions, setDistributions] = useState<LatestDistributionsResponse | null>(null);
   const [cpuArchitecture, setCpuArchitecture] = useState<CpuArchitecture>('unknown');
   const [loading, setLoading] = useState(true);
-  const locationDetectedRef = useRef(false);
   const browserDefaultLocaleRef = useRef<Locale | null>(null);
+  const lastAutoDetectedLocaleRef = useRef<Locale | null>(null);
+  const localeRef = useRef(locale);
+  const locationRef = useRef<LocationInfo | null>(location);
+  const distributionsRef = useRef<LatestDistributionsResponse | null>(distributions);
 
   // Wizard state
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | null>(null);
   const [winArch, setWinArch] = useState<WinArch | null>(null);
   const [winFormat, setWinFormat] = useState<WinFormat | null>(null);
   const [selectedSource, setSelectedSource] = useState<DownloadSource | null>(null);
+  const [sourceSelectionMode, setSourceSelectionMode] = useState<'auto' | 'manual'>('auto');
   const [showMoreSources, setShowMoreSources] = useState(false);
 
   // Refs for scroll
@@ -161,46 +286,111 @@ export default function Home() {
   const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setMounted(true);
     if (typeof window !== 'undefined') {
       browserDefaultLocaleRef.current = detectLocale();
     }
-  }, []);
+    const cachedHomepageData = loadHomepageCache();
+    if (cachedHomepageData?.distributions) {
+      setDistributions(cachedHomepageData.distributions);
+      setLoading(false);
+    }
+    if (cachedHomepageData?.location) {
+      setLocation(cachedHomepageData.location);
+    }
+    setMounted(true);
+  }, [setLocation]);
+
+  useEffect(() => {
+    localeRef.current = locale;
+  }, [locale]);
+
+  useEffect(() => {
+    locationRef.current = location;
+  }, [location]);
+
+  useEffect(() => {
+    distributionsRef.current = distributions;
+  }, [distributions]);
+
+  useEffect(() => {
+    if (!location) return;
+
+    if (hasStoredLocalePreference()) {
+      return;
+    }
+
+    const detectedFromLocation = detectLocaleFromLocation(location);
+    if (!detectedFromLocation) {
+      return;
+    }
+
+    const currentLocale = localeRef.current;
+    const browserDefaultLocale = browserDefaultLocaleRef.current;
+    const lastAutoDetectedLocale = lastAutoDetectedLocaleRef.current;
+    const canOverrideLocale =
+      currentLocale === browserDefaultLocale ||
+      (lastAutoDetectedLocale !== null && currentLocale === lastAutoDetectedLocale);
+
+    if (!canOverrideLocale) {
+      return;
+    }
+
+    if (currentLocale !== detectedFromLocation) {
+      setLocale(detectedFromLocation);
+    }
+    lastAutoDetectedLocaleRef.current = detectedFromLocation;
+  }, [location, setLocale]);
 
   useEffect(() => {
     let isCancelled = false;
+
     fetchLatestDistributions()
       .then((data) => {
+        if (isCancelled || !data) {
+          return;
+        }
+
+        if (areLatestDistributionsEqual(distributionsRef.current, data)) {
+          return;
+        }
+
+        setDistributions(data);
+        saveHomepageCache({ distributions: data });
+      })
+      .finally(() => {
         if (!isCancelled) {
-          setDistributions(data);
           setLoading(false);
         }
-      })
-      .catch(() => {
-        if (!isCancelled) setLoading(false);
       });
-    return () => { isCancelled = true; };
+
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     let isCancelled = false;
     if (!mounted) return;
+
     fetchLocation()
       .then((loc) => {
-        if (!isCancelled && loc) {
-          setLocation(loc);
-          if (!locationDetectedRef.current) {
-            locationDetectedRef.current = true;
-            const detectedFromLocation = detectLocaleFromLocation(loc);
-            if (detectedFromLocation && detectedFromLocation !== browserDefaultLocaleRef.current) {
-              setLocale(detectedFromLocation);
-            }
-          }
+        if (isCancelled || !loc) {
+          return;
         }
+
+        if (areLocationsEqual(locationRef.current, loc)) {
+          return;
+        }
+
+        setLocation(loc);
+        saveHomepageCache({ location: loc });
       })
       .catch(() => {});
-    return () => { isCancelled = true; };
-  }, [mounted, setLocation, setLocale]);
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [mounted, setLocation]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -225,7 +415,8 @@ export default function Home() {
     }
   }, [selectedPlatform, cpuArchitecture, winArch]);
 
-  const isChineseLocale = locale === 'zh-CN' || locale === 'zh-TW';
+  const homeCopy = getHomePageCopy(locale);
+  const prefersChinaDownloadSources = shouldPreferChinaDownloadSources(location);
 
   // Determine which steps to show (defined early for use in useEffect below)
   const showWinArchStep = selectedPlatform === 'windows';
@@ -257,6 +448,7 @@ export default function Home() {
     setWinArch(null);
     setWinFormat(null);
     setSelectedSource(null);
+    setSourceSelectionMode('auto');
     setShowMoreSources(false);
 
     if (p === 'windows') {
@@ -279,6 +471,7 @@ export default function Home() {
     setWinArch(arch);
     setWinFormat(null);
     setSelectedSource(null);
+    setSourceSelectionMode('auto');
     setShowMoreSources(false);
     scrollTo(stepWinFormatRef);
   };
@@ -286,117 +479,260 @@ export default function Home() {
   const handleWinFormatSelect = (fmt: WinFormat) => {
     setWinFormat(fmt);
     setSelectedSource(null);
+    setSourceSelectionMode('auto');
     setShowMoreSources(false);
     scrollTo(step3Ref);
   };
 
   const handleSourceSelect = (src: DownloadSource) => {
+    if (isOfficialStoreSource(src)) {
+      const sourceUrl = getSourceUrl(src);
+      if (sourceUrl && typeof window !== 'undefined') {
+        window.location.assign(sourceUrl);
+        return;
+      }
+    }
+
     setSelectedSource(src);
+    setSourceSelectionMode('manual');
     setShowMoreSources(false);
     scrollTo(resultRef);
   };
 
-  // Get the recommended source based on locale/region
-  const getRecommendedSource = (): DownloadSource | null => {
-    if (!selectedPlatform) return null;
-    if (selectedPlatform === 'ios') return 'TestFlight';
-    if (isChineseLocale) return 'AF';
-    return 'HF';
-  };
-
-  // Auto-select recommended source when the source step becomes visible
-  useEffect(() => {
-    if (!showSourceStep || selectedSource) return;
-    const recommended = getRecommendedSource();
-    if (recommended) {
-      setSelectedSource(recommended);
+  const getDistributionTypeForSource = (src: DownloadSource): DistributionType | null => {
+    if (!selectedPlatform) {
+      return null;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showSourceStep, selectedPlatform, winArch, winFormat]);
-
-  // Get available sources for the current platform
-  const getSourceOptions = (): SourceOption[] => {
-    if (!selectedPlatform) return [];
 
     if (selectedPlatform === 'ios') {
-      return [
-        { key: 'TestFlight', label: 'TestFlight', desc: isChineseLocale ? '抢先体验最新版本' : 'Get early access to new versions' },
-        { key: 'AppStore', label: 'App Store', desc: isChineseLocale ? '稳定正式版' : 'Stable release' },
-      ];
+      if (src === 'TestFlight') return DistributionType.iOSTF;
+      if (src === 'AppStore') return DistributionType.iOSAS;
+      return null;
     }
 
     if (selectedPlatform === 'android') {
-      const sources: SourceOption[] = isChineseLocale
-        ? [
-            { key: 'AF', label: 'AI FastLab', desc: '国内高速下载', recommended: true },
-            { key: 'HFM', label: 'HF Mirror', desc: '国内镜像' },
-            { key: 'Pgyer', label: '蒲公英', desc: '国内分发平台' },
-            { key: 'HF', label: 'HuggingFace', desc: '海外源' },
-            { key: 'GR', label: 'GitHub Release', desc: '海外源' },
-            { key: 'GooglePlay', label: 'Google Play', desc: '应用商店' },
-          ]
-        : [
-            { key: 'HF', label: 'HuggingFace', desc: 'Primary source', recommended: true },
-            { key: 'GR', label: 'GitHub Release', desc: 'Alternative source' },
-            { key: 'AF', label: 'AI FastLab', desc: 'Fast in China' },
-            { key: 'HFM', label: 'HF Mirror', desc: 'Mirror for China' },
-            { key: 'Pgyer', label: 'Pgyer', desc: 'Distribution platform' },
-            { key: 'GooglePlay', label: 'Google Play', desc: 'App store' },
-          ];
-      return sources;
-    }
-
-    // macOS, Linux, Windows all share HF/AF/GR/HFM
-    const sources: SourceOption[] = isChineseLocale
-      ? [
-          { key: 'AF', label: 'AI FastLab', desc: '国内高速下载', recommended: true },
-          { key: 'HFM', label: 'HF Mirror', desc: '国内镜像' },
-          { key: 'HF', label: 'HuggingFace', desc: '海外源' },
-          { key: 'GR', label: 'GitHub Release', desc: '海外源' },
-        ]
-      : [
-          { key: 'HF', label: 'HuggingFace', desc: 'Primary source', recommended: true },
-          { key: 'GR', label: 'GitHub Release', desc: 'Alternative source' },
-          { key: 'AF', label: 'AI FastLab', desc: 'Fast in China' },
-          { key: 'HFM', label: 'HF Mirror', desc: 'Mirror for China' },
-        ];
-    return sources;
-  };
-
-  // Resolve the final download URL
-  const getDownloadUrl = (): string | null => {
-    if (!selectedPlatform || !selectedSource || !distributions) return null;
-
-    const d = distributions;
-    const sourceMap: Record<string, Record<string, DistributionType>> = {
-      android: {
+      const map: Partial<Record<DownloadSource, DistributionType>> = {
         HF: DistributionType.androidHF,
         AF: DistributionType.androidAF,
         GR: DistributionType.androidGR,
         HFM: DistributionType.androidHFM,
         Pgyer: DistributionType.androidPgyer,
-      },
-      macos: {
+        GooglePlay: DistributionType.androidGooglePlay,
+      };
+      return map[src] ?? null;
+    }
+
+    if (selectedPlatform === 'macos') {
+      const map: Partial<Record<DownloadSource, DistributionType>> = {
         HF: DistributionType.macosHF,
         AF: DistributionType.macosAF,
         GR: DistributionType.macosGR,
         HFM: DistributionType.macosHFM,
-      },
-      linux: {
+      };
+      return map[src] ?? null;
+    }
+
+    if (selectedPlatform === 'linux') {
+      const map: Partial<Record<DownloadSource, DistributionType>> = {
         HF: DistributionType.linuxHF,
         AF: DistributionType.linuxAF,
         GR: DistributionType.linuxGR,
         HFM: DistributionType.linuxHFM,
-      },
-    };
+      };
+      return map[src] ?? null;
+    }
+
+    if (selectedPlatform === 'windows' && winArch && winFormat) {
+      const winKey = winArch === 'arm64'
+        ? (winFormat === 'zip'
+          ? { HF: DistributionType.winArm64ZipHF, AF: DistributionType.winArm64ZipAF, GR: DistributionType.winArm64ZipGR, HFM: DistributionType.winArm64ZipHFM }
+          : { HF: DistributionType.winArm64HF, AF: DistributionType.winArm64AF, GR: DistributionType.winArm64GR, HFM: DistributionType.winArm64HFM })
+        : (winFormat === 'zip'
+          ? { HF: DistributionType.winZipHF, AF: DistributionType.winZipAF, GR: DistributionType.winZipGR, HFM: DistributionType.winZipHFM }
+          : { HF: DistributionType.winHF, AF: DistributionType.winAF, GR: DistributionType.winGR, HFM: DistributionType.winHFM });
+      return winKey[src as keyof typeof winKey] ?? null;
+    }
+
+    return null;
+  };
+
+  const getDistributionRecordForSource = (src: DownloadSource): DistributionRecord | null => {
+    if (!distributions) {
+      return null;
+    }
+
+    const distributionType = getDistributionTypeForSource(src);
+    if (!distributionType) {
+      return null;
+    }
+
+    return distributions[distributionType] ?? null;
+  };
+
+  const getSourceUrl = (src: DownloadSource): string | null => {
+    const distributionUrl = getDistributionRecordForSource(src)?.url;
+    if (distributionUrl) {
+      return distributionUrl;
+    }
+
+    if (src === 'TestFlight') {
+      return TESTFLIGHT_FALLBACK_URL;
+    }
+
+    if (src === 'AppStore') {
+      return APP_STORE_FALLBACK_URL;
+    }
+
+    if (src === 'GooglePlay') {
+      return GOOGLE_PLAY_FALLBACK_URL;
+    }
+
+    return null;
+  };
+
+  const isSourceAvailable = (src: DownloadSource): boolean => {
+    if (src === 'TestFlight' || isOfficialStoreSource(src)) {
+      return true;
+    }
+
+    return getDistributionRecordForSource(src)?.url != null;
+  };
+
+  const getPrimaryRecommendedCandidates = (): DownloadSource[] => {
+    if (!selectedPlatform) {
+      return [];
+    }
+
+    if (selectedPlatform === 'ios') {
+      return ['TestFlight'];
+    }
+
+    return prefersChinaDownloadSources ? ['AF', 'HFM'] : ['HF', 'GR'];
+  };
+
+  const getFallbackSourceOrder = (): DownloadSource[] => {
+    if (!selectedPlatform) {
+      return [];
+    }
+
+    if (selectedPlatform === 'ios') {
+      return [];
+    }
+
+    if (selectedPlatform === 'android') {
+      return prefersChinaDownloadSources
+        ? ['Pgyer', 'HF', 'GR']
+        : ['AF', 'HFM', 'Pgyer'];
+    }
+
+    return prefersChinaDownloadSources ? ['HF', 'GR'] : ['AF', 'HFM'];
+  };
+
+  const getHighestVersionSource = (sources: DownloadSource[]): DownloadSource | null => {
+    let bestSource: DownloadSource | null = null;
+
+    for (const source of sources) {
+      if (!isSourceAvailable(source)) {
+        continue;
+      }
+
+      if (!bestSource) {
+        bestSource = source;
+        continue;
+      }
+
+      const sourceRecord = getDistributionRecordForSource(source);
+      const bestSourceRecord = getDistributionRecordForSource(bestSource);
+      if (compareDistributionRecords(sourceRecord, bestSourceRecord) > 0) {
+        bestSource = source;
+      }
+    }
+
+    return bestSource;
+  };
+
+  // Get the recommended source based on locale/region and version/build within the allowed group
+  const getRecommendedSource = (): DownloadSource | null => {
+    const primaryRecommendedSource = getHighestVersionSource(getPrimaryRecommendedCandidates());
+    if (primaryRecommendedSource) {
+      return primaryRecommendedSource;
+    }
+
+    for (const fallbackSource of getFallbackSourceOrder()) {
+      if (isSourceAvailable(fallbackSource)) {
+        return fallbackSource;
+      }
+    }
+
+    return null;
+  };
+
+  const getBaseSourceOptions = (): SourceOption[] => {
+    if (!selectedPlatform) return [];
+
+    if (selectedPlatform === 'ios') {
+      return [
+        { key: 'TestFlight', label: 'TestFlight', desc: homeCopy.sourceDescEarlyAccess },
+        { key: 'AppStore', label: 'App Store', desc: homeCopy.sourceDescStableRelease },
+      ];
+    }
+
+    if (selectedPlatform === 'android') {
+      return prefersChinaDownloadSources
+        ? [
+            { key: 'AF', label: 'AI FastLab', desc: homeCopy.sourceDescFastInChina },
+            { key: 'HFM', label: 'HF Mirror', desc: homeCopy.sourceDescMirrorForChina },
+            { key: 'Pgyer', label: 'Pgyer', desc: homeCopy.sourceDescDistributionPlatform },
+            { key: 'HF', label: 'HuggingFace', desc: homeCopy.sourceDescGlobalSource },
+            { key: 'GR', label: 'GitHub Release', desc: homeCopy.sourceDescAlternativeSource },
+            { key: 'GooglePlay', label: 'Google Play', desc: homeCopy.sourceDescOfficialStore },
+          ]
+        : [
+            { key: 'HF', label: 'HuggingFace', desc: homeCopy.sourceDescPrimarySource },
+            { key: 'GR', label: 'GitHub Release', desc: homeCopy.sourceDescAlternativeSource },
+            { key: 'AF', label: 'AI FastLab', desc: homeCopy.sourceDescMainlandChina },
+            { key: 'HFM', label: 'HF Mirror', desc: homeCopy.sourceDescMirrorForChina },
+            { key: 'Pgyer', label: 'Pgyer', desc: homeCopy.sourceDescDistributionPlatform },
+            { key: 'GooglePlay', label: 'Google Play', desc: homeCopy.sourceDescOfficialStore },
+          ];
+    }
+
+    // macOS, Linux, Windows all share HF/AF/GR/HFM
+    return prefersChinaDownloadSources
+      ? [
+          { key: 'AF', label: 'AI FastLab', desc: homeCopy.sourceDescFastInChina },
+          { key: 'HFM', label: 'HF Mirror', desc: homeCopy.sourceDescMirrorForChina },
+          { key: 'HF', label: 'HuggingFace', desc: homeCopy.sourceDescGlobalSource },
+          { key: 'GR', label: 'GitHub Release', desc: homeCopy.sourceDescAlternativeSource },
+        ]
+      : [
+          { key: 'HF', label: 'HuggingFace', desc: homeCopy.sourceDescPrimarySource },
+          { key: 'GR', label: 'GitHub Release', desc: homeCopy.sourceDescAlternativeSource },
+          { key: 'AF', label: 'AI FastLab', desc: homeCopy.sourceDescMainlandChina },
+          { key: 'HFM', label: 'HF Mirror', desc: homeCopy.sourceDescMirrorForChina },
+        ];
+  };
+
+  // Get available sources for the current platform
+  const getSourceOptions = (): SourceOption[] => {
+    const recommendedSource = getRecommendedSource();
+    return getBaseSourceOptions().map((sourceOption) => ({
+      ...sourceOption,
+      recommended: sourceOption.key === recommendedSource,
+    }));
+  };
+
+  // Resolve the final download URL
+  const getDownloadUrl = (): string | null => {
+    if (!selectedPlatform || !selectedSource) return null;
 
     // iOS special cases
     if (selectedPlatform === 'ios') {
       if (selectedSource === 'TestFlight') {
-        return d[DistributionType.iOSTF]?.url || 'https://testflight.apple.com/join/DaMqCNKh';
+        return getSourceUrl('TestFlight');
       }
       if (selectedSource === 'AppStore') {
-        return d[DistributionType.iOSAS]?.url || 'https://apps.apple.com/app/rwkv-chat/id6740192639';
+        return getSourceUrl('AppStore');
       }
       return null;
     }
@@ -404,100 +740,52 @@ export default function Home() {
     // Android special cases
     if (selectedPlatform === 'android') {
       if (selectedSource === 'GooglePlay') {
-        return d[DistributionType.androidGooglePlay]?.url || 'https://play.google.com/store/apps/details?id=com.rwkvzone.chat';
+        return getSourceUrl('GooglePlay');
       }
-      const type = sourceMap.android[selectedSource];
-      return type ? d[type]?.url || null : null;
+      return getSourceUrl(selectedSource);
     }
 
-    // Windows
-    if (selectedPlatform === 'windows' && winArch && winFormat) {
-      const winKey = winArch === 'arm64'
-        ? (winFormat === 'zip'
-          ? { HF: DistributionType.winArm64ZipHF, AF: DistributionType.winArm64ZipAF, GR: DistributionType.winArm64ZipGR, HFM: DistributionType.winArm64ZipHFM }
-          : { HF: DistributionType.winArm64HF, AF: DistributionType.winArm64AF, GR: DistributionType.winArm64GR, HFM: DistributionType.winArm64HFM })
-        : (winFormat === 'zip'
-          ? { HF: DistributionType.winZipHF, AF: DistributionType.winZipAF, GR: DistributionType.winZipGR, HFM: DistributionType.winZipHFM }
-          : { HF: DistributionType.winHF, AF: DistributionType.winAF, GR: DistributionType.winGR, HFM: DistributionType.winHFM });
-      const type = winKey[selectedSource as keyof typeof winKey];
-      return type ? d[type]?.url || null : null;
-    }
-
-    // macOS, Linux
-    if (selectedPlatform === 'macos' || selectedPlatform === 'linux') {
-      const type = sourceMap[selectedPlatform]?.[selectedSource];
-      return type ? d[type]?.url || null : null;
-    }
-
-    return null;
+    return getSourceUrl(selectedSource);
   };
 
-  // Get version for current selection
-  const getDownloadVersion = (): string | null => {
-    if (!selectedPlatform || !selectedSource || !distributions) return null;
-    const url = getDownloadUrl();
-    if (!url) return null;
-
-    // Find matching distribution entry
-    for (const [, entry] of Object.entries(distributions)) {
-      if (entry && entry.url === url && entry.version) {
-        return entry.version;
-      }
-    }
-    return null;
+  const getSourceVersion = (src: DownloadSource): string | null => {
+    return getDisplaySemanticVersion(getDistributionRecordForSource(src)?.version);
   };
 
   const downloadUrl = getDownloadUrl();
-  const downloadVersion = getDownloadVersion();
+  const downloadVersion = selectedSource ? getSourceVersion(selectedSource) : null;
 
-  // Check if source is available
-  const isSourceAvailable = (src: DownloadSource): boolean => {
-    if (!distributions) return false;
-    if (selectedPlatform === 'ios') {
-      if (src === 'TestFlight') return true;
-      if (src === 'AppStore') return !!distributions[DistributionType.iOSAS];
-      return false;
+  const getAutoSelectedSource = (): DownloadSource | null => {
+    const sourceOptions = getSourceOptions();
+    if (sourceOptions.length === 0) {
+      return null;
     }
-    if (selectedPlatform === 'android' && src === 'GooglePlay') {
-      return !!distributions[DistributionType.androidGooglePlay];
+
+    const recommended = getRecommendedSource();
+    if (recommended && isSourceAvailable(recommended)) {
+      return recommended;
     }
-    // Just check if there would be a URL
-    const d = distributions;
-    if (selectedPlatform === 'android') {
-      const map: Record<string, DistributionType> = {
-        HF: DistributionType.androidHF, AF: DistributionType.androidAF,
-        GR: DistributionType.androidGR, HFM: DistributionType.androidHFM,
-        Pgyer: DistributionType.androidPgyer,
-      };
-      return !!d[map[src]]?.url;
+
+    const firstAvailable = sourceOptions.find(
+      (source) => !isOfficialStoreSource(source.key) && isSourceAvailable(source.key),
+    );
+    if (firstAvailable) {
+      return firstAvailable.key;
     }
-    if (selectedPlatform === 'macos') {
-      const map: Record<string, DistributionType> = {
-        HF: DistributionType.macosHF, AF: DistributionType.macosAF,
-        GR: DistributionType.macosGR, HFM: DistributionType.macosHFM,
-      };
-      return !!d[map[src]]?.url;
-    }
-    if (selectedPlatform === 'linux') {
-      const map: Record<string, DistributionType> = {
-        HF: DistributionType.linuxHF, AF: DistributionType.linuxAF,
-        GR: DistributionType.linuxGR, HFM: DistributionType.linuxHFM,
-      };
-      return !!d[map[src]]?.url;
-    }
-    if (selectedPlatform === 'windows' && winArch && winFormat) {
-      const winKey = winArch === 'arm64'
-        ? (winFormat === 'zip'
-          ? { HF: DistributionType.winArm64ZipHF, AF: DistributionType.winArm64ZipAF, GR: DistributionType.winArm64ZipGR, HFM: DistributionType.winArm64ZipHFM }
-          : { HF: DistributionType.winArm64HF, AF: DistributionType.winArm64AF, GR: DistributionType.winArm64GR, HFM: DistributionType.winArm64HFM })
-        : (winFormat === 'zip'
-          ? { HF: DistributionType.winZipHF, AF: DistributionType.winZipAF, GR: DistributionType.winZipGR, HFM: DistributionType.winZipHFM }
-          : { HF: DistributionType.winHF, AF: DistributionType.winAF, GR: DistributionType.winGR, HFM: DistributionType.winHFM });
-      const type = winKey[src as keyof typeof winKey];
-      return type ? !!d[type]?.url : false;
-    }
-    return false;
+
+    return recommended;
   };
+  const autoSelectedSource = getAutoSelectedSource();
+
+  useEffect(() => {
+    if (!showSourceStep || sourceSelectionMode !== 'auto') return;
+
+    if (!autoSelectedSource || autoSelectedSource === selectedSource) {
+      return;
+    }
+
+    setSelectedSource(autoSelectedSource);
+  }, [autoSelectedSource, selectedSource, showSourceStep, sourceSelectionMode]);
 
   // Platform display data
   const platformOptions: { key: Platform; label: string; icon: string }[] = [
@@ -507,8 +795,6 @@ export default function Home() {
     { key: 'macos', label: 'macOS', icon: appleLogoPath },
     { key: 'linux', label: 'Linux', icon: '/images/platforms/linux.png' },
   ];
-
-  const showResult = selectedSource !== null && downloadUrl !== null;
 
 
   return (
@@ -539,9 +825,7 @@ export default function Home() {
       <div className={styles.container}>
         {/* Hero Section */}
         <section className={styles.hero}>
-          <h1 className={styles.heroTitle}>
-            {isChineseLocale ? `${t.downloadNow} ${t.appName}` : `Download ${t.appName}`}
-          </h1>
+          <h1 className={styles.heroTitle}>{homeCopy.heroTitle}</h1>
           <p className={styles.heroTagline}>{t.appTagline}</p>
         </section>
 
@@ -551,9 +835,7 @@ export default function Home() {
           <div className={styles.wizardStep}>
             <div className={styles.stepHeader}>
               <StepIcon name="platform" />
-              <h2 className={styles.stepTitle}>
-                {isChineseLocale ? '选择你的平台' : 'Choose your platform'}
-              </h2>
+              <h2 className={styles.stepTitle}>{homeCopy.choosePlatform}</h2>
             </div>
             <div className={styles.platformGrid}>
               {platformOptions.map((p) => (
@@ -582,9 +864,7 @@ export default function Home() {
             <div className={styles.wizardStep} ref={step2Ref}>
               <div className={styles.stepHeader}>
                 <StepIcon name="arch" />
-                <h2 className={styles.stepTitle}>
-                  {isChineseLocale ? '选择处理器架构' : 'Choose architecture'}
-                </h2>
+                <h2 className={styles.stepTitle}>{homeCopy.chooseArchitecture}</h2>
               </div>
               <div className={styles.optionRow}>
                 <button
@@ -612,9 +892,7 @@ export default function Home() {
             <div className={styles.wizardStep} ref={stepWinFormatRef}>
               <div className={styles.stepHeader}>
                 <StepIcon name="format" />
-                <h2 className={styles.stepTitle}>
-                  {isChineseLocale ? '选择安装方式' : 'Choose install type'}
-                </h2>
+                <h2 className={styles.stepTitle}>{homeCopy.chooseInstallType}</h2>
               </div>
               <div className={styles.optionRow}>
                 <button
@@ -623,7 +901,7 @@ export default function Home() {
                   type="button"
                 >
                   <span className={styles.optionLabel}>{t.installer}</span>
-                  <span className={styles.optionDesc}>{isChineseLocale ? '推荐，自动安装' : 'Recommended, auto install'}</span>
+                  <span className={styles.optionDesc}>{homeCopy.installerRecommendedDesc}</span>
                 </button>
                 <button
                   className={`${styles.optionCard} ${styles.optionCardWide} ${winFormat === 'zip' ? styles.optionCardSelected : ''}`}
@@ -631,7 +909,7 @@ export default function Home() {
                   type="button"
                 >
                   <span className={styles.optionLabel}>{t.zip}</span>
-                  <span className={styles.optionDesc}>{isChineseLocale ? '免安装，解压即用' : 'Portable, no install needed'}</span>
+                  <span className={styles.optionDesc}>{homeCopy.zipPortableDesc}</span>
                 </button>
               </div>
             </div>
@@ -642,9 +920,7 @@ export default function Home() {
             <div className={styles.wizardStep} ref={selectedPlatform === 'windows' ? step3Ref : step2Ref}>
               <div className={styles.stepHeader}>
                 <StepIcon name="download" />
-                <h2 className={styles.stepTitle}>
-                  {isChineseLocale ? '下载' : 'Download'}
-                </h2>
+                <h2 className={styles.stepTitle}>{homeCopy.downloadSectionTitle}</h2>
               </div>
 
               {/* Download button + current source */}
@@ -662,7 +938,7 @@ export default function Home() {
                         <polyline points="7 10 12 15 17 10" />
                         <line x1="12" y1="15" x2="12" y2="3" />
                       </svg>
-                      <span>{isChineseLocale ? '立即下载' : 'Download Now'}</span>
+                      <span>{homeCopy.downloadNowButton}</span>
                     </a>
                   ) : (
                     <span className={`${styles.bigDownloadBtn} ${styles.bigDownloadBtnDisabled}`}>
@@ -671,11 +947,12 @@ export default function Home() {
                         <polyline points="7 10 12 15 17 10" />
                         <line x1="12" y1="15" x2="12" y2="3" />
                       </svg>
-                      <span>{loading ? (isChineseLocale ? '加载中...' : 'Loading...') : (isChineseLocale ? '暂无下载链接' : 'No download link available')}</span>
+                      <span>{loading ? homeCopy.loadingDownloads : homeCopy.noDownloadLink}</span>
                     </span>
                   )}
                   <p className={styles.currentSourceText}>
-                    {isChineseLocale ? '下载源：' : 'Source: '}
+                    {homeCopy.currentSourceLabel}
+                    {': '}
                     <strong>{getSourceOptions().find(s => s.key === selectedSource)?.label}</strong>
                     {downloadVersion && downloadVersion !== 'latest' && (
                       <span className={styles.versionInline}> &middot; v{downloadVersion}</span>
@@ -691,7 +968,7 @@ export default function Home() {
                   onClick={() => setShowMoreSources(!showMoreSources)}
                   type="button"
                 >
-                  <span>{isChineseLocale ? (showMoreSources ? '收起其他下载源' : '切换其他下载源') : (showMoreSources ? 'Hide other sources' : 'Switch download source')}</span>
+                  <span>{showMoreSources ? homeCopy.hideOtherSources : homeCopy.switchDownloadSource}</span>
                   <svg
                     className={`${styles.toggleChevron} ${showMoreSources ? styles.toggleChevronOpen : ''}`}
                     viewBox="0 0 24 24"
@@ -711,6 +988,7 @@ export default function Home() {
                 <div className={styles.sourceGrid}>
                   {getSourceOptions().map((src) => {
                     const available = isSourceAvailable(src.key);
+                    const sourceVersion = getSourceVersion(src.key);
                     return (
                       <button
                         key={src.key}
@@ -723,11 +1001,16 @@ export default function Home() {
                           <span className={styles.sourceLabel}>{src.label}</span>
                           {src.recommended && (
                             <span className={styles.recommendedBadge}>
-                              {isChineseLocale ? '推荐' : 'Recommended'}
+                              {homeCopy.recommendedLabel}
                             </span>
                           )}
                         </div>
-                        <span className={styles.sourceDesc}>{src.desc}</span>
+                        <div className={styles.sourceMeta}>
+                          <span className={styles.sourceDesc}>{src.desc}</span>
+                          <span className={styles.sourceVersion} aria-hidden={!sourceVersion}>
+                            {sourceVersion ? `v${sourceVersion}` : ''}
+                          </span>
+                        </div>
                       </button>
                     );
                   })}

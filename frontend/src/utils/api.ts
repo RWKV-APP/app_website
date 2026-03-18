@@ -102,7 +102,7 @@ async function adminFetch(path: string, options?: RequestInit): Promise<Response
   return response;
 }
 
-export async function fetchLatestDistributions(): Promise<LatestDistributionsResponse> {
+export async function fetchLatestDistributions(): Promise<LatestDistributionsResponse | null> {
   try {
     const response = await fetch(`${API_BASE_URL}/distributions/latest`);
     if (!response.ok) {
@@ -111,7 +111,7 @@ export async function fetchLatestDistributions(): Promise<LatestDistributionsRes
     return await response.json();
   } catch (error) {
     console.error('Failed to fetch latest distributions:', error);
-    return {} as LatestDistributionsResponse;
+    return null;
   }
 }
 

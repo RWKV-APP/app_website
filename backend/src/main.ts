@@ -14,6 +14,7 @@ async function bootstrap() {
 
   app.use(express.json({ limit: '20mb' }));
   app.use(express.urlencoded({ extended: true, limit: '20mb' }));
+  app.getHttpAdapter().getInstance().set('trust proxy', true);
 
   // 开启 CORS，允许前端跨域请求
   app.enableCors({

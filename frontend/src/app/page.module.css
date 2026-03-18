@@ -336,6 +336,7 @@
   cursor: pointer;
   text-align: left;
   transition: all 0.2s cubic-bezier(0.33, 1, 0.68, 1);
+  min-height: 92px;
 }
 
 .sourceCard:hover:not(:disabled) {
@@ -386,6 +387,21 @@
   font-size: 0.75rem;
   color: var(--color-secondary);
   line-height: 1.4;
+}
+
+.sourceMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sourceVersion {
+  display: block;
+  min-height: 1rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.3334;
+  color: var(--color-secondary);
 }
 
 /* ============================

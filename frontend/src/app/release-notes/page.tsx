@@ -3,7 +3,13 @@
 import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useAtom, useAtomValue } from 'jotai';
-import { translationsAtom, localeAtom, locationAtom, detectLocale } from '@/atoms';
+import {
+  translationsAtom,
+  localeAtom,
+  locationAtom,
+  hasStoredLocalePreference,
+  detectLocale,
+} from '@/atoms';
 import { fetchAllReleaseNotes, type ReleaseNote } from '@/utils/api';
 import { fetchLocation } from '@/utils';
 import { detectLocaleFromLocation, type Locale } from '@/i18n/locales';
@@ -43,6 +49,9 @@ export default function ReleaseNotesPage() {
               // Only set if current locale is still the browser default (user hasn't manually changed it)
               const currentLocale = locale;
               const browserDefault = browserDefaultLocaleRef.current;
+              if (hasStoredLocalePreference()) {
+                return;
+              }
               if (browserDefault && currentLocale === browserDefault) {
                 const detectedLocale = detectLocaleFromLocation(locationData);
                 if (detectedLocale && detectedLocale !== currentLocale) {

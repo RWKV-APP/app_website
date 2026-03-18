@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useAtom } from 'jotai';
-import { localeAtom } from '@/atoms';
+import { localeAtom, saveLocalePreference } from '@/atoms';
 import { locales, localeNames, type Locale } from '@/i18n/locales';
 import styles from './LanguageSwitcher.module.css';
 
@@ -12,6 +12,7 @@ export function LanguageSwitcher() {
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const handleSelect = useCallback((loc: Locale) => {
+    saveLocalePreference(loc);
     setLocale(loc);
     setOpen(false);
   }, [setLocale]);

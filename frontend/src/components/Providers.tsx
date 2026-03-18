@@ -3,7 +3,13 @@
 import { Provider } from 'jotai';
 import { useHydrateAtoms } from 'jotai/utils';
 import { useEffect, useState } from 'react';
-import { localeAtom, themePreferenceAtom, detectLocale, getInitialThemePreference } from '@/atoms';
+import {
+  localeAtom,
+  themePreferenceAtom,
+  detectLocale,
+  getInitialThemePreference,
+  getStoredLocalePreference,
+} from '@/atoms';
 import type { Locale } from '@/i18n/locales';
 
 function HydrateAtoms(props: {
@@ -24,7 +30,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setLocale(detectLocale());
+    setLocale(getStoredLocalePreference() || detectLocale());
     if (typeof window !== 'undefined') {
       setThemePreference(getInitialThemePreference());
     }

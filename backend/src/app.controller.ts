@@ -17,7 +17,7 @@ export class AppController {
       req.socket.remoteAddress ||
       undefined;
 
-    const location = await this.appService.detectLocation({ ip });
+    const location = await this.appService.detectLocation({ ip, headers: req.headers });
     return location;
   }
 }
