@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './load-env';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
@@ -7,8 +7,10 @@ import * as express from 'express';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
   const logger = new Logger('Bootstrap');
+  const nodeEnv = process.env.NODE_ENV || 'development';
   const host = process.env.HOST || '0.0.0.0';
-  const port = Number.parseInt(process.env.PORT || '3462', 10);
+  const defaultPort = nodeEnv === 'production' ? '3462' : '3001';
+  const port = Number.parseInt(process.env.PORT || defaultPort, 10);
 
   app.use(express.json({ limit: '20mb' }));
   app.use(express.urlencoded({ extended: true, limit: '20mb' }));

@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "next dev --port 3010",
+    "build": "node ../tools/generate-build-info.mjs && next build",
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit"

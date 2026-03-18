@@ -12,9 +12,7 @@ dist/
 build/
 .next/
 out/
-
-# Frontend build output in backend
-backend/public/
+frontend/public/build-info.json
 
 # Environment variables
 .env
@@ -57,4 +55,3 @@ backend/prisma/migrations/
 tmp/
 temp/
 *.tmp
-

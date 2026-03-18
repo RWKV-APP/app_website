@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const isDev = process.env.NODE_ENV === 'development';
-const devBackendOrigin = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const devBackendOrigin =
+  process.env.BACKEND_ORIGIN || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 const nextConfig = {
   reactStrictMode: true,

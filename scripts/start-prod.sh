@@ -1,19 +1,23 @@
 #!/bin/bash
 
-# 一键构建+运行脚本（生产环境）
-# 使用 PM2 管理进程，确保日志隔离
+# 一键构建并发布当前仓库到线上
+# 真实拓扑: nginx 直接托管 frontend/out, PM2 管理 backend/dist/main.js
 
-set -e
+set -euo pipefail
 
 echo "🚀 开始构建和部署..."
 
 # 1. 构建前端
 echo "📦 构建前端..."
-pnpm build:frontend
+APP_BUILD_SOURCE=deploy:prod pnpm --filter frontend build
 
-# 2. 复制前端构建产物到后端
-echo "📋 复制前端构建产物到后端..."
-bash scripts/deploy.sh
+# 2. 确认前端静态产物已生成
+echo "📁 检查前端静态产物..."
+if [ ! -d "frontend/out" ]; then
+  echo "❌ Error: frontend/out 目录不存在，前端构建失败"
+  exit 1
+fi
+echo "   ✅ frontend/out 已生成，nginx 会直接读取该目录"
 
 # 3. 初始化 Prisma 数据库
 echo "🗄️  初始化数据库..."
@@ -45,35 +49,35 @@ cd ..
 
 # 4. 构建后端
 echo "🔨 构建后端..."
-pnpm build:backend
+pnpm --filter backend build
 
 # 5. 确保日志目录存在
 echo "📁 创建日志目录..."
 mkdir -p backend/logs
 
-# 6. 停止已存在的进程（如果存在）
-echo "🛑 停止已存在的进程..."
+# 6. 重启或启动 PM2 进程
+echo "🔄 重新加载 PM2 进程..."
 cd backend
-pm2 stop rwkv-backend 2>/dev/null || true
-pm2 delete rwkv-backend 2>/dev/null || true
+if pm2 describe rwkv-backend >/dev/null 2>&1; then
+  pm2 restart ecosystem.prod.config.js --only rwkv-backend --update-env
+else
+  pm2 start ecosystem.prod.config.js --only rwkv-backend
+fi
 
-# 7. 使用 PM2 启动生产服务器
-echo "▶️  启动生产服务器..."
-pm2 start ecosystem.prod.config.js
-
-# 8. 保存 PM2 配置
+# 7. 保存 PM2 配置
 pm2 save
 
 echo ""
 echo "✅ 部署完成！"
 echo ""
+echo "🌐 前端静态目录: frontend/out"
+echo "🔌 后端服务端口: 3462"
 echo "📊 查看状态: pm2 status"
 echo "📝 查看日志: pm2 logs rwkv-backend"
 echo "🔄 重启服务: pm2 restart rwkv-backend"
 echo "🛑 停止服务: pm2 stop rwkv-backend"
 echo ""
 echo "📂 日志文件位置:"
-echo "   - 输出日志: backend/logs/rwkv-backend-out.log"
-echo "   - 错误日志: backend/logs/rwkv-backend-error.log"
+echo "   - 输出日志: backend/logs/rwkv-backend-out*.log"
+echo "   - 错误日志: backend/logs/rwkv-backend-error*.log"
 echo ""
-
