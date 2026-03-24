@@ -1,4 +1,5 @@
 import { LatestDistributionsResponse } from '@/types/distribution';
+import { EvalImportResult, EvalQuestionsResponse, EvalRunRecord } from '@/types/eval';
 import { LocationInfo } from '@/atoms';
 import {
   AdminLoginResponse,
@@ -191,6 +192,88 @@ export async function fetchAdminRemoteConfigActivities(
     throw new Error(await parseErrorResponse(response));
   }
   return (await response.json()) as RemoteConfigActivityRecord[];
+}
+
+export async function uploadEvalSample(payload: {
+  fileName: string;
+  content: string;
+  deviceLabel?: string;
+  deviceChip?: string;
+}): Promise<EvalImportResult> {
+  const response = await adminFetch('/admin-api/evals/upload', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+
+  return (await response.json()) as EvalImportResult;
+}
+
+export async function fetchAdminEvalRuns(): Promise<EvalRunRecord[]> {
+  const response = await adminFetch('/admin-api/evals/runs');
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+  return (await response.json()) as EvalRunRecord[];
+}
+
+export async function fetchPublicEvalRuns(): Promise<EvalRunRecord[]> {
+  const response = await fetch(`${API_BASE_URL}/public-api/evals/runs`);
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+  return (await response.json()) as EvalRunRecord[];
+}
+
+export async function fetchPublicEvalQuestions(options?: {
+  runId?: string;
+  language?: string;
+  category?: string;
+  search?: string;
+  minAverageScore?: number;
+  maxAverageScore?: number;
+  limit?: number | 'all';
+}): Promise<EvalQuestionsResponse> {
+  const params = new URLSearchParams();
+  if (options?.runId) {
+    params.set('runId', options.runId);
+  }
+  if (options?.language) {
+    params.set('language', options.language);
+  }
+  if (options?.category) {
+    params.set('category', options.category);
+  }
+  if (options?.search) {
+    params.set('search', options.search);
+  }
+  if (typeof options?.minAverageScore === 'number') {
+    params.set('minAverageScore', String(options.minAverageScore));
+  }
+  if (typeof options?.maxAverageScore === 'number') {
+    params.set('maxAverageScore', String(options.maxAverageScore));
+  }
+  if (typeof options?.limit === 'number') {
+    params.set('limit', String(options.limit));
+  }
+  if (options?.limit === 'all') {
+    params.set('limit', 'all');
+  }
+
+  const query = params.toString();
+  const response = await fetch(
+    `${API_BASE_URL}/public-api/evals/questions${query ? `?${query}` : ''}`,
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+  return (await response.json()) as EvalQuestionsResponse;
 }
 
 export async function uploadRemoteConfig(

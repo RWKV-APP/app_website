@@ -14,6 +14,9 @@ import { AdminAuthService } from './admin-auth/admin-auth.service';
 import { AdminAuthController } from './admin-auth/admin-auth.controller';
 import { AdminAuthGuard } from './admin-auth/admin-auth.guard';
 import { WebhookController } from './webhook/webhook.controller';
+import { EvalService } from './eval/eval.service';
+import { EvalAdminController } from './eval/eval.admin.controller';
+import { EvalPublicController } from './eval/eval.public.controller';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
@@ -25,6 +28,8 @@ import { WebhookController } from './webhook/webhook.controller';
     RemoteConfigAdminController,
     AdminAuthController,
     WebhookController,
+    EvalAdminController,
+    EvalPublicController,
   ],
   providers: [
     AppService,
@@ -34,6 +39,7 @@ import { WebhookController } from './webhook/webhook.controller';
     RemoteConfigService,
     AdminAuthService,
     AdminAuthGuard,
+    EvalService,
   ],
 })
 export class AppModule {}

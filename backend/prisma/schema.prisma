@@ -60,3 +60,98 @@ model RemoteConfigActivity {
   @@index([fileName])
   @@index([remoteConfigId])
 }
+
+model EvalAttempt {
+  id                        Int       @id @default(autoincrement())
+  uploadedFileName          String
+  uploadedBy                String?
+  uploadedAt                DateTime  @default(now())
+  runId                     String
+  language                  String
+  taskType                  String
+  sampleStatus              String
+  sampleIndex               Int
+  display                   String
+  prompt                    String
+  sourceFile                String
+  sourceCategoryName        String?
+  sourceCategoryIndex       Int?
+  sourceItemIndex           Int?
+  baseUrl                   String?
+  endpoint                  String
+  modelRequest              String?
+  modelNameReportedByServer String?
+  maxTokens                 Int?
+  repeatCountTarget         Int?
+  repeatCountDone           Int?
+  scoreStatus               String
+  sampleStartedAt           DateTime?
+  sampleUpdatedAt           DateTime?
+  sampleAverageScore        Float?
+  sampleScoredAt            DateTime?
+  attempt                   Int
+  attemptStatus             String
+  attemptStartedAt          DateTime?
+  attemptEndedAt            DateTime?
+  attemptDurationMs         Int?
+  responseChars             Int?
+  response                  String?
+  score                     Float?
+  scoreNote                 String?
+  errorType                 String?
+  errorMessage              String?
+  errorBody                 String?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  @@unique([runId, sampleIndex, attempt])
+  @@index([runId])
+  @@index([runId, sampleIndex])
+  @@index([language])
+  @@index([sourceCategoryName])
+  @@index([sampleAverageScore])
+  @@index([score])
+  @@index([sampleUpdatedAt])
+}
+
+model EvalRunMetadata {
+  id                        Int      @id @default(autoincrement())
+  runId                     String   @unique
+  uploadedFileName          String?
+  uploadedBy                String?
+  uploadedAt                DateTime @default(now())
+  status                    String?
+  scoreStatus               String?
+  runCreatedAt              DateTime?
+  runUpdatedAt              DateTime?
+  baseUrl                   String?
+  endpoint                  String?
+  taskType                  String?
+  language                  String?
+  sourceFile                String?
+  modelRequest              String?
+  modelNameReportedByServer String?
+  selectionMode             String?
+  sourceTotalItems          Int?
+  sampleCountRequested      Int?
+  repeatCount               Int?
+  maxTokens                 Int?
+  seed                      Int?
+  totalSamples              Int?
+  completedSamples          Int?
+  runningSamples            Int?
+  partialSamples            Int?
+  errorSamples              Int?
+  pendingSamples            Int?
+  doneAttempts              Int?
+  totalAttempts             Int?
+  samplesDir                String?
+  evalDeviceLabel           String?
+  evalDeviceChip            String?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@index([runId])
+  @@index([uploadedAt])
+  @@index([runUpdatedAt])
+}

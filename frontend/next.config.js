@@ -38,6 +38,10 @@ const nextConfig = {
               source: '/admin-api/:path*',
               destination: `${devBackendOrigin}/admin-api/:path*`,
             },
+            {
+              source: '/public-api/:path*',
+              destination: `${devBackendOrigin}/public-api/:path*`,
+            },
           ];
         },
       }

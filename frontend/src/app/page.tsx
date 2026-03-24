@@ -15,7 +15,13 @@ import {
   type CpuArchitecture,
   type LocationInfo,
 } from '@/atoms';
-import { ThemeSwitcher, LanguageSwitcher, GitHubLink, ReleaseNotesLink } from '@/components';
+import {
+  ThemeSwitcher,
+  LanguageSwitcher,
+  GitHubLink,
+  ReleaseNotesLink,
+  EvalLink,
+} from '@/components';
 import {
   areLatestDistributionsEqual,
   areLocationsEqual,
@@ -37,7 +43,13 @@ import styles from './page.module.css';
 
 // SVG feature icons — monoline, consistent weight
 function FeatureIcon({ name }: { name: string }) {
-  const style = { width: '1.375rem', height: '1.375rem', strokeWidth: 1.5, stroke: 'var(--color-primary)', fill: 'none' } as const;
+  const style = {
+    width: '1.375rem',
+    height: '1.375rem',
+    strokeWidth: 1.5,
+    stroke: 'var(--color-primary)',
+    fill: 'none',
+  } as const;
   switch (name) {
     case 'offline':
       return (
@@ -87,7 +99,15 @@ function FeatureIcon({ name }: { name: string }) {
 
 // Step icons — SF Symbols style: thin, monoline, subtle
 function StepIcon({ name }: { name: 'platform' | 'arch' | 'format' | 'download' }) {
-  const s = { width: '1.125rem', height: '1.125rem', strokeWidth: 1.5, stroke: 'var(--color-secondary)', fill: 'none', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+  const s = {
+    width: '1.125rem',
+    height: '1.125rem',
+    strokeWidth: 1.5,
+    stroke: 'var(--color-secondary)',
+    fill: 'none',
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  };
   switch (name) {
     case 'platform':
       return (
@@ -135,7 +155,15 @@ function StepIcon({ name }: { name: 'platform' | 'arch' | 'format' | 'download' 
 type Platform = 'android' | 'ios' | 'windows' | 'macos' | 'linux';
 type WinArch = 'x64' | 'arm64';
 type WinFormat = 'installer' | 'zip';
-type DownloadSource = 'HF' | 'AF' | 'GR' | 'HFM' | 'Pgyer' | 'TestFlight' | 'AppStore' | 'GooglePlay';
+type DownloadSource =
+  | 'HF'
+  | 'AF'
+  | 'GR'
+  | 'HFM'
+  | 'Pgyer'
+  | 'TestFlight'
+  | 'AppStore'
+  | 'GooglePlay';
 
 interface SourceOption {
   key: DownloadSource;
@@ -396,9 +424,15 @@ export default function Home() {
     let isCancelled = false;
     if (!mounted || detectedPlatform !== 'windows') return;
     detectCpuArchitecture()
-      .then((arch) => { if (!isCancelled) setCpuArchitecture(arch); })
-      .catch(() => { if (!isCancelled) setCpuArchitecture('unknown'); });
-    return () => { isCancelled = true; };
+      .then((arch) => {
+        if (!isCancelled) setCpuArchitecture(arch);
+      })
+      .catch(() => {
+        if (!isCancelled) setCpuArchitecture('unknown');
+      });
+    return () => {
+      isCancelled = true;
+    };
   }, [mounted, detectedPlatform]);
 
   // Auto-select detected platform
@@ -433,7 +467,9 @@ export default function Home() {
     { icon: 'multimodal', title: t.featureMultimodal, desc: t.featureMultimodalDesc },
   ];
 
-  const appleLogoPath = mounted ? getAppleLogoPath({ theme }) : getAppleLogoPath({ theme: 'light' });
+  const appleLogoPath = mounted
+    ? getAppleLogoPath({ theme })
+    : getAppleLogoPath({ theme: 'light' });
 
   // Scroll helper
   const scrollTo = (ref: React.RefObject<HTMLDivElement | null>) => {
@@ -543,13 +579,34 @@ export default function Home() {
     }
 
     if (selectedPlatform === 'windows' && winArch && winFormat) {
-      const winKey = winArch === 'arm64'
-        ? (winFormat === 'zip'
-          ? { HF: DistributionType.winArm64ZipHF, AF: DistributionType.winArm64ZipAF, GR: DistributionType.winArm64ZipGR, HFM: DistributionType.winArm64ZipHFM }
-          : { HF: DistributionType.winArm64HF, AF: DistributionType.winArm64AF, GR: DistributionType.winArm64GR, HFM: DistributionType.winArm64HFM })
-        : (winFormat === 'zip'
-          ? { HF: DistributionType.winZipHF, AF: DistributionType.winZipAF, GR: DistributionType.winZipGR, HFM: DistributionType.winZipHFM }
-          : { HF: DistributionType.winHF, AF: DistributionType.winAF, GR: DistributionType.winGR, HFM: DistributionType.winHFM });
+      const winKey =
+        winArch === 'arm64'
+          ? winFormat === 'zip'
+            ? {
+                HF: DistributionType.winArm64ZipHF,
+                AF: DistributionType.winArm64ZipAF,
+                GR: DistributionType.winArm64ZipGR,
+                HFM: DistributionType.winArm64ZipHFM,
+              }
+            : {
+                HF: DistributionType.winArm64HF,
+                AF: DistributionType.winArm64AF,
+                GR: DistributionType.winArm64GR,
+                HFM: DistributionType.winArm64HFM,
+              }
+          : winFormat === 'zip'
+            ? {
+                HF: DistributionType.winZipHF,
+                AF: DistributionType.winZipAF,
+                GR: DistributionType.winZipGR,
+                HFM: DistributionType.winZipHFM,
+              }
+            : {
+                HF: DistributionType.winHF,
+                AF: DistributionType.winAF,
+                GR: DistributionType.winGR,
+                HFM: DistributionType.winHFM,
+              };
       return winKey[src as keyof typeof winKey] ?? null;
     }
 
@@ -620,9 +677,7 @@ export default function Home() {
     }
 
     if (selectedPlatform === 'android') {
-      return prefersChinaDownloadSources
-        ? ['Pgyer', 'HF', 'GR']
-        : ['AF', 'HFM', 'Pgyer'];
+      return prefersChinaDownloadSources ? ['Pgyer', 'HF', 'GR'] : ['AF', 'HFM', 'Pgyer'];
     }
 
     return prefersChinaDownloadSources ? ['HF', 'GR'] : ['AF', 'HFM'];
@@ -796,7 +851,6 @@ export default function Home() {
     { key: 'linux', label: 'Linux', icon: '/images/platforms/linux.png' },
   ];
 
-
   return (
     <main className={styles.main}>
       {/* Navbar — floating frosted glass */}
@@ -816,6 +870,7 @@ export default function Home() {
           <div className={styles.navRight}>
             <LanguageSwitcher />
             <ThemeSwitcher />
+            <EvalLink />
             <ReleaseNotesLink />
             <GitHubLink />
           </div>
@@ -917,7 +972,10 @@ export default function Home() {
 
           {/* Download Result + Source Selection */}
           {showSourceStep && (
-            <div className={styles.wizardStep} ref={selectedPlatform === 'windows' ? step3Ref : step2Ref}>
+            <div
+              className={styles.wizardStep}
+              ref={selectedPlatform === 'windows' ? step3Ref : step2Ref}
+            >
               <div className={styles.stepHeader}>
                 <StepIcon name="download" />
                 <h2 className={styles.stepTitle}>{homeCopy.downloadSectionTitle}</h2>
@@ -933,7 +991,15 @@ export default function Home() {
                       target="_blank"
                       rel="noopener noreferrer"
                     >
-                      <svg className={styles.bigDownloadIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <svg
+                        className={styles.bigDownloadIcon}
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                         <polyline points="7 10 12 15 17 10" />
                         <line x1="12" y1="15" x2="12" y2="3" />
@@ -942,7 +1008,15 @@ export default function Home() {
                     </a>
                   ) : (
                     <span className={`${styles.bigDownloadBtn} ${styles.bigDownloadBtnDisabled}`}>
-                      <svg className={styles.bigDownloadIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <svg
+                        className={styles.bigDownloadIcon}
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                         <polyline points="7 10 12 15 17 10" />
                         <line x1="12" y1="15" x2="12" y2="3" />
@@ -953,7 +1027,9 @@ export default function Home() {
                   <p className={styles.currentSourceText}>
                     {homeCopy.currentSourceLabel}
                     {': '}
-                    <strong>{getSourceOptions().find(s => s.key === selectedSource)?.label}</strong>
+                    <strong>
+                      {getSourceOptions().find((s) => s.key === selectedSource)?.label}
+                    </strong>
                     {downloadVersion && downloadVersion !== 'latest' && (
                       <span className={styles.versionInline}> &middot; v{downloadVersion}</span>
                     )}
@@ -968,7 +1044,9 @@ export default function Home() {
                   onClick={() => setShowMoreSources(!showMoreSources)}
                   type="button"
                 >
-                  <span>{showMoreSources ? homeCopy.hideOtherSources : homeCopy.switchDownloadSource}</span>
+                  <span>
+                    {showMoreSources ? homeCopy.hideOtherSources : homeCopy.switchDownloadSource}
+                  </span>
                   <svg
                     className={`${styles.toggleChevron} ${showMoreSources ? styles.toggleChevronOpen : ''}`}
                     viewBox="0 0 24 24"
@@ -1019,7 +1097,6 @@ export default function Home() {
             </div>
           )}
         </div>
-
       </div>
 
       {/* Features Section — surface background band */}
@@ -1029,7 +1106,9 @@ export default function Home() {
           <div className={styles.featuresGrid}>
             {features.map((feature) => (
               <div key={feature.title} className={styles.featureCard}>
-                <span className={styles.featureIcon}><FeatureIcon name={feature.icon} /></span>
+                <span className={styles.featureIcon}>
+                  <FeatureIcon name={feature.icon} />
+                </span>
                 <h3 className={styles.featureTitle}>{feature.title}</h3>
                 <p className={styles.featureDesc}>{feature.desc}</p>
               </div>
