@@ -1,92 +1,103 @@
 import { Request } from 'express';
 
-export interface EvalSampleAttemptInput {
-  attempt?: number;
-  status?: string;
-  started_at?: string;
-  ended_at?: string;
-  duration_ms?: number;
-  response_chars?: number;
-  response?: string;
-  score?: number;
-  score_note?: string;
-  error_type?: string;
-  error_message?: string;
-  error_body?: string;
-}
-
-export interface EvalSampleUploadInput {
-  run_id?: string;
-  language?: string;
-  task_type?: string;
-  status?: string;
-  sample_index?: number;
-  display?: string;
-  prompt?: string;
-  source_file?: string;
-  source_category_name?: string;
-  source_category_index?: number;
-  source_item_index?: number;
-  base_url?: string;
-  endpoint?: string;
-  model_request?: string;
-  model_name_reported_by_server?: string;
-  max_tokens?: number;
-  repeat_count_target?: number;
-  repeat_count_done?: number;
-  score_status?: string;
-  started_at?: string;
-  updated_at?: string;
-  average_score?: number;
-  scored_at?: string;
-  attempts?: EvalSampleAttemptInput[];
-  eval_device_label?: string;
-  eval_device_chip?: string;
-  device_label?: string;
-  device_chip?: string;
-  device?: unknown;
-}
-
-export interface EvalManifestUploadInput {
-  run_id?: string;
-  status?: string;
-  score_status?: string;
-  created_at?: string;
-  updated_at?: string;
-  base_url?: string;
-  endpoint?: string;
-  task_type?: string;
-  language?: string;
-  source_file?: string;
-  model_request?: string;
-  model_name_reported_by_server?: string;
-  selection_mode?: string;
-  source_total_items?: number;
-  sample_count_requested?: number;
-  repeat_count?: number;
-  max_tokens?: number;
-  seed?: number;
-  total_samples?: number;
-  completed_samples?: number;
-  running_samples?: number;
-  partial_samples?: number;
-  error_samples?: number;
-  pending_samples?: number;
-  done_attempts?: number;
-  total_attempts?: number;
-  samples_dir?: string;
-  eval_device_label?: string;
-  eval_device_chip?: string;
-  device_label?: string;
-  device_chip?: string;
-  device?: unknown;
-}
+export type EvalPassState = 'passed' | 'failed' | 'pending';
 
 export interface EvalUploadRequest extends Request {
   adminUser?: string;
 }
 
-export interface EvalQuestionAttemptSummary {
+export interface EvalSettings {
+  passThreshold: number;
+  highScoreLanguages: string[];
+}
+
+export interface EvalCategoryOption {
+  key: string;
+  displayName: string;
+}
+
+export interface EvalRunImportResult {
+  fileName: string;
+  runId: string;
+  action: 'imported' | 'updated';
+  sampleCount: number;
+  attemptCount: number;
+  scoredSampleCount: number;
+  scoredAttemptCount: number;
+  averageWeightedScore: number | null;
+  message: string;
+}
+
+export interface EvalRunSummary {
+  runId: string;
+  uploadedFileName: string;
+  uploadedBy: string | null;
+  uploadedAt: string;
+  runCreatedAt: string | null;
+  runUpdatedAt: string | null;
+  status: string;
+  language: string;
+  taskType: string;
+  baseUrl: string | null;
+  endpoint: string;
+  sourceFile: string;
+  modelRequest: string | null;
+  modelNameReportedByServer: string | null;
+  selectionMode: string | null;
+  sourceTotalItems: number;
+  sampleCountRequested: number;
+  repeatCount: number;
+  maxTokens: number | null;
+  seed: number | null;
+  totalSamples: number;
+  completedSamples: number;
+  runningSamples: number;
+  partialSamples: number;
+  errorSamples: number;
+  pendingSamples: number;
+  doneAttempts: number;
+  totalAttempts: number;
+  latestCompletedSampleIndex: number | null;
+  latestCompletedCategory: string | null;
+  evalDeviceLabel: string | null;
+  evalDeviceCpu: string | null;
+  evalDeviceGpu: string | null;
+  evalDeviceMemoryGb: number | null;
+  evalDeviceVramGb: number | null;
+  categories: EvalCategoryOption[];
+  scoredSampleCount: number;
+  scoredAttemptCount: number;
+  averageWeightedScore: number | null;
+  passedSampleCount: number;
+  failedSampleCount: number;
+  pendingScoreSampleCount: number;
+}
+
+export interface EvalRunCategoryStat {
+  key: string;
+  displayName: string;
+  totalSamples: number;
+  completedSamples: number;
+  runningSamples: number;
+  partialSamples: number;
+  errorSamples: number;
+  pendingSamples: number;
+  doneAttempts: number;
+  totalAttempts: number;
+  scoredSamples: number;
+  scoredAttempts: number;
+  averageWeightedScore: number | null;
+  passedSamples: number;
+  failedSamples: number;
+  pendingScoreSamples: number;
+}
+
+export interface EvalRunDetail extends EvalRunSummary {
+  passThreshold: number;
+  categoryStats: EvalRunCategoryStat[];
+}
+
+export interface EvalSampleAttemptSummary {
   id: number;
   attempt: number;
   status: string;
@@ -95,71 +106,68 @@ export interface EvalQuestionAttemptSummary {
   durationMs: number | null;
   responseChars: number | null;
   response: string | null;
-  score: number | null;
-  scoreNote: string | null;
   errorType: string | null;
   errorMessage: string | null;
   errorBody: string | null;
+  relevance: number | null;
+  quality: number | null;
+  fluency: number | null;
+  satisfaction: number | null;
+  weightedScore: number | null;
+  briefNote: string | null;
 }
 
-export interface EvalQuestionSummary {
+export interface EvalSampleSummary {
   runId: string;
-  language: string;
-  taskType: string;
   sampleIndex: number;
-  sampleStatus: string;
-  scoreStatus: string;
-  display: string;
+  status: string;
+  renderingName: string;
   prompt: string;
   sourceFile: string;
-  sourceCategoryName: string | null;
-  sourceCategoryIndex: number | null;
-  sourceItemIndex: number | null;
+  sourceCategory: string;
+  sourceCategoryDisplayName: string;
+  sourceCategoryIndex: number;
+  sourceItemIndex: number;
   baseUrl: string | null;
   endpoint: string;
   modelRequest: string | null;
   modelNameReportedByServer: string | null;
-  evalDeviceLabel: string | null;
-  evalDeviceChip: string | null;
   maxTokens: number | null;
-  repeatCountTarget: number | null;
-  repeatCountDone: number | null;
-  sampleAverageScore: number | null;
+  repeatCountTarget: number;
+  repeatCountDone: number;
   sampleStartedAt: string | null;
   sampleUpdatedAt: string | null;
-  sampleScoredAt: string | null;
-  attemptCount: number;
+  averageWeightedScore: number | null;
+  averageRelevance: number | null;
+  averageQuality: number | null;
+  averageFluency: number | null;
+  averageSatisfaction: number | null;
   scoredAttemptCount: number;
-  attempts: EvalQuestionAttemptSummary[];
+  passState: EvalPassState;
+  attempts: EvalSampleAttemptSummary[];
 }
 
-export interface EvalRunSummary {
-  runId: string;
-  language: string;
-  taskType: string;
-  modelNameReportedByServer: string | null;
-  evalDeviceLabel: string | null;
-  evalDeviceChip: string | null;
-  questionCount: number;
-  attemptCount: number;
-  scoredQuestionCount: number;
-  averageOfAverageScores: number | null;
-  categories: string[];
-  latestSampleUpdatedAt: string | null;
-  latestUploadedAt: string | null;
+export interface EvalSamplesResponse {
+  items: EvalSampleSummary[];
+  total: number;
+  availableCategories: EvalCategoryOption[];
+  passThreshold: number;
 }
 
-export interface EvalImportSampleResult {
-  fileName: string;
-  kind: 'sample' | 'manifest';
-  runId: string | null;
-  sampleIndex: number | null;
-  attemptCount: number;
-  averageScore: number | null;
-  display: string | null;
-  sourceCategoryName: string | null;
-  evalDeviceLabel: string | null;
-  evalDeviceChip: string | null;
-  action: 'imported' | 'updated' | 'skipped';
-  message: string;
+export interface EvalHighScoreSampleItem {
+  title: string;
+  prompt: string;
+  score: number;
+}
+
+export interface EvalHighScoreCategoryGroup {
+  category: string;
+  categoryDisplayName: string;
+  averageScore: number;
+  items: EvalHighScoreSampleItem[];
+}
+
+export interface EvalHighScoreSamplesResponse {
+  categories: EvalHighScoreCategoryGroup[];
+  minScore: number;
 }

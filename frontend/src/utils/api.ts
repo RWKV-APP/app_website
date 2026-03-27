@@ -1,5 +1,12 @@
 import { LatestDistributionsResponse } from '@/types/distribution';
-import { EvalImportResult, EvalQuestionsResponse, EvalRunRecord } from '@/types/eval';
+import {
+  EvalRunDetailRecord,
+  EvalRunImportResult,
+  EvalRunSummaryRecord,
+  EvalSampleRecord,
+  EvalSamplesResponse,
+  EvalSettingsRecord,
+} from '@/types/eval';
 import { LocationInfo } from '@/atoms';
 import {
   AdminLoginResponse,
@@ -194,70 +201,99 @@ export async function fetchAdminRemoteConfigActivities(
   return (await response.json()) as RemoteConfigActivityRecord[];
 }
 
-export async function uploadEvalSample(payload: {
-  fileName: string;
-  content: string;
-  deviceLabel?: string;
-  deviceChip?: string;
-}): Promise<EvalImportResult> {
-  const response = await adminFetch('/admin-api/evals/upload', {
+export async function uploadEvalRunArchive(file: File): Promise<EvalRunImportResult> {
+  const formData = new FormData();
+  formData.set('file', file);
+
+  const response = await adminFetch('/admin-api/evals/upload-run', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
+    body: formData,
   });
 
   if (!response.ok) {
     throw new Error(await parseErrorResponse(response));
   }
 
-  return (await response.json()) as EvalImportResult;
+  return (await response.json()) as EvalRunImportResult;
 }
 
-export async function fetchAdminEvalRuns(): Promise<EvalRunRecord[]> {
+export async function fetchAdminEvalSettings(): Promise<EvalSettingsRecord> {
+  const response = await adminFetch('/admin-api/evals/settings');
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+  return (await response.json()) as EvalSettingsRecord;
+}
+
+export async function updateAdminEvalSettings(passThreshold: number): Promise<EvalSettingsRecord> {
+  const response = await adminFetch('/admin-api/evals/settings', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ passThreshold }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+
+  return (await response.json()) as EvalSettingsRecord;
+}
+
+export async function fetchAdminEvalRuns(): Promise<EvalRunSummaryRecord[]> {
   const response = await adminFetch('/admin-api/evals/runs');
   if (!response.ok) {
     throw new Error(await parseErrorResponse(response));
   }
-  return (await response.json()) as EvalRunRecord[];
+  return (await response.json()) as EvalRunSummaryRecord[];
 }
 
-export async function fetchPublicEvalRuns(): Promise<EvalRunRecord[]> {
+export async function fetchPublicEvalRuns(): Promise<EvalRunSummaryRecord[]> {
   const response = await fetch(`${API_BASE_URL}/public-api/evals/runs`);
   if (!response.ok) {
     throw new Error(await parseErrorResponse(response));
   }
-  return (await response.json()) as EvalRunRecord[];
+  return (await response.json()) as EvalRunSummaryRecord[];
 }
 
-export async function fetchPublicEvalQuestions(options?: {
+export async function fetchPublicEvalRunDetail(runId: string): Promise<EvalRunDetailRecord> {
+  const response = await fetch(`${API_BASE_URL}/public-api/evals/runs/${encodeURIComponent(runId)}`);
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+  return (await response.json()) as EvalRunDetailRecord;
+}
+
+export async function fetchPublicEvalSamples(options?: {
   runId?: string;
-  language?: string;
-  category?: string;
+  sourceCategory?: string;
   search?: string;
-  minAverageScore?: number;
-  maxAverageScore?: number;
+  minAverageWeightedScore?: number;
+  maxAverageWeightedScore?: number;
+  passState?: 'passed' | 'failed' | 'pending';
   limit?: number | 'all';
-}): Promise<EvalQuestionsResponse> {
+  offset?: number;
+  includeResponses?: boolean;
+}): Promise<EvalSamplesResponse> {
   const params = new URLSearchParams();
   if (options?.runId) {
     params.set('runId', options.runId);
   }
-  if (options?.language) {
-    params.set('language', options.language);
-  }
-  if (options?.category) {
-    params.set('category', options.category);
+  if (options?.sourceCategory) {
+    params.set('sourceCategory', options.sourceCategory);
   }
   if (options?.search) {
     params.set('search', options.search);
   }
-  if (typeof options?.minAverageScore === 'number') {
-    params.set('minAverageScore', String(options.minAverageScore));
+  if (typeof options?.minAverageWeightedScore === 'number') {
+    params.set('minAverageWeightedScore', String(options.minAverageWeightedScore));
   }
-  if (typeof options?.maxAverageScore === 'number') {
-    params.set('maxAverageScore', String(options.maxAverageScore));
+  if (typeof options?.maxAverageWeightedScore === 'number') {
+    params.set('maxAverageWeightedScore', String(options.maxAverageWeightedScore));
+  }
+  if (options?.passState) {
+    params.set('passState', options.passState);
   }
   if (typeof options?.limit === 'number') {
     params.set('limit', String(options.limit));
@@ -265,15 +301,34 @@ export async function fetchPublicEvalQuestions(options?: {
   if (options?.limit === 'all') {
     params.set('limit', 'all');
   }
+  if (typeof options?.offset === 'number' && options.offset > 0) {
+    params.set('offset', String(options.offset));
+  }
+  if (options?.includeResponses) {
+    params.set('includeResponses', 'true');
+  }
 
   const query = params.toString();
   const response = await fetch(
-    `${API_BASE_URL}/public-api/evals/questions${query ? `?${query}` : ''}`,
+    `${API_BASE_URL}/public-api/evals/samples${query ? `?${query}` : ''}`,
   );
   if (!response.ok) {
     throw new Error(await parseErrorResponse(response));
   }
-  return (await response.json()) as EvalQuestionsResponse;
+  return (await response.json()) as EvalSamplesResponse;
+}
+
+export async function fetchPublicEvalSampleDetail(
+  runId: string,
+  sampleIndex: number,
+): Promise<EvalSampleRecord> {
+  const response = await fetch(
+    `${API_BASE_URL}/public-api/evals/samples/${encodeURIComponent(runId)}/${sampleIndex}`,
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+  return (await response.json()) as EvalSampleRecord;
 }
 
 export async function uploadRemoteConfig(

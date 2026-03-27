@@ -1,35 +1,96 @@
-export interface EvalImportResult {
+export type EvalPassState = 'passed' | 'failed' | 'pending';
+
+export interface EvalSettingsRecord {
+  passThreshold: number;
+}
+
+export interface EvalCategoryOptionRecord {
+  key: string;
+  displayName: string;
+}
+
+export interface EvalRunImportResult {
   fileName: string;
-  kind: 'sample' | 'manifest';
-  runId: string | null;
-  sampleIndex: number | null;
+  runId: string;
+  action: 'imported' | 'updated';
+  sampleCount: number;
   attemptCount: number;
-  averageScore: number | null;
-  display: string | null;
-  sourceCategoryName: string | null;
-  evalDeviceLabel: string | null;
-  evalDeviceChip: string | null;
-  action: 'imported' | 'updated' | 'skipped';
+  scoredSampleCount: number;
+  scoredAttemptCount: number;
+  averageWeightedScore: number | null;
   message: string;
 }
 
-export interface EvalRunRecord {
+export interface EvalRunSummaryRecord {
   runId: string;
+  uploadedFileName: string;
+  uploadedBy: string | null;
+  uploadedAt: string;
+  runCreatedAt: string | null;
+  runUpdatedAt: string | null;
+  status: string;
   language: string;
   taskType: string;
+  baseUrl: string | null;
+  endpoint: string;
+  sourceFile: string;
+  modelRequest: string | null;
   modelNameReportedByServer: string | null;
+  selectionMode: string | null;
+  sourceTotalItems: number;
+  sampleCountRequested: number;
+  repeatCount: number;
+  maxTokens: number | null;
+  seed: number | null;
+  totalSamples: number;
+  completedSamples: number;
+  runningSamples: number;
+  partialSamples: number;
+  errorSamples: number;
+  pendingSamples: number;
+  doneAttempts: number;
+  totalAttempts: number;
+  latestCompletedSampleIndex: number | null;
+  latestCompletedCategory: string | null;
   evalDeviceLabel: string | null;
-  evalDeviceChip: string | null;
-  questionCount: number;
-  attemptCount: number;
-  scoredQuestionCount: number;
-  averageOfAverageScores: number | null;
-  categories: string[];
-  latestSampleUpdatedAt: string | null;
-  latestUploadedAt: string | null;
+  evalDeviceCpu: string | null;
+  evalDeviceGpu: string | null;
+  evalDeviceMemoryGb: number | null;
+  evalDeviceVramGb: number | null;
+  categories: EvalCategoryOptionRecord[];
+  scoredSampleCount: number;
+  scoredAttemptCount: number;
+  averageWeightedScore: number | null;
+  passedSampleCount: number;
+  failedSampleCount: number;
+  pendingScoreSampleCount: number;
 }
 
-export interface EvalQuestionAttemptRecord {
+export interface EvalRunCategoryStatRecord {
+  key: string;
+  displayName: string;
+  totalSamples: number;
+  completedSamples: number;
+  runningSamples: number;
+  partialSamples: number;
+  errorSamples: number;
+  pendingSamples: number;
+  doneAttempts: number;
+  totalAttempts: number;
+  scoredSamples: number;
+  scoredAttempts: number;
+  averageWeightedScore: number | null;
+  passedSamples: number;
+  failedSamples: number;
+  pendingScoreSamples: number;
+}
+
+export interface EvalRunDetailRecord extends EvalRunSummaryRecord {
+  passThreshold: number;
+  categoryStats: EvalRunCategoryStatRecord[];
+}
+
+export interface EvalSampleAttemptRecord {
   id: number;
   attempt: number;
   status: string;
@@ -38,46 +99,50 @@ export interface EvalQuestionAttemptRecord {
   durationMs: number | null;
   responseChars: number | null;
   response: string | null;
-  score: number | null;
-  scoreNote: string | null;
   errorType: string | null;
   errorMessage: string | null;
   errorBody: string | null;
+  relevance: number | null;
+  quality: number | null;
+  fluency: number | null;
+  satisfaction: number | null;
+  weightedScore: number | null;
+  briefNote: string | null;
 }
 
-export interface EvalQuestionRecord {
+export interface EvalSampleRecord {
   runId: string;
-  language: string;
-  taskType: string;
   sampleIndex: number;
-  sampleStatus: string;
-  scoreStatus: string;
-  display: string;
+  status: string;
+  renderingName: string;
   prompt: string;
   sourceFile: string;
-  sourceCategoryName: string | null;
-  sourceCategoryIndex: number | null;
-  sourceItemIndex: number | null;
+  sourceCategory: string;
+  sourceCategoryDisplayName: string;
+  sourceCategoryIndex: number;
+  sourceItemIndex: number;
   baseUrl: string | null;
   endpoint: string;
   modelRequest: string | null;
   modelNameReportedByServer: string | null;
-  evalDeviceLabel: string | null;
-  evalDeviceChip: string | null;
   maxTokens: number | null;
-  repeatCountTarget: number | null;
-  repeatCountDone: number | null;
-  sampleAverageScore: number | null;
+  repeatCountTarget: number;
+  repeatCountDone: number;
   sampleStartedAt: string | null;
   sampleUpdatedAt: string | null;
-  sampleScoredAt: string | null;
-  attemptCount: number;
+  averageWeightedScore: number | null;
+  averageRelevance: number | null;
+  averageQuality: number | null;
+  averageFluency: number | null;
+  averageSatisfaction: number | null;
   scoredAttemptCount: number;
-  attempts: EvalQuestionAttemptRecord[];
+  passState: EvalPassState;
+  attempts: EvalSampleAttemptRecord[];
 }
 
-export interface EvalQuestionsResponse {
-  items: EvalQuestionRecord[];
+export interface EvalSamplesResponse {
+  items: EvalSampleRecord[];
   total: number;
-  availableCategories: string[];
+  availableCategories: EvalCategoryOptionRecord[];
+  passThreshold: number;
 }

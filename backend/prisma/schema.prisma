@@ -61,97 +61,111 @@ model RemoteConfigActivity {
   @@index([remoteConfigId])
 }
 
-model EvalAttempt {
-  id                        Int       @id @default(autoincrement())
+model EvalRun {
+  id                        Int          @id @default(autoincrement())
+  runId                     String       @unique
   uploadedFileName          String
   uploadedBy                String?
-  uploadedAt                DateTime  @default(now())
-  runId                     String
-  language                  String
-  taskType                  String
-  sampleStatus              String
-  sampleIndex               Int
-  display                   String
-  prompt                    String
-  sourceFile                String
-  sourceCategoryName        String?
-  sourceCategoryIndex       Int?
-  sourceItemIndex           Int?
-  baseUrl                   String?
-  endpoint                  String
-  modelRequest              String?
-  modelNameReportedByServer String?
-  maxTokens                 Int?
-  repeatCountTarget         Int?
-  repeatCountDone           Int?
-  scoreStatus               String
-  sampleStartedAt           DateTime?
-  sampleUpdatedAt           DateTime?
-  sampleAverageScore        Float?
-  sampleScoredAt            DateTime?
-  attempt                   Int
-  attemptStatus             String
-  attemptStartedAt          DateTime?
-  attemptEndedAt            DateTime?
-  attemptDurationMs         Int?
-  responseChars             Int?
-  response                  String?
-  score                     Float?
-  scoreNote                 String?
-  errorType                 String?
-  errorMessage              String?
-  errorBody                 String?
-  createdAt                 DateTime  @default(now())
-  updatedAt                 DateTime  @updatedAt
-
-  @@unique([runId, sampleIndex, attempt])
-  @@index([runId])
-  @@index([runId, sampleIndex])
-  @@index([language])
-  @@index([sourceCategoryName])
-  @@index([sampleAverageScore])
-  @@index([score])
-  @@index([sampleUpdatedAt])
-}
-
-model EvalRunMetadata {
-  id                        Int      @id @default(autoincrement())
-  runId                     String   @unique
-  uploadedFileName          String?
-  uploadedBy                String?
-  uploadedAt                DateTime @default(now())
-  status                    String?
-  scoreStatus               String?
+  uploadedAt                DateTime     @default(now())
   runCreatedAt              DateTime?
   runUpdatedAt              DateTime?
+  status                    String
+  language                  String
+  taskType                  String
   baseUrl                   String?
-  endpoint                  String?
-  taskType                  String?
-  language                  String?
-  sourceFile                String?
+  endpoint                  String
+  sourceFile                String
   modelRequest              String?
   modelNameReportedByServer String?
   selectionMode             String?
-  sourceTotalItems          Int?
-  sampleCountRequested      Int?
-  repeatCount               Int?
+  sourceTotalItems          Int          @default(0)
+  sampleCountRequested      Int          @default(0)
+  repeatCount               Int          @default(0)
   maxTokens                 Int?
   seed                      Int?
-  totalSamples              Int?
-  completedSamples          Int?
-  runningSamples            Int?
-  partialSamples            Int?
-  errorSamples              Int?
-  pendingSamples            Int?
-  doneAttempts              Int?
-  totalAttempts             Int?
-  samplesDir                String?
+  totalSamples              Int          @default(0)
+  completedSamples          Int          @default(0)
+  runningSamples            Int          @default(0)
+  partialSamples            Int          @default(0)
+  errorSamples              Int          @default(0)
+  pendingSamples            Int          @default(0)
+  doneAttempts              Int          @default(0)
+  totalAttempts             Int          @default(0)
+  latestCompletedSampleIndex Int?
+  latestCompletedCategory   String?
   evalDeviceLabel           String?
-  evalDeviceChip            String?
-  createdAt                 DateTime @default(now())
-  updatedAt                 DateTime @updatedAt
+  evalDeviceCpu             String?
+  evalDeviceGpu             String?
+  evalDeviceMemoryGb        Float?
+  evalDeviceVramGb          Float?
+  createdAt                 DateTime     @default(now())
+  updatedAt                 DateTime     @updatedAt
+  samples                   EvalSample[]
 
-  @@index([runId])
   @@index([uploadedAt])
   @@index([runUpdatedAt])
+}
+
+model EvalSample {
+  id                       Int                 @id @default(autoincrement())
+  evalRunId                Int
+  sampleIndex              Int
+  status                   String
+  renderingName            String
+  prompt                   String
+  sourceFile               String
+  sourceCategory           String
+  sourceCategoryDisplayName String
+  sourceCategoryIndex      Int
+  sourceItemIndex          Int
+  baseUrl                  String?
+  endpoint                 String
+  modelRequest             String?
+  modelNameReportedByServer String?
+  maxTokens                Int?
+  repeatCountTarget        Int                 @default(0)
+  repeatCountDone          Int                 @default(0)
+  sampleStartedAt          DateTime?
+  sampleUpdatedAt          DateTime?
+  averageWeightedScore     Float?
+  averageRelevance         Float?
+  averageQuality           Float?
+  averageFluency           Float?
+  averageSatisfaction      Float?
+  scoredAttemptCount       Int                 @default(0)
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+  run                      EvalRun             @relation(fields: [evalRunId], references: [id], onDelete: Cascade)
+  attempts                 EvalSampleAttempt[]
+
+  @@unique([evalRunId, sampleIndex])
+  @@index([sourceCategory])
+  @@index([averageWeightedScore])
+}
+
+model EvalSampleAttempt {
+  id            Int        @id @default(autoincrement())
+  evalSampleId  Int
+  attempt       Int
+  status        String
+  startedAt     DateTime?
+  endedAt       DateTime?
+  durationMs    Int?
+  responseChars Int?
+  response      String?
+  errorType     String?
+  errorMessage  String?
+  errorBody     String?
+  relevance     Int?
+  quality       Int?
+  fluency       Int?
+  satisfaction  Int?
+  weightedScore Float?
+  briefNote     String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  sample        EvalSample @relation(fields: [evalSampleId], references: [id], onDelete: Cascade)
+
+  @@unique([evalSampleId, attempt])
+  @@index([weightedScore])
 }

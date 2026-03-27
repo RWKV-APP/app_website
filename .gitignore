@@ -55,3 +55,9 @@ backend/prisma/migrations/
 tmp/
 temp/
 *.tmp
+
+docs/eval_handoff/**
+!docs/eval_handoff/
+!docs/eval_handoff/**/
+!docs/eval_handoff/**/*.md
+!docs/eval_handoff/**/*.py

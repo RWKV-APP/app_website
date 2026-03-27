@@ -1,10 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DragEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { EvalImportResult, EvalRunRecord } from '@/types/eval';
-import { fetchAdminEvalRuns, fetchAdminSession, uploadEvalSample } from '@/utils';
+import { EvalRunImportResult, EvalRunSummaryRecord, EvalSettingsRecord } from '@/types/eval';
+import {
+  fetchAdminEvalRuns,
+  fetchAdminEvalSettings,
+  fetchAdminSession,
+  updateAdminEvalSettings,
+  uploadEvalRunArchive,
+} from '@/utils';
 import { AdminSessionResponse } from '@/types/remote-config';
 import styles from './page.module.css';
 
@@ -12,24 +18,35 @@ const NEXT_PATH = '/admin/evals';
 
 interface UploadRow {
   fileName: string;
-  status: 'imported' | 'updated' | 'skipped' | 'failed';
+  status: 'imported' | 'updated' | 'failed';
   message: string;
-  result?: EvalImportResult;
+  createdAt: string;
+  result?: EvalRunImportResult;
 }
 
 function normalizeError(error: unknown) {
   return error instanceof Error ? error.message : 'Operation failed';
 }
 
-function formatDate(value: string | null) {
+function formatDate(value: string | null | undefined) {
   if (!value) {
     return 'n/a';
   }
   return new Date(value).toLocaleString();
 }
 
-function formatScore(value: number | null) {
-  return value === null ? 'n/a' : value.toFixed(2);
+function formatScore(value: number | null | undefined) {
+  return typeof value === 'number' ? value.toFixed(2) : 'n/a';
+}
+
+function formatBytes(size: number) {
+  if (size < 1024) {
+    return `${size} B`;
+  }
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} KB`;
+  }
+  return `${(size / 1024 / 1024).toFixed(2)} MB`;
 }
 
 function formatModelName(value: string | null | undefined) {
@@ -39,15 +56,23 @@ function formatModelName(value: string | null | undefined) {
   return value.replace(/\.(zip|bin|gguf|pth|safetensors|json)$/i, '');
 }
 
-function formatDeviceSummary(label: string | null | undefined, chip: string | null | undefined) {
-  if (label && chip) {
-    return `${label} · ${chip}`;
-  }
-  return label || chip || '未填写';
+function formatDeviceSummary(run: EvalRunSummaryRecord) {
+  const parts = [
+    run.evalDeviceLabel,
+    run.evalDeviceCpu,
+    run.evalDeviceGpu,
+    typeof run.evalDeviceMemoryGb === 'number' ? `${run.evalDeviceMemoryGb} GB RAM` : null,
+    typeof run.evalDeviceVramGb === 'number' ? `${run.evalDeviceVramGb} GB VRAM` : null,
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(' · ') : '未填写';
 }
 
-function formatRunLabel(run: EvalRunRecord) {
-  return `${run.runId} · ${run.questionCount} questions`;
+function formatCategorySummary(run: EvalRunSummaryRecord) {
+  if (run.categories.length === 0) {
+    return 'No categories';
+  }
+  return run.categories.slice(0, 4).map((category) => category.displayName).join(' · ');
 }
 
 function isAuthError(message: string) {
@@ -62,17 +87,21 @@ export default function AdminEvalsPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [session, setSession] = useState<AdminSessionResponse | null>(null);
-  const [runs, setRuns] = useState<EvalRunRecord[]>([]);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [runs, setRuns] = useState<EvalRunSummaryRecord[]>([]);
+  const [settings, setSettings] = useState<EvalSettingsRecord | null>(null);
+  const [selectedArchive, setSelectedArchive] = useState<File | null>(null);
   const [uploadRows, setUploadRows] = useState<UploadRow[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [loadingRuns, setLoadingRuns] = useState(true);
+  const [loadingSettings, setLoadingSettings] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [status, setStatus] = useState('');
-  const [error, setError] = useState('');
-  const [deviceLabel, setDeviceLabel] = useState('');
-  const [deviceChip, setDeviceChip] = useState('');
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [archiveStatus, setArchiveStatus] = useState('');
+  const [archiveError, setArchiveError] = useState('');
+  const [settingsStatus, setSettingsStatus] = useState('');
+  const [settingsError, setSettingsError] = useState('');
+  const [thresholdInput, setThresholdInput] = useState('');
 
   const redirectToLogin = useCallback(() => {
     router.replace(`/admin/login?next=${encodeURIComponent(NEXT_PATH)}`);
@@ -80,7 +109,6 @@ export default function AdminEvalsPage() {
 
   const refreshRuns = useCallback(async () => {
     setLoadingRuns(true);
-    setError('');
 
     try {
       const nextRuns = await fetchAdminEvalRuns();
@@ -91,9 +119,28 @@ export default function AdminEvalsPage() {
         redirectToLogin();
         return;
       }
-      setError(message);
+      setArchiveError(message);
     } finally {
       setLoadingRuns(false);
+    }
+  }, [redirectToLogin]);
+
+  const refreshSettings = useCallback(async () => {
+    setLoadingSettings(true);
+
+    try {
+      const nextSettings = await fetchAdminEvalSettings();
+      setSettings(nextSettings);
+      setThresholdInput(String(nextSettings.passThreshold));
+    } catch (nextError) {
+      const message = normalizeError(nextError);
+      if (isAuthError(message)) {
+        redirectToLogin();
+        return;
+      }
+      setSettingsError(message);
+    } finally {
+      setLoadingSettings(false);
     }
   }, [redirectToLogin]);
 
@@ -102,7 +149,6 @@ export default function AdminEvalsPage() {
 
     async function bootstrap() {
       setCheckingSession(true);
-      setError('');
 
       try {
         const nextSession = await fetchAdminSession();
@@ -116,7 +162,7 @@ export default function AdminEvalsPage() {
         }
 
         setSession(nextSession);
-        await refreshRuns();
+        await Promise.all([refreshRuns(), refreshSettings()]);
       } catch (nextError) {
         if (cancelled) {
           return;
@@ -126,7 +172,7 @@ export default function AdminEvalsPage() {
           redirectToLogin();
           return;
         }
-        setError(message);
+        setArchiveError(message);
       } finally {
         if (!cancelled) {
           setCheckingSession(false);
@@ -139,19 +185,39 @@ export default function AdminEvalsPage() {
     return () => {
       cancelled = true;
     };
-  }, [redirectToLogin, refreshRuns]);
+  }, [redirectToLogin, refreshRuns, refreshSettings]);
 
-  function handleSelectedFiles(nextFiles: FileList | null) {
-    setSelectedFiles(nextFiles ? Array.from(nextFiles) : []);
-    setStatus('');
-    setError('');
-  }
-
-  function clearSelection() {
-    setSelectedFiles([]);
+  function clearSelectedArchive() {
+    setSelectedArchive(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  }
+
+  function handleSelectedFiles(fileList: FileList | null) {
+    setArchiveStatus('');
+    setArchiveError('');
+
+    const files = fileList ? Array.from(fileList) : [];
+    if (files.length === 0) {
+      setSelectedArchive(null);
+      return;
+    }
+
+    if (files.length > 1) {
+      setSelectedArchive(null);
+      setArchiveError('本次只支持上传一个 run zip。');
+      return;
+    }
+
+    const [file] = files;
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      setSelectedArchive(null);
+      setArchiveError('只支持 .zip run archive。');
+      return;
+    }
+
+    setSelectedArchive(file);
   }
 
   function handleDrop(event: DragEvent<HTMLLabelElement>) {
@@ -173,70 +239,77 @@ export default function AdminEvalsPage() {
   }
 
   async function handleUpload() {
-    if (selectedFiles.length === 0) {
-      setError('请先选择一个或多个 evaluation JSON 文件。');
+    if (!selectedArchive) {
+      setArchiveError('请先选择一个 run zip。');
       return;
     }
 
     setUploading(true);
-    setStatus('');
-    setError('');
+    setArchiveStatus('');
+    setArchiveError('');
 
-    const results: UploadRow[] = [];
-    let importedCount = 0;
-
-    for (const file of selectedFiles) {
-      try {
-        const content = await file.text();
-        const result = await uploadEvalSample({
-          fileName: file.name,
-          content,
-          deviceLabel: deviceLabel.trim() || undefined,
-          deviceChip: deviceChip.trim() || undefined,
-        });
-
-        results.push({
-          fileName: file.name,
-          status: result.action,
-          message: result.message,
-          result,
-        });
-        if (result.action !== 'skipped') {
-          importedCount += 1;
-        }
-      } catch (nextError) {
-        const message = normalizeError(nextError);
-        if (isAuthError(message)) {
-          redirectToLogin();
-          return;
-        }
-        results.push({
-          fileName: file.name,
-          status: 'failed',
-          message,
-        });
-      }
-    }
-
-    setUploadRows(results);
-    const failedCount = results.filter((row) => row.status === 'failed').length;
-    const skippedCount = results.filter((row) => row.status === 'skipped').length;
-    setStatus(
-      `完成 ${results.length} 个文件处理：成功导入 ${importedCount} 个，跳过 ${skippedCount} 个，失败 ${failedCount} 个。`,
-    );
-    clearSelection();
-
-    if (importedCount > 0) {
+    try {
+      const result = await uploadEvalRunArchive(selectedArchive);
+      const nextRow: UploadRow = {
+        fileName: selectedArchive.name,
+        status: result.action,
+        message: result.message,
+        createdAt: new Date().toISOString(),
+        result,
+      };
+      setUploadRows((current) => [nextRow, ...current].slice(0, 8));
+      setArchiveStatus(
+        `${result.action === 'updated' ? '已替换' : '已导入'} ${result.runId}，${result.sampleCount} 个样本，${result.scoredAttemptCount} 个已评分 attempts。`,
+      );
+      clearSelectedArchive();
       await refreshRuns();
+    } catch (nextError) {
+      const message = normalizeError(nextError);
+      if (isAuthError(message)) {
+        redirectToLogin();
+        return;
+      }
+      const failedRow: UploadRow = {
+        fileName: selectedArchive.name,
+        status: 'failed',
+        message,
+        createdAt: new Date().toISOString(),
+      };
+      setUploadRows((current) => [failedRow, ...current].slice(0, 8));
+      setArchiveError(message);
+    } finally {
+      setUploading(false);
     }
-
-    setUploading(false);
   }
 
-  const totalSelectedBytes = useMemo(
-    () => selectedFiles.reduce((sum, file) => sum + file.size, 0),
-    [selectedFiles],
-  );
+  async function handleSaveThreshold() {
+    const parsed = Number.parseFloat(thresholdInput);
+    if (!Number.isFinite(parsed)) {
+      setSettingsError('Pass threshold 必须是数字。');
+      return;
+    }
+
+    setSavingSettings(true);
+    setSettingsStatus('');
+    setSettingsError('');
+
+    try {
+      const nextSettings = await updateAdminEvalSettings(parsed);
+      setSettings(nextSettings);
+      setThresholdInput(String(nextSettings.passThreshold));
+      setSettingsStatus(`Pass threshold 已更新为 ${nextSettings.passThreshold.toFixed(2)}。`);
+      await refreshRuns();
+    } catch (nextError) {
+      const message = normalizeError(nextError);
+      if (isAuthError(message)) {
+        redirectToLogin();
+        return;
+      }
+      setSettingsError(message);
+    } finally {
+      setSavingSettings(false);
+    }
+  }
 
   if (checkingSession) {
     return (
@@ -252,200 +325,189 @@ export default function AdminEvalsPage() {
   return (
     <main className={styles.page}>
       <section className={styles.hero}>
-        <div>
+        <div className={styles.heroCopy}>
           <p className={styles.eyebrow}>Eval Console</p>
-          <h1 className={styles.title}>Evaluation Importer</h1>
+          <h1 className={styles.title}>Run Zip Importer</h1>
           <p className={styles.description}>
-            上传单个 sample JSON 文件后，我们会把每次 attempt 连同冗余 metadata 一起写入
-            SQLite。manifest 会写入 run 级元数据。公开展示页会直接从这些导入后的 row
-            和 run metadata 聚合高分问题。
+            后台现在只接受整个 run 的 zip 包。上传后会按 run snapshot 覆盖旧数据，并把 generation、
+            scoring 和 sample attempts 一起重建到数据库。
           </p>
-          <div className={styles.metaRow}>
-            <span className={styles.metaPill}>User: {session?.username || 'unknown'}</span>
-            <span className={styles.metaPill}>
-              Public URL: <Link href="/evals">/evals</Link>
+          <div className={styles.heroMeta}>
+            <span className={styles.heroPill}>User: {session?.username || 'unknown'}</span>
+            <span className={styles.heroPill}>Public URL: /evals</span>
+            <span className={styles.heroPill}>
+              Threshold: {settings ? settings.passThreshold.toFixed(2) : '...'}
             </span>
           </div>
         </div>
 
         <div className={styles.heroActions}>
-          <Link href="/evals" className={styles.primaryLink}>
-            打开公开展示页
+          <Link href="/admin/eval" className={styles.primaryLink}>
+            打开 Eval Browser
           </Link>
           <button
             type="button"
             className={styles.secondaryButton}
-            onClick={() => void refreshRuns()}
+            onClick={() => void Promise.all([refreshRuns(), refreshSettings()])}
           >
-            刷新已导入数据
+            刷新数据
           </button>
         </div>
       </section>
 
-      <section className={styles.panel}>
-        <div className={styles.panelHeader}>
-          <div>
-            <h2 className={styles.panelTitle}>Upload Eval JSON</h2>
-            <p className={styles.panelDescription}>
-              直接拖拽 `samples/` 目录里的 JSON 文件即可。如果一起带上 `manifest.json`，
-              run 级元数据也会一起导入。接口会按 `run_id + sample_index + attempt` 去重，并用最新上传内容覆盖同一题目的旧 attempts。
-            </p>
+      <section className={styles.grid}>
+        <article className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <div>
+              <h2 className={styles.panelTitle}>Upload Run Zip</h2>
+              <p className={styles.panelDescription}>
+                支持拖拽或选择单个 `.zip` 文件。zip 根目录可以直接放 `manifest.json` /
+                `generation_summary.json` / `samples/` / `scores/`，也可以外面再包一层 run 目录。
+              </p>
+            </div>
           </div>
-        </div>
 
-        <label
-          className={`${styles.dropZone} ${dragActive ? styles.dropZoneActive : ''}`}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json,application/json"
-            multiple
-            onChange={(event) => handleSelectedFiles(event.target.files)}
-            className={styles.fileInput}
-          />
-          <span className={styles.dropZoneTitle}>拖拽 evaluation JSON 文件到这里</span>
-          <span className={styles.dropZoneText}>
-            推荐直接选择一个 run 目录下的 `samples/*.json`，也可以把 `manifest.json`
-            一起拖进来。
-          </span>
-        </label>
+          <label
+            className={`${styles.dropZone} ${dragActive ? styles.dropZoneActive : ''}`}
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".zip,application/zip"
+              onChange={(event) => handleSelectedFiles(event.target.files)}
+              className={styles.fileInput}
+            />
+            <span className={styles.dropZoneTitle}>拖拽 run zip 到这里</span>
+            <span className={styles.dropZoneText}>
+              一个 zip 对应一个 eval run。散装 JSON 和文件夹直传不再支持。
+            </span>
+          </label>
 
-        <div className={styles.uploadOptions}>
-          <h3 className={styles.selectionTitle}>Optional Run Device</h3>
-          <p className={styles.selectionMeta}>
-            当前 examples 里没有稳定的设备字段时，可以在这里手动补录。它会应用到本次上传涉及的 run。
-          </p>
-          <div className={styles.optionGrid}>
-            <label className={styles.optionField}>
-              <span>设备名称</span>
-              <input
-                value={deviceLabel}
-                onChange={(event) => setDeviceLabel(event.target.value)}
-                className={styles.textInput}
-                placeholder="例如：MacBook Pro 16-inch"
-              />
-            </label>
-            <label className={styles.optionField}>
-              <span>芯片</span>
-              <input
-                value={deviceChip}
-                onChange={(event) => setDeviceChip(event.target.value)}
-                className={styles.textInput}
-                placeholder="例如：Apple M4 Pro"
-              />
-            </label>
-          </div>
-        </div>
-
-        {selectedFiles.length > 0 ? (
-          <div className={styles.selectionPanel}>
-            <div className={styles.selectionHeader}>
-              <h3 className={styles.selectionTitle}>Ready to upload</h3>
+          {selectedArchive ? (
+            <div className={styles.selectionCard}>
+              <div>
+                <h3 className={styles.selectionTitle}>{selectedArchive.name}</h3>
+                <p className={styles.selectionMeta}>{formatBytes(selectedArchive.size)}</p>
+              </div>
               <button
                 type="button"
                 className={styles.linkButton}
-                onClick={() => clearSelection()}
+                onClick={() => clearSelectedArchive()}
                 disabled={uploading}
               >
                 清空
               </button>
             </div>
-            <p className={styles.selectionMeta}>
-              共 {selectedFiles.length} 个文件，约 {(totalSelectedBytes / 1024).toFixed(1)} KB
-            </p>
-            <p className={styles.selectionMeta}>
-              本次设备信息：{formatDeviceSummary(deviceLabel, deviceChip)}
-            </p>
-            <ul className={styles.fileList}>
-              {selectedFiles.slice(0, 20).map((file) => (
-                <li key={`${file.name}-${file.lastModified}`} className={styles.fileListItem}>
-                  <span>{file.name}</span>
-                  <span>{(file.size / 1024).toFixed(1)} KB</span>
-                </li>
-              ))}
-            </ul>
-            {selectedFiles.length > 20 && (
-              <p className={styles.selectionMeta}>
-                其余 {selectedFiles.length - 20} 个文件已省略显示。
-              </p>
-            )}
+          ) : (
+            <p className={styles.empty}>还没有选择 run zip。</p>
+          )}
+
+          <div className={styles.actionRow}>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() => void handleUpload()}
+              disabled={!selectedArchive || uploading}
+            >
+              {uploading ? 'Uploading...' : 'Upload Run Zip'}
+            </button>
           </div>
-        ) : (
-          <p className={styles.empty}>还没有选择文件。</p>
-        )}
 
-        <div className={styles.actionRow}>
-          <button
-            type="button"
-            className={styles.primaryButton}
-            onClick={() => void handleUpload()}
-            disabled={uploading || selectedFiles.length === 0}
-          >
-            {uploading ? 'Uploading...' : 'Upload Selected Files'}
-          </button>
-        </div>
+          {archiveStatus ? <p className={styles.success}>{archiveStatus}</p> : null}
+          {archiveError ? <p className={styles.error}>{archiveError}</p> : null}
+        </article>
 
-        {status && <p className={styles.success}>{status}</p>}
-        {error && <p className={styles.error}>{error}</p>}
+        <article className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <div>
+              <h2 className={styles.panelTitle}>Pass Threshold</h2>
+              <p className={styles.panelDescription}>
+                通过线写入 `AppConfig` 的 `eval.pass_threshold`，公开页会按当前值实时计算 passed /
+                failed / pending。
+              </p>
+            </div>
+          </div>
+
+          <div className={styles.settingsCard}>
+            <label className={styles.field}>
+              <span>Threshold</span>
+              <input
+                value={thresholdInput}
+                onChange={(event) => setThresholdInput(event.target.value)}
+                className={styles.textInput}
+                inputMode="decimal"
+                placeholder="8.0"
+                disabled={loadingSettings || savingSettings}
+              />
+            </label>
+            <p className={styles.settingsHint}>允许 0 到 10，默认 8.0。</p>
+            <div className={styles.actionRow}>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() => void handleSaveThreshold()}
+                disabled={loadingSettings || savingSettings}
+              >
+                {savingSettings ? 'Saving...' : 'Save Threshold'}
+              </button>
+            </div>
+            {settingsStatus ? <p className={styles.success}>{settingsStatus}</p> : null}
+            {settingsError ? <p className={styles.error}>{settingsError}</p> : null}
+          </div>
+        </article>
       </section>
 
       <section className={styles.panel}>
         <div className={styles.panelHeader}>
           <div>
-            <h2 className={styles.panelTitle}>Latest Upload Results</h2>
-            <p className={styles.panelDescription}>
-              每个文件都会单独给出导入结果，方便你快速定位哪一个 JSON 有问题。
-            </p>
+            <h2 className={styles.panelTitle}>Recent Imports</h2>
+            <p className={styles.panelDescription}>最近几次上传会显示在这里，方便快速看校验结果。</p>
           </div>
         </div>
 
         {uploadRows.length === 0 ? (
           <p className={styles.empty}>本轮还没有上传记录。</p>
         ) : (
-          <div className={styles.resultsGrid}>
+          <div className={styles.resultGrid}>
             {uploadRows.map((row) => (
-              <article key={`${row.fileName}-${row.status}`} className={styles.resultCard}>
+              <article key={`${row.fileName}-${row.createdAt}`} className={styles.resultCard}>
                 <div className={styles.resultHeader}>
-                  <h3 className={styles.resultTitle}>{row.fileName}</h3>
+                  <div>
+                    <h3 className={styles.resultTitle}>{row.fileName}</h3>
+                    <p className={styles.resultTime}>{formatDate(row.createdAt)}</p>
+                  </div>
                   <span className={`${styles.statusPill} ${styles[`status_${row.status}`]}`}>
                     {row.status}
                   </span>
                 </div>
                 <p className={styles.resultMessage}>{row.message}</p>
-                {row.result && (
+                {row.result ? (
                   <dl className={styles.resultMeta}>
                     <div>
-                      <dt>kind</dt>
-                      <dd>{row.result.kind}</dd>
+                      <dt>Run</dt>
+                      <dd>{row.result.runId}</dd>
                     </div>
                     <div>
-                      <dt>run</dt>
-                      <dd>{row.result.runId || 'n/a'}</dd>
+                      <dt>Samples</dt>
+                      <dd>{row.result.sampleCount}</dd>
                     </div>
                     <div>
-                      <dt>sample</dt>
-                      <dd>{row.result.sampleIndex ?? 'n/a'}</dd>
-                    </div>
-                    <div>
-                      <dt>attempts</dt>
+                      <dt>Attempts</dt>
                       <dd>{row.result.attemptCount}</dd>
                     </div>
                     <div>
-                      <dt>avg score</dt>
-                      <dd>{formatScore(row.result.averageScore)}</dd>
+                      <dt>Scored</dt>
+                      <dd>{row.result.scoredAttemptCount}</dd>
                     </div>
                     <div>
-                      <dt>device</dt>
-                      <dd>
-                        {formatDeviceSummary(row.result.evalDeviceLabel, row.result.evalDeviceChip)}
-                      </dd>
+                      <dt>Avg Score</dt>
+                      <dd>{formatScore(row.result.averageWeightedScore)}</dd>
                     </div>
                   </dl>
-                )}
+                ) : null}
               </article>
             ))}
           </div>
@@ -457,7 +519,7 @@ export default function AdminEvalsPage() {
           <div>
             <h2 className={styles.panelTitle}>Imported Runs</h2>
             <p className={styles.panelDescription}>
-              这里展示当前数据库里已经导入的 run 概况，方便你验证上传是否已经被公开页面读到。
+              这里展示当前数据库中的 run 概况。通过线调整后，pass/fail 统计会即时重算。
             </p>
           </div>
         </div>
@@ -465,48 +527,59 @@ export default function AdminEvalsPage() {
         {loadingRuns ? (
           <p className={styles.empty}>Loading imported runs...</p>
         ) : runs.length === 0 ? (
-          <p className={styles.empty}>数据库里还没有导入任何 evaluation attempts。</p>
+          <p className={styles.empty}>数据库里还没有新的 eval run。</p>
         ) : (
           <div className={styles.runGrid}>
             {runs.map((run) => (
               <article key={run.runId} className={styles.runCard}>
                 <div className={styles.runHeader}>
-                  <h3 className={styles.runTitle}>{formatRunLabel(run)}</h3>
-                  <span className={styles.runLanguage}>{run.language}</span>
+                  <div>
+                    <p className={styles.runEyebrow}>{run.language}</p>
+                    <h3 className={styles.runTitle}>{run.runId}</h3>
+                  </div>
+                  <span className={styles.runStatus}>{run.status}</span>
                 </div>
+
                 <p className={styles.runModel}>
                   {formatModelName(run.modelNameReportedByServer)} · {run.taskType}
                 </p>
-                <p className={styles.runModel}>
-                  Device: {formatDeviceSummary(run.evalDeviceLabel, run.evalDeviceChip)}
-                </p>
+                <p className={styles.runMetaLine}>{formatDeviceSummary(run)}</p>
+                <p className={styles.runMetaLine}>{formatCategorySummary(run)}</p>
+
                 <dl className={styles.runStats}>
                   <div>
-                    <dt>Scored questions</dt>
+                    <dt>Generation</dt>
                     <dd>
-                      {run.scoredQuestionCount}/{run.questionCount}
+                      {run.completedSamples}/{run.totalSamples}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Scored Samples</dt>
+                    <dd>
+                      {run.scoredSampleCount}/{run.totalSamples}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Avg Score</dt>
+                    <dd>{formatScore(run.averageWeightedScore)}</dd>
+                  </div>
+                  <div>
+                    <dt>Pass / Fail</dt>
+                    <dd>
+                      {run.passedSampleCount} / {run.failedSampleCount}
                     </dd>
                   </div>
                   <div>
                     <dt>Attempts</dt>
-                    <dd>{run.attemptCount}</dd>
+                    <dd>
+                      {run.doneAttempts}/{run.totalAttempts}
+                    </dd>
                   </div>
                   <div>
-                    <dt>Average score</dt>
-                    <dd>{formatScore(run.averageOfAverageScores)}</dd>
-                  </div>
-                  <div>
-                    <dt>Updated</dt>
-                    <dd>{formatDate(run.latestUploadedAt || run.latestSampleUpdatedAt)}</dd>
+                    <dt>Uploaded</dt>
+                    <dd>{formatDate(run.uploadedAt)}</dd>
                   </div>
                 </dl>
-                <div className={styles.categoryList}>
-                  {run.categories.map((category) => (
-                    <span key={`${run.runId}-${category}`} className={styles.categoryPill}>
-                      {category}
-                    </span>
-                  ))}
-                </div>
               </article>
             ))}
           </div>

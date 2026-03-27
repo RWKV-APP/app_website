@@ -1,1158 +1,1571 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { Prisma, type EvalAttempt, type EvalRunMetadata } from '@prisma/client';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import JSZip = require('jszip');
 import { PrismaService } from '../prisma/prisma.service';
 import type {
-  EvalManifestUploadInput,
-  EvalImportSampleResult,
-  EvalQuestionAttemptSummary,
-  EvalQuestionSummary,
+  EvalCategoryOption,
+  EvalHighScoreCategoryGroup,
+  EvalHighScoreSampleItem,
+  EvalHighScoreSamplesResponse,
+  EvalPassState,
+  EvalRunCategoryStat,
+  EvalRunDetail,
+  EvalRunImportResult,
   EvalRunSummary,
-  EvalSampleAttemptInput,
-  EvalSampleUploadInput,
+  EvalSampleAttemptSummary,
+  EvalSamplesResponse,
+  EvalSampleSummary,
+  EvalSettings,
 } from '../types/eval';
 
-type EvalAttemptRow = Pick<
-  EvalAttempt,
-  | 'id'
-  | 'uploadedFileName'
-  | 'uploadedBy'
-  | 'uploadedAt'
-  | 'runId'
-  | 'language'
-  | 'taskType'
-  | 'sampleStatus'
-  | 'sampleIndex'
-  | 'display'
-  | 'prompt'
-  | 'sourceFile'
-  | 'sourceCategoryName'
-  | 'sourceCategoryIndex'
-  | 'sourceItemIndex'
-  | 'baseUrl'
-  | 'endpoint'
-  | 'modelRequest'
-  | 'modelNameReportedByServer'
-  | 'maxTokens'
-  | 'repeatCountTarget'
-  | 'repeatCountDone'
-  | 'scoreStatus'
-  | 'sampleStartedAt'
-  | 'sampleUpdatedAt'
-  | 'sampleAverageScore'
-  | 'sampleScoredAt'
-  | 'attempt'
-  | 'attemptStatus'
-  | 'attemptStartedAt'
-  | 'attemptEndedAt'
-  | 'attemptDurationMs'
-  | 'responseChars'
-  | 'response'
-  | 'score'
-  | 'scoreNote'
-  | 'errorType'
-  | 'errorMessage'
-  | 'errorBody'
->;
+const DEFAULT_PASS_THRESHOLD = 8.5;
+const EVAL_PASS_THRESHOLD_KEY = 'eval.pass_threshold';
+const DEFAULT_HIGH_SCORE_LANGUAGES = ['zh-Hans'];
+const EVAL_HIGH_SCORE_LANGUAGES_KEY = 'eval.high_score_languages';
+const FILE_SIZE_LIMIT_MB = 64;
 
-type EvalRunMetadataRow = Pick<
-  EvalRunMetadata,
-  | 'runId'
-  | 'uploadedAt'
-  | 'status'
-  | 'scoreStatus'
-  | 'runCreatedAt'
-  | 'runUpdatedAt'
-  | 'baseUrl'
-  | 'endpoint'
-  | 'taskType'
-  | 'language'
-  | 'sourceFile'
-  | 'modelRequest'
-  | 'modelNameReportedByServer'
-  | 'selectionMode'
-  | 'sourceTotalItems'
-  | 'sampleCountRequested'
-  | 'repeatCount'
-  | 'maxTokens'
-  | 'seed'
-  | 'totalSamples'
-  | 'completedSamples'
-  | 'runningSamples'
-  | 'partialSamples'
-  | 'errorSamples'
-  | 'pendingSamples'
-  | 'doneAttempts'
-  | 'totalAttempts'
-  | 'samplesDir'
-  | 'evalDeviceLabel'
-  | 'evalDeviceChip'
->;
+interface ImportRunArchiveOptions {
+  fileName: string;
+  buffer: Buffer;
+  uploadedBy: string;
+}
 
-interface NormalizedEvalAttempt {
+interface UpdateEvalSettingsInput {
+  passThreshold: number;
+  highScoreLanguages?: string[];
+}
+
+interface ListSamplesOptions {
+  runId?: string;
+  sourceCategory?: string;
+  search?: string;
+  minAverageWeightedScore?: number;
+  maxAverageWeightedScore?: number;
+  passState?: EvalPassState;
+  limit?: number | null;
+  offset?: number;
+  includeResponses?: boolean;
+}
+
+interface EvalDeviceInfo {
+  label: string | null;
+  cpu: string | null;
+  gpu: string | null;
+  memoryGb: number | null;
+  vramGb: number | null;
+}
+
+interface ParsedManifest {
+  runId: string;
+  status: string;
+  runCreatedAt: Date | null;
+  runUpdatedAt: Date | null;
+  baseUrl: string | null;
+  endpoint: string;
+  taskType: string;
+  language: string;
+  sourceFile: string;
+  modelRequest: string | null;
+  modelNameReportedByServer: string | null;
+  selectionMode: string | null;
+  sourceTotalItems: number;
+  sampleCountRequested: number;
+  repeatCount: number;
+  maxTokens: number | null;
+  seed: number | null;
+  device: EvalDeviceInfo;
+}
+
+interface ParsedGenerationSummary {
+  runId: string;
+  status: string | null;
+  latestCompletedSampleIndex: number | null;
+  latestCompletedCategory: string | null;
+}
+
+interface ParsedScoreAttempt {
   attempt: number;
-  attemptStatus: string;
-  attemptStartedAt: Date | null;
-  attemptEndedAt: Date | null;
-  attemptDurationMs: number | null;
+  relevance: number;
+  quality: number;
+  fluency: number;
+  satisfaction: number;
+  weightedScore: number;
+  briefNote: string | null;
+}
+
+interface ParsedSampleAttempt {
+  attempt: number;
+  status: string;
+  startedAt: Date | null;
+  endedAt: Date | null;
+  durationMs: number | null;
   responseChars: number | null;
   response: string | null;
-  score: number | null;
-  scoreNote: string | null;
   errorType: string | null;
   errorMessage: string | null;
   errorBody: string | null;
+  relevance: number | null;
+  quality: number | null;
+  fluency: number | null;
+  satisfaction: number | null;
+  weightedScore: number | null;
+  briefNote: string | null;
 }
 
-interface NormalizedEvalSample {
-  runId: string;
-  language: string;
-  taskType: string;
-  sampleStatus: string;
+interface ParsedSample {
   sampleIndex: number;
-  display: string;
+  status: string;
+  renderingName: string;
   prompt: string;
   sourceFile: string;
-  sourceCategoryName: string | null;
-  sourceCategoryIndex: number | null;
-  sourceItemIndex: number | null;
+  sourceCategory: string;
+  sourceCategoryDisplayName: string;
+  sourceCategoryIndex: number;
+  sourceItemIndex: number;
   baseUrl: string | null;
   endpoint: string;
   modelRequest: string | null;
   modelNameReportedByServer: string | null;
   maxTokens: number | null;
-  repeatCountTarget: number | null;
-  repeatCountDone: number | null;
-  scoreStatus: string;
+  repeatCountTarget: number;
+  repeatCountDone: number;
   sampleStartedAt: Date | null;
   sampleUpdatedAt: Date | null;
-  sampleAverageScore: number | null;
-  sampleScoredAt: Date | null;
-  attempts: NormalizedEvalAttempt[];
+  averageWeightedScore: number | null;
+  averageRelevance: number | null;
+  averageQuality: number | null;
+  averageFluency: number | null;
+  averageSatisfaction: number | null;
+  scoredAttemptCount: number;
+  device: EvalDeviceInfo;
+  attempts: ParsedSampleAttempt[];
 }
 
-interface NormalizedEvalManifest {
-  runId: string;
-  status: string | null;
-  scoreStatus: string | null;
-  runCreatedAt: Date | null;
-  runUpdatedAt: Date | null;
-  baseUrl: string | null;
-  endpoint: string | null;
-  taskType: string | null;
-  language: string | null;
-  sourceFile: string | null;
-  modelRequest: string | null;
-  modelNameReportedByServer: string | null;
-  selectionMode: string | null;
-  sourceTotalItems: number | null;
-  sampleCountRequested: number | null;
-  repeatCount: number | null;
-  maxTokens: number | null;
-  seed: number | null;
-  totalSamples: number | null;
-  completedSamples: number | null;
-  runningSamples: number | null;
-  partialSamples: number | null;
-  errorSamples: number | null;
-  pendingSamples: number | null;
-  doneAttempts: number | null;
-  totalAttempts: number | null;
-  samplesDir: string | null;
-  evalDeviceLabel: string | null;
-  evalDeviceChip: string | null;
+interface ParsedRunBundle {
+  run: ParsedManifest & {
+    totalSamples: number;
+    completedSamples: number;
+    runningSamples: number;
+    partialSamples: number;
+    errorSamples: number;
+    pendingSamples: number;
+    doneAttempts: number;
+    totalAttempts: number;
+    latestCompletedSampleIndex: number | null;
+    latestCompletedCategory: string | null;
+    device: EvalDeviceInfo;
+  };
+  samples: ParsedSample[];
 }
 
-interface ListQuestionsOptions {
-  runId?: string;
-  language?: string;
-  category?: string;
-  search?: string;
-  minAverageScore?: number;
-  maxAverageScore?: number;
-  limit?: number | null;
-}
-
-interface ImportEvalSampleOptions {
-  fileName: string;
-  content: string;
-  uploadedBy: string;
-  deviceLabel?: string;
-  deviceChip?: string;
-}
-
-const evalAttemptSelect = {
-  id: true,
-  uploadedFileName: true,
-  uploadedBy: true,
-  uploadedAt: true,
-  runId: true,
-  language: true,
-  taskType: true,
-  sampleStatus: true,
+const runSummarySampleSelect = Prisma.validator<Prisma.EvalSampleSelect>()({
   sampleIndex: true,
-  display: true,
-  prompt: true,
-  sourceFile: true,
-  sourceCategoryName: true,
+  status: true,
+  sourceCategory: true,
+  sourceCategoryDisplayName: true,
   sourceCategoryIndex: true,
-  sourceItemIndex: true,
-  baseUrl: true,
-  endpoint: true,
-  modelRequest: true,
-  modelNameReportedByServer: true,
-  maxTokens: true,
   repeatCountTarget: true,
   repeatCountDone: true,
-  scoreStatus: true,
-  sampleStartedAt: true,
-  sampleUpdatedAt: true,
-  sampleAverageScore: true,
-  sampleScoredAt: true,
+  averageWeightedScore: true,
+  scoredAttemptCount: true,
+});
+
+const runWithSummarySamplesInclude = Prisma.validator<Prisma.EvalRunInclude>()({
+  samples: {
+    select: runSummarySampleSelect,
+    orderBy: { sampleIndex: 'asc' },
+  },
+});
+
+type EvalRunWithSummarySamples = Prisma.EvalRunGetPayload<{
+  include: typeof runWithSummarySamplesInclude;
+}>;
+
+const sampleAttemptSelect = Prisma.validator<Prisma.EvalSampleAttemptSelect>()({
+  id: true,
   attempt: true,
-  attemptStatus: true,
-  attemptStartedAt: true,
-  attemptEndedAt: true,
-  attemptDurationMs: true,
+  status: true,
+  startedAt: true,
+  endedAt: true,
+  durationMs: true,
   responseChars: true,
   response: true,
-  score: true,
-  scoreNote: true,
   errorType: true,
   errorMessage: true,
   errorBody: true,
-} satisfies Prisma.EvalAttemptSelect;
+  relevance: true,
+  quality: true,
+  fluency: true,
+  satisfaction: true,
+  weightedScore: true,
+  briefNote: true,
+});
 
-const evalRunMetadataSelect = {
-  runId: true,
-  uploadedAt: true,
+const sampleWithAttemptsInclude = Prisma.validator<Prisma.EvalSampleInclude>()({
+  attempts: {
+    select: sampleAttemptSelect,
+    orderBy: { attempt: 'asc' },
+  },
+  run: {
+    select: {
+      runId: true,
+    },
+  },
+});
+
+const sampleAttemptSelectWithoutResponse = Prisma.validator<Prisma.EvalSampleAttemptSelect>()({
+  id: true,
+  attempt: true,
   status: true,
-  scoreStatus: true,
-  runCreatedAt: true,
-  runUpdatedAt: true,
-  baseUrl: true,
-  endpoint: true,
-  taskType: true,
-  language: true,
-  sourceFile: true,
-  modelRequest: true,
-  modelNameReportedByServer: true,
-  selectionMode: true,
-  sourceTotalItems: true,
-  sampleCountRequested: true,
-  repeatCount: true,
-  maxTokens: true,
-  seed: true,
-  totalSamples: true,
-  completedSamples: true,
-  runningSamples: true,
-  partialSamples: true,
-  errorSamples: true,
-  pendingSamples: true,
-  doneAttempts: true,
-  totalAttempts: true,
-  samplesDir: true,
-  evalDeviceLabel: true,
-  evalDeviceChip: true,
-} satisfies Prisma.EvalRunMetadataSelect;
+  startedAt: true,
+  endedAt: true,
+  durationMs: true,
+  responseChars: true,
+  errorType: true,
+  errorMessage: true,
+  errorBody: true,
+  relevance: true,
+  quality: true,
+  fluency: true,
+  satisfaction: true,
+  weightedScore: true,
+  briefNote: true,
+});
+
+const sampleWithAttemptsIncludeNoResponse = Prisma.validator<Prisma.EvalSampleInclude>()({
+  attempts: {
+    select: sampleAttemptSelectWithoutResponse,
+    orderBy: { attempt: 'asc' },
+  },
+  run: {
+    select: {
+      runId: true,
+    },
+  },
+});
+
+type EvalSampleWithAttemptsNoResponse = Prisma.EvalSampleGetPayload<{
+  include: typeof sampleWithAttemptsIncludeNoResponse;
+}>;
+
+type EvalSampleWithAttempts = Prisma.EvalSampleGetPayload<{
+  include: typeof sampleWithAttemptsInclude;
+}>;
 
 @Injectable()
 export class EvalService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async importEvalFile(input: ImportEvalSampleOptions): Promise<EvalImportSampleResult> {
-    const root = this.parseUploadRoot(input.content);
-
-    if (this.isEvalSamplePayload(root)) {
-      return this.importEvalSample(input, root as EvalSampleUploadInput);
-    }
-
-    return this.importEvalManifest(input, root as EvalManifestUploadInput);
-  }
-
-  private async importEvalSample(
-    input: ImportEvalSampleOptions,
-    payload: EvalSampleUploadInput,
-  ): Promise<EvalImportSampleResult> {
-    const normalized = this.parseEvalSample(payload);
-    const deviceInfo = this.resolveEvalDeviceInfo(
-      payload as Record<string, unknown> & { device?: unknown },
-      input,
-    );
-
-    if (normalized.attempts.length === 0) {
-      await this.upsertRunMetadata(
-        this.prisma,
-        normalized.runId,
-        {
-          language: normalized.language,
-          taskType: normalized.taskType,
-          baseUrl: normalized.baseUrl,
-          endpoint: normalized.endpoint,
-          sourceFile: normalized.sourceFile,
-          modelRequest: normalized.modelRequest,
-          modelNameReportedByServer: normalized.modelNameReportedByServer,
-          maxTokens: normalized.maxTokens,
-          evalDeviceLabel: deviceInfo.evalDeviceLabel,
-          evalDeviceChip: deviceInfo.evalDeviceChip,
-        },
-        input,
-      );
-
-      return {
-        fileName: input.fileName,
-        kind: 'sample',
-        runId: normalized.runId,
-        sampleIndex: normalized.sampleIndex,
-        attemptCount: 0,
-        averageScore: normalized.sampleAverageScore,
-        display: normalized.display,
-        sourceCategoryName: normalized.sourceCategoryName,
-        evalDeviceLabel: deviceInfo.evalDeviceLabel,
-        evalDeviceChip: deviceInfo.evalDeviceChip,
-        action: 'skipped',
-        message: 'No attempts found in sample JSON, skipped.',
-      };
-    }
-
-    const action = await this.prisma.$transaction(async (tx) => {
-      const existingCount = await tx.evalAttempt.count({
-        where: {
-          runId: normalized.runId,
-          sampleIndex: normalized.sampleIndex,
-        },
-      });
-
-      await tx.evalAttempt.deleteMany({
-        where: {
-          runId: normalized.runId,
-          sampleIndex: normalized.sampleIndex,
-        },
-      });
-
-      await tx.evalAttempt.createMany({
-        data: normalized.attempts.map((attempt) => ({
-          uploadedFileName: input.fileName,
-          uploadedBy: input.uploadedBy,
-          runId: normalized.runId,
-          language: normalized.language,
-          taskType: normalized.taskType,
-          sampleStatus: normalized.sampleStatus,
-          sampleIndex: normalized.sampleIndex,
-          display: normalized.display,
-          prompt: normalized.prompt,
-          sourceFile: normalized.sourceFile,
-          sourceCategoryName: normalized.sourceCategoryName,
-          sourceCategoryIndex: normalized.sourceCategoryIndex,
-          sourceItemIndex: normalized.sourceItemIndex,
-          baseUrl: normalized.baseUrl,
-          endpoint: normalized.endpoint,
-          modelRequest: normalized.modelRequest,
-          modelNameReportedByServer: normalized.modelNameReportedByServer,
-          maxTokens: normalized.maxTokens,
-          repeatCountTarget: normalized.repeatCountTarget,
-          repeatCountDone: normalized.repeatCountDone,
-          scoreStatus: normalized.scoreStatus,
-          sampleStartedAt: normalized.sampleStartedAt,
-          sampleUpdatedAt: normalized.sampleUpdatedAt,
-          sampleAverageScore: normalized.sampleAverageScore,
-          sampleScoredAt: normalized.sampleScoredAt,
-          attempt: attempt.attempt,
-          attemptStatus: attempt.attemptStatus,
-          attemptStartedAt: attempt.attemptStartedAt,
-          attemptEndedAt: attempt.attemptEndedAt,
-          attemptDurationMs: attempt.attemptDurationMs,
-          responseChars: attempt.responseChars,
-          response: attempt.response,
-          score: attempt.score,
-          scoreNote: attempt.scoreNote,
-          errorType: attempt.errorType,
-          errorMessage: attempt.errorMessage,
-          errorBody: attempt.errorBody,
-        })),
-      });
-
-      await this.upsertRunMetadata(
-        tx,
-        normalized.runId,
-        {
-          language: normalized.language,
-          taskType: normalized.taskType,
-          baseUrl: normalized.baseUrl,
-          endpoint: normalized.endpoint,
-          sourceFile: normalized.sourceFile,
-          modelRequest: normalized.modelRequest,
-          modelNameReportedByServer: normalized.modelNameReportedByServer,
-          maxTokens: normalized.maxTokens,
-          repeatCount: normalized.repeatCountTarget,
-          evalDeviceLabel: deviceInfo.evalDeviceLabel,
-          evalDeviceChip: deviceInfo.evalDeviceChip,
-        },
-        input,
-      );
-
-      return existingCount > 0 ? 'updated' : 'imported';
+  async importRunArchive(input: ImportRunArchiveOptions): Promise<EvalRunImportResult> {
+    const bundle = await this.parseRunArchive(input.fileName, input.buffer);
+    const existing = await this.prisma.evalRun.findUnique({
+      where: { runId: bundle.run.runId },
+      select: { id: true },
     });
 
-    return {
-      fileName: input.fileName,
-      kind: 'sample',
-      runId: normalized.runId,
-      sampleIndex: normalized.sampleIndex,
-      attemptCount: normalized.attempts.length,
-      averageScore: normalized.sampleAverageScore ?? this.computeAverageScore(normalized.attempts),
-      display: normalized.display,
-      sourceCategoryName: normalized.sourceCategoryName,
-      evalDeviceLabel: deviceInfo.evalDeviceLabel,
-      evalDeviceChip: deviceInfo.evalDeviceChip,
-      action,
-      message:
-        action === 'updated'
-          ? 'Existing sample attempts were replaced with the uploaded content.'
-          : 'Sample imported successfully.',
-    };
-  }
-
-  private async importEvalManifest(
-    input: ImportEvalSampleOptions,
-    payload: EvalManifestUploadInput,
-  ): Promise<EvalImportSampleResult> {
-    const normalized = this.parseEvalManifest(payload, input);
-    const existing = await this.prisma.evalRunMetadata.findUnique({
-      where: { runId: normalized.runId },
-      select: { runId: true },
-    });
-
-    await this.upsertRunMetadata(
-      this.prisma,
-      normalized.runId,
-      {
-        status: normalized.status,
-        scoreStatus: normalized.scoreStatus,
-        runCreatedAt: normalized.runCreatedAt,
-        runUpdatedAt: normalized.runUpdatedAt,
-        baseUrl: normalized.baseUrl,
-        endpoint: normalized.endpoint,
-        taskType: normalized.taskType,
-        language: normalized.language,
-        sourceFile: normalized.sourceFile,
-        modelRequest: normalized.modelRequest,
-        modelNameReportedByServer: normalized.modelNameReportedByServer,
-        selectionMode: normalized.selectionMode,
-        sourceTotalItems: normalized.sourceTotalItems,
-        sampleCountRequested: normalized.sampleCountRequested,
-        repeatCount: normalized.repeatCount,
-        maxTokens: normalized.maxTokens,
-        seed: normalized.seed,
-        totalSamples: normalized.totalSamples,
-        completedSamples: normalized.completedSamples,
-        runningSamples: normalized.runningSamples,
-        partialSamples: normalized.partialSamples,
-        errorSamples: normalized.errorSamples,
-        pendingSamples: normalized.pendingSamples,
-        doneAttempts: normalized.doneAttempts,
-        totalAttempts: normalized.totalAttempts,
-        samplesDir: normalized.samplesDir,
-        evalDeviceLabel: normalized.evalDeviceLabel,
-        evalDeviceChip: normalized.evalDeviceChip,
-      },
-      input,
-    );
-
-    return {
-      fileName: input.fileName,
-      kind: 'manifest',
-      runId: normalized.runId,
-      sampleIndex: null,
-      attemptCount: 0,
-      averageScore: null,
-      display: null,
-      sourceCategoryName: null,
-      evalDeviceLabel: normalized.evalDeviceLabel,
-      evalDeviceChip: normalized.evalDeviceChip,
-      action: existing ? 'updated' : 'imported',
-      message: existing
-        ? 'Run manifest metadata updated successfully.'
-        : 'Run manifest metadata imported successfully.',
-    };
-  }
-
-  async listRuns(): Promise<EvalRunSummary[]> {
-    const [rows, runMetadataRows] = await Promise.all([
-      this.prisma.evalAttempt.findMany({
-        select: evalAttemptSelect,
-        orderBy: [{ runId: 'desc' }, { sampleIndex: 'asc' }, { attempt: 'asc' }],
-      }),
-      this.prisma.evalRunMetadata.findMany({
-        select: evalRunMetadataSelect,
-        orderBy: [{ runUpdatedAt: 'desc' }, { uploadedAt: 'desc' }],
-      }),
-    ]);
-
-    const questions = this.buildQuestionSummaries(rows, false);
-    const runMetadataByRunId = new Map(runMetadataRows.map((row) => [row.runId, row]));
-    const runs = new Map<string, EvalRunSummary & { scoreSum: number; scoreCount: number }>();
-
-    for (const question of questions) {
-      const existing = runs.get(question.runId);
-      const runMetadata = runMetadataByRunId.get(question.runId);
-      const latestSampleUpdatedAt = maxIsoTimestamp(
-        question.sampleUpdatedAt,
-        toIsoString(runMetadata?.runUpdatedAt ?? null),
-      );
-      const latestUploadedAt =
-        maxIsoTimestamp(
-          toIsoString(
-            rows.find(
-              (row) => row.runId === question.runId && row.sampleIndex === question.sampleIndex,
-            )?.uploadedAt ?? null,
-          ),
-          toIsoString(runMetadata?.uploadedAt ?? null),
-        ) || null;
-
-      if (!existing) {
-        const initial = {
-          runId: question.runId,
-          language: runMetadata?.language || question.language,
-          taskType: runMetadata?.taskType || question.taskType,
-          modelNameReportedByServer:
-            runMetadata?.modelNameReportedByServer || question.modelNameReportedByServer,
-          evalDeviceLabel: runMetadata?.evalDeviceLabel || null,
-          evalDeviceChip: runMetadata?.evalDeviceChip || null,
-          questionCount: 1,
-          attemptCount: question.attemptCount,
-          scoredQuestionCount: question.sampleAverageScore !== null ? 1 : 0,
-          averageOfAverageScores: null,
-          categories: question.sourceCategoryName ? [question.sourceCategoryName] : [],
-          latestSampleUpdatedAt,
-          latestUploadedAt,
-          scoreSum: question.sampleAverageScore ?? 0,
-          scoreCount: question.sampleAverageScore !== null ? 1 : 0,
-        };
-        runs.set(question.runId, initial);
-        continue;
-      }
-
-      existing.questionCount += 1;
-      existing.attemptCount += question.attemptCount;
-      if (question.sampleAverageScore !== null) {
-        existing.scoredQuestionCount += 1;
-        existing.scoreSum += question.sampleAverageScore;
-        existing.scoreCount += 1;
-      }
-      if (
-        question.sourceCategoryName &&
-        !existing.categories.includes(question.sourceCategoryName)
-      ) {
-        existing.categories.push(question.sourceCategoryName);
-      }
-      if (
-        latestSampleUpdatedAt &&
-        (!existing.latestSampleUpdatedAt || latestSampleUpdatedAt > existing.latestSampleUpdatedAt)
-      ) {
-        existing.latestSampleUpdatedAt = latestSampleUpdatedAt;
-      }
-      if (
-        latestUploadedAt &&
-        (!existing.latestUploadedAt || latestUploadedAt > existing.latestUploadedAt)
-      ) {
-        existing.latestUploadedAt = latestUploadedAt;
-      }
-      existing.evalDeviceLabel = existing.evalDeviceLabel || runMetadata?.evalDeviceLabel || null;
-      existing.evalDeviceChip = existing.evalDeviceChip || runMetadata?.evalDeviceChip || null;
-      existing.modelNameReportedByServer =
-        existing.modelNameReportedByServer || runMetadata?.modelNameReportedByServer || null;
-      existing.language = existing.language || runMetadata?.language || question.language;
-      existing.taskType = existing.taskType || runMetadata?.taskType || question.taskType;
-    }
-
-    for (const metadata of runMetadataRows) {
-      if (runs.has(metadata.runId)) {
-        continue;
-      }
-
-      runs.set(metadata.runId, {
-        runId: metadata.runId,
-        language: metadata.language || 'unknown',
-        taskType: metadata.taskType || 'unknown',
-        modelNameReportedByServer: metadata.modelNameReportedByServer || null,
-        evalDeviceLabel: metadata.evalDeviceLabel || null,
-        evalDeviceChip: metadata.evalDeviceChip || null,
-        questionCount: 0,
-        attemptCount: 0,
-        scoredQuestionCount: 0,
-        averageOfAverageScores: null,
-        categories: [],
-        latestSampleUpdatedAt: toIsoString(metadata.runUpdatedAt),
-        latestUploadedAt: toIsoString(metadata.uploadedAt),
-        scoreSum: 0,
-        scoreCount: 0,
-      });
-    }
-
-    return [...runs.values()]
-      .map((run) => ({
-        runId: run.runId,
-        language: run.language,
-        taskType: run.taskType,
-        modelNameReportedByServer: run.modelNameReportedByServer,
-        evalDeviceLabel: run.evalDeviceLabel,
-        evalDeviceChip: run.evalDeviceChip,
-        questionCount: run.questionCount,
-        attemptCount: run.attemptCount,
-        scoredQuestionCount: run.scoredQuestionCount,
-        averageOfAverageScores:
-          run.scoreCount > 0 ? roundToTwo(run.scoreSum / run.scoreCount) : null,
-        categories: [...run.categories].sort((left, right) => left.localeCompare(right)),
-        latestSampleUpdatedAt: run.latestSampleUpdatedAt,
-        latestUploadedAt: run.latestUploadedAt,
-      }))
-      .sort((left, right) => {
-        const leftTime = left.latestUploadedAt || left.latestSampleUpdatedAt || left.runId;
-        const rightTime = right.latestUploadedAt || right.latestSampleUpdatedAt || right.runId;
-        return rightTime.localeCompare(leftTime);
-      });
-  }
-
-  async listQuestions(options: ListQuestionsOptions): Promise<{
-    items: EvalQuestionSummary[];
-    total: number;
-    availableCategories: string[];
-  }> {
-    const where = this.buildWhereInput(options);
-    const [rows, categoryRows] = await Promise.all([
-      this.prisma.evalAttempt.findMany({
-        where,
-        select: evalAttemptSelect,
-        orderBy: [{ runId: 'desc' }, { sampleIndex: 'asc' }, { attempt: 'asc' }],
-      }),
-      this.prisma.evalAttempt.findMany({
-        where: {
-          ...where,
-          sourceCategoryName: { not: null },
-        },
-        select: {
-          sourceCategoryName: true,
-        },
-        distinct: ['sourceCategoryName'],
-        orderBy: {
-          sourceCategoryName: 'asc',
-        },
-      }),
-    ]);
-
-    const runIds = [...new Set(rows.map((row) => row.runId))];
-    if (options.runId && !runIds.includes(options.runId)) {
-      runIds.push(options.runId);
-    }
-    const runMetadataRows = runIds.length
-      ? await this.prisma.evalRunMetadata.findMany({
-          where: { runId: { in: runIds } },
-          select: evalRunMetadataSelect,
-        })
-      : [];
-    const runMetadataByRunId = new Map(runMetadataRows.map((row) => [row.runId, row]));
-
-    const grouped = this.buildQuestionSummaries(rows, true)
-      .map((question) =>
-        this.mergeQuestionWithRunMetadata(question, runMetadataByRunId.get(question.runId)),
-      )
-      .filter((question) => {
-        if (
-          options.minAverageScore !== undefined &&
-          (question.sampleAverageScore === null ||
-            question.sampleAverageScore < options.minAverageScore)
-        ) {
-          return false;
-        }
-        if (
-          options.maxAverageScore !== undefined &&
-          (question.sampleAverageScore === null ||
-            question.sampleAverageScore > options.maxAverageScore)
-        ) {
-          return false;
-        }
-        return true;
-      });
-
-    const randomized = this.randomizeQuestionsWithinScoreBuckets(grouped);
-    const total = randomized.length;
-    const limit = options.limit === null ? null : clampInt(options.limit, 1, 5000, 24);
-
-    return {
-      items: limit === null ? randomized : randomized.slice(0, limit),
-      total,
-      availableCategories: categoryRows
-        .map((row) => row.sourceCategoryName)
-        .filter((value): value is string => typeof value === 'string' && value.length > 0),
-    };
-  }
-
-  private buildWhereInput(options: ListQuestionsOptions): Prisma.EvalAttemptWhereInput {
-    const where: Prisma.EvalAttemptWhereInput = {};
-
-    if (options.runId) {
-      where.runId = options.runId;
-    }
-    if (options.language) {
-      where.language = options.language;
-    }
-    if (options.category) {
-      where.sourceCategoryName = options.category;
-    }
-    if (options.search) {
-      where.OR = [
-        { display: { contains: options.search } },
-        { prompt: { contains: options.search } },
-      ];
-    }
-
-    return where;
-  }
-
-  private buildQuestionSummaries(
-    rows: EvalAttemptRow[],
-    includeAttempts: boolean,
-  ): EvalQuestionSummary[] {
-    const grouped = new Map<string, EvalQuestionSummary>();
-
-    for (const row of rows) {
-      const key = `${row.runId}::${row.sampleIndex}`;
-      const existing = grouped.get(key);
-
-      if (!existing) {
-        grouped.set(key, {
-          runId: row.runId,
-          language: row.language,
-          taskType: row.taskType,
-          sampleIndex: row.sampleIndex,
-          sampleStatus: row.sampleStatus,
-          scoreStatus: row.scoreStatus,
-          display: row.display,
-          prompt: row.prompt,
-          sourceFile: row.sourceFile,
-          sourceCategoryName: row.sourceCategoryName,
-          sourceCategoryIndex: row.sourceCategoryIndex,
-          sourceItemIndex: row.sourceItemIndex,
-          baseUrl: row.baseUrl,
-          endpoint: row.endpoint,
-          modelRequest: row.modelRequest,
-          modelNameReportedByServer: row.modelNameReportedByServer,
-          evalDeviceLabel: null,
-          evalDeviceChip: null,
-          maxTokens: row.maxTokens,
-          repeatCountTarget: row.repeatCountTarget,
-          repeatCountDone: row.repeatCountDone,
-          sampleAverageScore:
-            row.sampleAverageScore !== null
-              ? roundToTwo(row.sampleAverageScore)
-              : row.score !== null
-                ? roundToTwo(row.score)
-                : null,
-          sampleStartedAt: toIsoString(row.sampleStartedAt),
-          sampleUpdatedAt: toIsoString(row.sampleUpdatedAt),
-          sampleScoredAt: toIsoString(row.sampleScoredAt),
-          attemptCount: 0,
-          scoredAttemptCount: 0,
-          attempts: [],
+    await this.prisma.$transaction(async (tx) => {
+      if (existing) {
+        await tx.evalRun.delete({
+          where: { runId: bundle.run.runId },
         });
       }
 
-      const question = grouped.get(key);
-      if (!question) {
-        continue;
-      }
+      const createdRun = await tx.evalRun.create({
+        data: {
+          runId: bundle.run.runId,
+          uploadedFileName: input.fileName,
+          uploadedBy: input.uploadedBy,
+          runCreatedAt: bundle.run.runCreatedAt,
+          runUpdatedAt: bundle.run.runUpdatedAt,
+          status: bundle.run.status,
+          language: bundle.run.language,
+          taskType: bundle.run.taskType,
+          baseUrl: bundle.run.baseUrl,
+          endpoint: bundle.run.endpoint,
+          sourceFile: bundle.run.sourceFile,
+          modelRequest: bundle.run.modelRequest,
+          modelNameReportedByServer: bundle.run.modelNameReportedByServer,
+          selectionMode: bundle.run.selectionMode,
+          sourceTotalItems: bundle.run.sourceTotalItems,
+          sampleCountRequested: bundle.run.sampleCountRequested,
+          repeatCount: bundle.run.repeatCount,
+          maxTokens: bundle.run.maxTokens,
+          seed: bundle.run.seed,
+          totalSamples: bundle.run.totalSamples,
+          completedSamples: bundle.run.completedSamples,
+          runningSamples: bundle.run.runningSamples,
+          partialSamples: bundle.run.partialSamples,
+          errorSamples: bundle.run.errorSamples,
+          pendingSamples: bundle.run.pendingSamples,
+          doneAttempts: bundle.run.doneAttempts,
+          totalAttempts: bundle.run.totalAttempts,
+          latestCompletedSampleIndex: bundle.run.latestCompletedSampleIndex,
+          latestCompletedCategory: bundle.run.latestCompletedCategory,
+          evalDeviceLabel: bundle.run.device.label,
+          evalDeviceCpu: bundle.run.device.cpu,
+          evalDeviceGpu: bundle.run.device.gpu,
+          evalDeviceMemoryGb: bundle.run.device.memoryGb,
+          evalDeviceVramGb: bundle.run.device.vramGb,
+        },
+      });
 
-      question.attemptCount += 1;
-      if (row.score !== null) {
-        question.scoredAttemptCount += 1;
+      for (const sample of bundle.samples) {
+        await tx.evalSample.create({
+          data: {
+            evalRunId: createdRun.id,
+            sampleIndex: sample.sampleIndex,
+            status: sample.status,
+            renderingName: sample.renderingName,
+            prompt: sample.prompt,
+            sourceFile: sample.sourceFile,
+            sourceCategory: sample.sourceCategory,
+            sourceCategoryDisplayName: sample.sourceCategoryDisplayName,
+            sourceCategoryIndex: sample.sourceCategoryIndex,
+            sourceItemIndex: sample.sourceItemIndex,
+            baseUrl: sample.baseUrl,
+            endpoint: sample.endpoint,
+            modelRequest: sample.modelRequest,
+            modelNameReportedByServer: sample.modelNameReportedByServer,
+            maxTokens: sample.maxTokens,
+            repeatCountTarget: sample.repeatCountTarget,
+            repeatCountDone: sample.repeatCountDone,
+            sampleStartedAt: sample.sampleStartedAt,
+            sampleUpdatedAt: sample.sampleUpdatedAt,
+            averageWeightedScore: sample.averageWeightedScore,
+            averageRelevance: sample.averageRelevance,
+            averageQuality: sample.averageQuality,
+            averageFluency: sample.averageFluency,
+            averageSatisfaction: sample.averageSatisfaction,
+            scoredAttemptCount: sample.scoredAttemptCount,
+            attempts: {
+              create: sample.attempts.map((attempt) => ({
+                attempt: attempt.attempt,
+                status: attempt.status,
+                startedAt: attempt.startedAt,
+                endedAt: attempt.endedAt,
+                durationMs: attempt.durationMs,
+                responseChars: attempt.responseChars,
+                response: attempt.response,
+                errorType: attempt.errorType,
+                errorMessage: attempt.errorMessage,
+                errorBody: attempt.errorBody,
+                relevance: attempt.relevance,
+                quality: attempt.quality,
+                fluency: attempt.fluency,
+                satisfaction: attempt.satisfaction,
+                weightedScore: attempt.weightedScore,
+                briefNote: attempt.briefNote,
+              })),
+            },
+          },
+        });
       }
-      if (includeAttempts) {
-        question.attempts.push(this.toAttemptSummary(row));
-      }
-    }
-
-    const items = [...grouped.values()].map((question) => {
-      if (question.sampleAverageScore === null && question.attempts.length > 0) {
-        const average = this.computeAverageScore(
-          question.attempts.map((attempt) => ({
-            score: attempt.score,
-          })),
-        );
-        question.sampleAverageScore = average;
-      }
-
-      question.attempts.sort((left, right) => left.attempt - right.attempt);
-      return question;
     });
 
-    return items;
-  }
-
-  private mergeQuestionWithRunMetadata(
-    question: EvalQuestionSummary,
-    runMetadata: EvalRunMetadataRow | undefined,
-  ): EvalQuestionSummary {
-    if (!runMetadata) {
-      return question;
-    }
-
     return {
-      ...question,
-      language: runMetadata.language || question.language,
-      taskType: runMetadata.taskType || question.taskType,
-      modelRequest: runMetadata.modelRequest || question.modelRequest,
-      modelNameReportedByServer:
-        runMetadata.modelNameReportedByServer || question.modelNameReportedByServer,
-      evalDeviceLabel: runMetadata.evalDeviceLabel || question.evalDeviceLabel,
-      evalDeviceChip: runMetadata.evalDeviceChip || question.evalDeviceChip,
-      baseUrl: runMetadata.baseUrl || question.baseUrl,
+      fileName: input.fileName,
+      runId: bundle.run.runId,
+      action: existing ? 'updated' : 'imported',
+      sampleCount: bundle.samples.length,
+      attemptCount: bundle.run.doneAttempts,
+      scoredSampleCount: bundle.samples.filter((sample) => sample.averageWeightedScore !== null).length,
+      scoredAttemptCount: bundle.samples.reduce(
+        (sum, sample) => sum + sample.scoredAttemptCount,
+        0,
+      ),
+      averageWeightedScore: computeAverage(
+        bundle.samples
+          .map((sample) => sample.averageWeightedScore)
+          .filter((value): value is number => value !== null),
+      ),
+      message: existing
+        ? 'Existing run snapshot was replaced successfully.'
+        : 'Run archive imported successfully.',
     };
   }
 
-  private randomizeQuestionsWithinScoreBuckets(
-    questions: EvalQuestionSummary[],
-  ): EvalQuestionSummary[] {
-    const buckets = new Map<number | null, EvalQuestionSummary[]>();
+  async getSettings(): Promise<EvalSettings> {
+    const [passThreshold, highScoreLanguages] = await Promise.all([
+      this.getPassThreshold(),
+      this.getHighScoreLanguages(),
+    ]);
+    return { passThreshold, highScoreLanguages };
+  }
 
-    for (const question of questions) {
-      const scoreKey = question.sampleAverageScore;
-      const bucket = buckets.get(scoreKey);
-      if (bucket) {
-        bucket.push(question);
-        continue;
-      }
-      buckets.set(scoreKey, [question]);
+  async updateSettings(input: UpdateEvalSettingsInput): Promise<EvalSettings> {
+    const passThreshold = normalizePassThreshold(input.passThreshold);
+    const ops: Promise<unknown>[] = [
+      this.prisma.appConfig.upsert({
+        where: { key: EVAL_PASS_THRESHOLD_KEY },
+        create: { key: EVAL_PASS_THRESHOLD_KEY, value: String(passThreshold) },
+        update: { value: String(passThreshold) },
+      }),
+    ];
+
+    let highScoreLanguages: string[];
+    if (input.highScoreLanguages !== undefined) {
+      highScoreLanguages = input.highScoreLanguages;
+      ops.push(
+        this.prisma.appConfig.upsert({
+          where: { key: EVAL_HIGH_SCORE_LANGUAGES_KEY },
+          create: { key: EVAL_HIGH_SCORE_LANGUAGES_KEY, value: JSON.stringify(highScoreLanguages) },
+          update: { value: JSON.stringify(highScoreLanguages) },
+        }),
+      );
+    } else {
+      highScoreLanguages = await this.getHighScoreLanguages();
     }
 
-    const scoreKeys = [...buckets.keys()].sort((left, right) => {
-      if (left === null && right === null) {
-        return 0;
-      }
-      if (left === null) {
-        return 1;
-      }
-      if (right === null) {
-        return -1;
-      }
-      return right - left;
+    await Promise.all(ops);
+    return { passThreshold, highScoreLanguages };
+  }
+
+  async getHighScoreLanguages(): Promise<string[]> {
+    const setting = await this.prisma.appConfig.findUnique({
+      where: { key: EVAL_HIGH_SCORE_LANGUAGES_KEY },
+      select: { value: true },
     });
-
-    const randomized: EvalQuestionSummary[] = [];
-    for (const scoreKey of scoreKeys) {
-      const bucket = [...(buckets.get(scoreKey) || [])];
-      this.shuffleInPlace(bucket);
-      randomized.push(...bucket);
-    }
-
-    return randomized;
-  }
-
-  private shuffleInPlace<T>(items: T[]): void {
-    for (let index = items.length - 1; index > 0; index -= 1) {
-      const swapIndex = Math.floor(Math.random() * (index + 1));
-      [items[index], items[swapIndex]] = [items[swapIndex], items[index]];
-    }
-  }
-
-  private toAttemptSummary(row: EvalAttemptRow): EvalQuestionAttemptSummary {
-    return {
-      id: row.id,
-      attempt: row.attempt,
-      status: row.attemptStatus,
-      startedAt: toIsoString(row.attemptStartedAt),
-      endedAt: toIsoString(row.attemptEndedAt),
-      durationMs: row.attemptDurationMs,
-      responseChars: row.responseChars,
-      response: row.response,
-      score: row.score !== null ? roundToTwo(row.score) : null,
-      scoreNote: row.scoreNote,
-      errorType: row.errorType,
-      errorMessage: row.errorMessage,
-      errorBody: row.errorBody,
-    };
-  }
-
-  private parseUploadRoot(content: string): Record<string, unknown> {
-    let parsed: unknown;
+    if (!setting) return DEFAULT_HIGH_SCORE_LANGUAGES;
     try {
-      parsed = JSON.parse(content);
+      const parsed = JSON.parse(setting.value);
+      if (Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')) {
+        return parsed;
+      }
+    } catch {
+      // fall through
+    }
+    return DEFAULT_HIGH_SCORE_LANGUAGES;
+  }
+
+  async listRuns(): Promise<EvalRunSummary[]> {
+    const [passThreshold, runs] = await Promise.all([
+      this.getPassThreshold(),
+      this.prisma.evalRun.findMany({
+        include: runWithSummarySamplesInclude,
+        orderBy: [{ uploadedAt: 'desc' }, { runId: 'desc' }],
+      }),
+    ]);
+
+    return runs.map((run) => this.toRunSummary(run, passThreshold));
+  }
+
+  async getRunDetail(runId: string): Promise<EvalRunDetail> {
+    const [passThreshold, run] = await Promise.all([
+      this.getPassThreshold(),
+      this.prisma.evalRun.findUnique({
+        where: { runId },
+        include: runWithSummarySamplesInclude,
+      }),
+    ]);
+
+    if (!run) {
+      throw new NotFoundException(`Eval run "${runId}" not found`);
+    }
+
+    const summary = this.toRunSummary(run, passThreshold);
+
+    return {
+      ...summary,
+      passThreshold,
+      categoryStats: buildCategoryStats(run.samples, passThreshold),
+    };
+  }
+
+  async listSamples(options: ListSamplesOptions): Promise<EvalSamplesResponse> {
+    const passThreshold = await this.getPassThreshold();
+    const where = this.buildSampleWhereInput(options, passThreshold);
+    const take = options.limit === null ? undefined : clampInt(options.limit, 1, 5000, 36);
+    const skip = clampInt(options.offset, 0, 1_000_000, 0);
+    const include = options.includeResponses
+      ? sampleWithAttemptsInclude
+      : sampleWithAttemptsIncludeNoResponse;
+
+    const [total, rows, categoryRows] = await Promise.all([
+      this.prisma.evalSample.count({ where }),
+      this.prisma.evalSample.findMany({
+        where,
+        include,
+        orderBy: [{ averageWeightedScore: 'desc' }, { sampleIndex: 'asc' }],
+        take,
+        skip,
+      }),
+      this.prisma.evalSample.findMany({
+        where: this.buildAvailableCategoryWhereInput(options),
+        select: {
+          sourceCategory: true,
+          sourceCategoryDisplayName: true,
+          sourceCategoryIndex: true,
+        },
+        orderBy: [{ sourceCategoryIndex: 'asc' }, { sourceCategory: 'asc' }],
+      }),
+    ]);
+
+    return {
+      items: rows.map((row) => this.toSampleSummary(row, passThreshold)),
+      total,
+      availableCategories: dedupeCategoryOptions(categoryRows),
+      passThreshold,
+    };
+  }
+
+  async getHighScoreSamples(minScore?: number): Promise<EvalHighScoreSamplesResponse> {
+    const threshold = minScore ?? (await this.getPassThreshold());
+    const rows = await this.prisma.evalSample.findMany({
+      where: { averageWeightedScore: { gte: threshold } },
+      select: {
+        renderingName: true,
+        prompt: true,
+        averageWeightedScore: true,
+        sourceCategory: true,
+        sourceCategoryDisplayName: true,
+      },
+      orderBy: { averageWeightedScore: 'desc' },
+    });
+
+    // Group by category
+    const categoryMap = new Map<
+      string,
+      { displayName: string; scoreSum: number; items: EvalHighScoreSampleItem[] }
+    >();
+    for (const row of rows) {
+      const score = row.averageWeightedScore as number;
+      let entry = categoryMap.get(row.sourceCategory);
+      if (!entry) {
+        entry = { displayName: row.sourceCategoryDisplayName, scoreSum: 0, items: [] };
+        categoryMap.set(row.sourceCategory, entry);
+      }
+      entry.scoreSum += score;
+      entry.items.push({ title: row.renderingName, prompt: row.prompt, score });
+    }
+
+    // Build sorted categories (desc by average score)
+    const categories: EvalHighScoreCategoryGroup[] = Array.from(categoryMap.entries())
+      .map(([category, { displayName, scoreSum, items }]) => ({
+        category,
+        categoryDisplayName: displayName,
+        averageScore: Math.round((scoreSum / items.length) * 10000) / 10000,
+        items,
+      }))
+      .sort((a, b) => b.averageScore - a.averageScore);
+
+    return { categories, minScore: threshold };
+  }
+
+  async getSampleDetail(runId: string, sampleIndex: number): Promise<EvalSampleSummary> {
+    const passThreshold = await this.getPassThreshold();
+    const row = await this.prisma.evalSample.findFirst({
+      where: {
+        sampleIndex,
+        run: { is: { runId } },
+      },
+      include: sampleWithAttemptsInclude,
+    });
+    if (!row) {
+      throw new NotFoundException(`Sample ${sampleIndex} not found in run "${runId}"`);
+    }
+    return this.toSampleSummary(row, passThreshold);
+  }
+
+  private buildSampleWhereInput(
+    options: ListSamplesOptions,
+    passThreshold: number,
+  ): Prisma.EvalSampleWhereInput {
+    const clauses: Prisma.EvalSampleWhereInput[] = [];
+
+    if (options.runId) {
+      clauses.push({
+        run: {
+          is: {
+            runId: options.runId,
+          },
+        },
+      });
+    }
+
+    if (options.sourceCategory) {
+      clauses.push({
+        sourceCategory: options.sourceCategory,
+      });
+    }
+
+    if (options.search) {
+      clauses.push({
+        OR: [
+          { renderingName: { contains: options.search } },
+          { prompt: { contains: options.search } },
+        ],
+      });
+    }
+
+    if (typeof options.minAverageWeightedScore === 'number') {
+      clauses.push({
+        averageWeightedScore: {
+          gte: options.minAverageWeightedScore,
+        },
+      });
+    }
+
+    if (typeof options.maxAverageWeightedScore === 'number') {
+      clauses.push({
+        averageWeightedScore: {
+          lte: options.maxAverageWeightedScore,
+        },
+      });
+    }
+
+    if (options.passState === 'passed') {
+      clauses.push({
+        averageWeightedScore: {
+          gte: passThreshold,
+        },
+      });
+    }
+
+    if (options.passState === 'failed') {
+      clauses.push({
+        AND: [
+          {
+            averageWeightedScore: {
+              not: null,
+            },
+          },
+          {
+            averageWeightedScore: {
+              lt: passThreshold,
+            },
+          },
+        ],
+      });
+    }
+
+    if (options.passState === 'pending') {
+      clauses.push({
+        averageWeightedScore: null,
+      });
+    }
+
+    if (clauses.length === 0) {
+      return {};
+    }
+
+    return {
+      AND: clauses,
+    };
+  }
+
+  private buildAvailableCategoryWhereInput(options: ListSamplesOptions): Prisma.EvalSampleWhereInput {
+    if (!options.runId) {
+      return {};
+    }
+
+    return {
+      run: {
+        is: {
+          runId: options.runId,
+        },
+      },
+    };
+  }
+
+  private toRunSummary(run: EvalRunWithSummarySamples, passThreshold: number): EvalRunSummary {
+    const scoreAverages = run.samples
+      .map((sample) => sample.averageWeightedScore)
+      .filter((value): value is number => value !== null);
+
+    const scoredSampleCount = run.samples.filter(
+      (sample) => sample.averageWeightedScore !== null,
+    ).length;
+    const scoredAttemptCount = run.samples.reduce(
+      (sum, sample) => sum + sample.scoredAttemptCount,
+      0,
+    );
+    const passedSampleCount = run.samples.filter(
+      (sample) => getPassState(sample.averageWeightedScore, passThreshold) === 'passed',
+    ).length;
+    const failedSampleCount = run.samples.filter(
+      (sample) => getPassState(sample.averageWeightedScore, passThreshold) === 'failed',
+    ).length;
+    const pendingScoreSampleCount = run.samples.filter(
+      (sample) => getPassState(sample.averageWeightedScore, passThreshold) === 'pending',
+    ).length;
+
+    return {
+      runId: run.runId,
+      uploadedFileName: run.uploadedFileName,
+      uploadedBy: run.uploadedBy ?? null,
+      uploadedAt: toIsoString(run.uploadedAt),
+      runCreatedAt: toIsoString(run.runCreatedAt),
+      runUpdatedAt: toIsoString(run.runUpdatedAt),
+      status: run.status,
+      language: run.language,
+      taskType: run.taskType,
+      baseUrl: run.baseUrl ?? null,
+      endpoint: run.endpoint,
+      sourceFile: run.sourceFile,
+      modelRequest: run.modelRequest ?? null,
+      modelNameReportedByServer: run.modelNameReportedByServer ?? null,
+      selectionMode: run.selectionMode ?? null,
+      sourceTotalItems: run.sourceTotalItems,
+      sampleCountRequested: run.sampleCountRequested,
+      repeatCount: run.repeatCount,
+      maxTokens: run.maxTokens ?? null,
+      seed: run.seed ?? null,
+      totalSamples: run.totalSamples,
+      completedSamples: run.completedSamples,
+      runningSamples: run.runningSamples,
+      partialSamples: run.partialSamples,
+      errorSamples: run.errorSamples,
+      pendingSamples: run.pendingSamples,
+      doneAttempts: run.doneAttempts,
+      totalAttempts: run.totalAttempts,
+      latestCompletedSampleIndex: run.latestCompletedSampleIndex ?? null,
+      latestCompletedCategory: run.latestCompletedCategory ?? null,
+      evalDeviceLabel: run.evalDeviceLabel ?? null,
+      evalDeviceCpu: run.evalDeviceCpu ?? null,
+      evalDeviceGpu: run.evalDeviceGpu ?? null,
+      evalDeviceMemoryGb: nullableRoundToTwo(run.evalDeviceMemoryGb),
+      evalDeviceVramGb: nullableRoundToTwo(run.evalDeviceVramGb),
+      categories: buildCategoryOptions(run.samples),
+      scoredSampleCount,
+      scoredAttemptCount,
+      averageWeightedScore: computeAverage(scoreAverages),
+      passedSampleCount,
+      failedSampleCount,
+      pendingScoreSampleCount,
+    };
+  }
+
+  private toSampleSummary(row: EvalSampleWithAttempts | EvalSampleWithAttemptsNoResponse, passThreshold: number): EvalSampleSummary {
+    return {
+      runId: row.run.runId,
+      sampleIndex: row.sampleIndex,
+      status: row.status,
+      renderingName: row.renderingName,
+      prompt: row.prompt,
+      sourceFile: row.sourceFile,
+      sourceCategory: row.sourceCategory,
+      sourceCategoryDisplayName: row.sourceCategoryDisplayName,
+      sourceCategoryIndex: row.sourceCategoryIndex,
+      sourceItemIndex: row.sourceItemIndex,
+      baseUrl: row.baseUrl ?? null,
+      endpoint: row.endpoint,
+      modelRequest: row.modelRequest ?? null,
+      modelNameReportedByServer: row.modelNameReportedByServer ?? null,
+      maxTokens: row.maxTokens ?? null,
+      repeatCountTarget: row.repeatCountTarget,
+      repeatCountDone: row.repeatCountDone,
+      sampleStartedAt: toIsoString(row.sampleStartedAt),
+      sampleUpdatedAt: toIsoString(row.sampleUpdatedAt),
+      averageWeightedScore: nullableRoundToTwo(row.averageWeightedScore),
+      averageRelevance: nullableRoundToTwo(row.averageRelevance),
+      averageQuality: nullableRoundToTwo(row.averageQuality),
+      averageFluency: nullableRoundToTwo(row.averageFluency),
+      averageSatisfaction: nullableRoundToTwo(row.averageSatisfaction),
+      scoredAttemptCount: row.scoredAttemptCount,
+      passState: getPassState(row.averageWeightedScore, passThreshold),
+      attempts: row.attempts.map(this.toAttemptSummary),
+    };
+  }
+
+  private toAttemptSummary(attempt: Prisma.EvalSampleAttemptGetPayload<{
+    select: typeof sampleAttemptSelect;
+  }> | Prisma.EvalSampleAttemptGetPayload<{
+    select: typeof sampleAttemptSelectWithoutResponse;
+  }>): EvalSampleAttemptSummary {
+    return {
+      id: attempt.id,
+      attempt: attempt.attempt,
+      status: attempt.status,
+      startedAt: toIsoString(attempt.startedAt),
+      endedAt: toIsoString(attempt.endedAt),
+      durationMs: attempt.durationMs ?? null,
+      responseChars: attempt.responseChars ?? null,
+      response: ('response' in attempt ? attempt.response : null) ?? null,
+      errorType: attempt.errorType ?? null,
+      errorMessage: attempt.errorMessage ?? null,
+      errorBody: attempt.errorBody ?? null,
+      relevance: attempt.relevance ?? null,
+      quality: attempt.quality ?? null,
+      fluency: attempt.fluency ?? null,
+      satisfaction: attempt.satisfaction ?? null,
+      weightedScore: nullableRoundToTwo(attempt.weightedScore),
+      briefNote: attempt.briefNote ?? null,
+    };
+  }
+
+  private async getPassThreshold(): Promise<number> {
+    const setting = await this.prisma.appConfig.findUnique({
+      where: { key: EVAL_PASS_THRESHOLD_KEY },
+      select: { value: true },
+    });
+
+    if (!setting) {
+      return DEFAULT_PASS_THRESHOLD;
+    }
+
+    const parsed = Number.parseFloat(setting.value);
+    return Number.isFinite(parsed) ? normalizePassThreshold(parsed) : DEFAULT_PASS_THRESHOLD;
+  }
+
+  private async parseRunArchive(fileName: string, buffer: Buffer): Promise<ParsedRunBundle> {
+    if (buffer.length === 0) {
+      throw new BadRequestException('Uploaded archive is empty.');
+    }
+
+    const maxSize = FILE_SIZE_LIMIT_MB * 1024 * 1024;
+    if (buffer.length > maxSize) {
+      throw new BadRequestException(`Archive is larger than ${FILE_SIZE_LIMIT_MB} MB.`);
+    }
+
+    let zip: JSZip;
+    try {
+      zip = await JSZip.loadAsync(buffer);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Invalid JSON';
-      throw new BadRequestException(`Invalid evaluation JSON: ${message}`);
+      const message = error instanceof Error ? error.message : 'Invalid ZIP archive';
+      throw new BadRequestException(`Failed to read ZIP archive: ${message}`);
     }
 
-    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
-      throw new BadRequestException('Evaluation JSON root must be an object');
+    const archiveFiles = normalizeArchiveFiles(zip);
+    const manifestPath = 'manifest.json';
+    const generationSummaryPath = 'generation_summary.json';
+    const manifestEntry = archiveFiles.get(manifestPath);
+    const generationSummaryEntry = archiveFiles.get(generationSummaryPath);
+
+    if (!manifestEntry) {
+      throw new BadRequestException('Run archive must include manifest.json.');
+    }
+    if (!generationSummaryEntry) {
+      throw new BadRequestException('Run archive must include generation_summary.json.');
     }
 
-    return parsed as Record<string, unknown>;
-  }
+    const sampleEntries = [...archiveFiles.entries()]
+      .filter(([path]) => path.startsWith('samples/') && path.endsWith('.json'))
+      .sort(([left], [right]) => left.localeCompare(right));
 
-  private isEvalSamplePayload(payload: Record<string, unknown>): boolean {
-    return Object.prototype.hasOwnProperty.call(payload, 'sample_index');
-  }
+    if (sampleEntries.length === 0) {
+      throw new BadRequestException('Run archive must include at least one samples/*.json file.');
+    }
 
-  private parseEvalSample(parsed: EvalSampleUploadInput): NormalizedEvalSample {
-    const runId = readRequiredString(parsed.run_id, 'run_id');
-    const language = readRequiredString(parsed.language, 'language');
-    const taskType = readRequiredString(parsed.task_type, 'task_type');
-    const sampleStatus = readRequiredString(parsed.status, 'status');
-    const sampleIndex = readRequiredInt(parsed.sample_index, 'sample_index');
-    const display = readRequiredString(parsed.display, 'display');
-    const prompt = readRequiredString(parsed.prompt, 'prompt');
-    const sourceFile = readRequiredString(parsed.source_file, 'source_file');
-    const endpoint = readRequiredString(parsed.endpoint, 'endpoint');
-    const attemptsInput = Array.isArray(parsed.attempts) ? parsed.attempts : [];
-    const attempts = attemptsInput.map((attempt, index) =>
-      this.parseAttempt(attempt, index, runId, sampleIndex),
+    const scoreEntries = [...archiveFiles.entries()]
+      .filter(([path]) => path.startsWith('scores/') && path.endsWith('.json'))
+      .sort(([left], [right]) => left.localeCompare(right));
+
+    const manifest = this.parseManifest(
+      await readZipJson(manifestEntry, manifestPath),
+      manifestPath,
+    );
+    const generationSummary = this.parseGenerationSummary(
+      await readZipJson(generationSummaryEntry, generationSummaryPath),
+      generationSummaryPath,
     );
 
+    if (generationSummary.runId !== manifest.runId) {
+      throw new BadRequestException(
+        `generation_summary.json run_id "${generationSummary.runId}" does not match manifest run_id "${manifest.runId}".`,
+      );
+    }
+
+    if (generationSummary.status && generationSummary.status !== manifest.status) {
+      throw new BadRequestException(
+        `generation_summary.json status "${generationSummary.status}" does not match manifest status "${manifest.status}".`,
+      );
+    }
+
+    const scoreMap = new Map<number, { path: string; scores: ParsedScoreAttempt[]; metadata: Record<string, string | number | null> }>();
+    for (const [path, entry] of scoreEntries) {
+      const parsed = this.parseScoreFile(await readZipJson(entry, path), path, manifest.runId);
+      if (scoreMap.has(parsed.sampleIndex)) {
+        throw new BadRequestException(
+          `Duplicate score file found for sample ${parsed.sampleIndex}: ${path}`,
+        );
+      }
+      scoreMap.set(parsed.sampleIndex, {
+        path,
+        scores: parsed.attempts,
+        metadata: {
+          renderingName: parsed.renderingName,
+          prompt: parsed.prompt,
+          sourceCategory: parsed.sourceCategory,
+        },
+      });
+    }
+
+    const samples: ParsedSample[] = [];
+    const seenSampleIndexes = new Set<number>();
+
+    for (const [path, entry] of sampleEntries) {
+      const sample = this.parseSampleFile(await readZipJson(entry, path), path, manifest.runId);
+      if (seenSampleIndexes.has(sample.sampleIndex)) {
+        throw new BadRequestException(`Duplicate sample_index ${sample.sampleIndex} found in ${path}.`);
+      }
+      seenSampleIndexes.add(sample.sampleIndex);
+
+      const scoreBundle = scoreMap.get(sample.sampleIndex);
+      if (scoreBundle) {
+        validateScoreMetadata(scoreBundle.metadata, sample, scoreBundle.path);
+        applyScoresToSample(sample, scoreBundle.scores, scoreBundle.path);
+      }
+
+      finalizeSampleAverages(sample);
+      samples.push(sample);
+    }
+
+    for (const sampleIndex of scoreMap.keys()) {
+      if (!seenSampleIndexes.has(sampleIndex)) {
+        throw new BadRequestException(
+          `Score file exists for sample ${sampleIndex}, but samples/*.json is missing.`,
+        );
+      }
+    }
+
+    const computedCounts = summarizeSampleStatuses(samples);
+    const latestCompletedFallback = getLatestCompletedSampleInfo(samples);
+    const runDevice = mergeDeviceInfo(manifest.device, samples[0]?.device || emptyDeviceInfo());
+
+    return {
+      run: {
+        ...manifest,
+        totalSamples: samples.length,
+        completedSamples: computedCounts.completedSamples,
+        runningSamples: computedCounts.runningSamples,
+        partialSamples: computedCounts.partialSamples,
+        errorSamples: computedCounts.errorSamples,
+        pendingSamples: computedCounts.pendingSamples,
+        doneAttempts: computedCounts.doneAttempts,
+        totalAttempts: computedCounts.totalAttempts,
+        latestCompletedSampleIndex:
+          generationSummary.latestCompletedSampleIndex ?? latestCompletedFallback.sampleIndex,
+        latestCompletedCategory:
+          generationSummary.latestCompletedCategory ?? latestCompletedFallback.sourceCategory,
+        device: runDevice,
+      },
+      samples,
+    };
+  }
+
+  private parseManifest(raw: unknown, path: string): ParsedManifest {
+    const payload = readObject(raw, path);
+
+    return {
+      runId: readRequiredString(payload.run_id, `${path}.run_id`),
+      status: readRequiredString(payload.status, `${path}.status`),
+      runCreatedAt: parseOptionalDate(payload.created_at, `${path}.created_at`),
+      runUpdatedAt: parseOptionalDate(payload.updated_at, `${path}.updated_at`),
+      baseUrl: readOptionalString(payload.base_url),
+      endpoint: readRequiredString(payload.endpoint, `${path}.endpoint`),
+      taskType: readRequiredString(payload.task_type, `${path}.task_type`),
+      language: readRequiredString(payload.language, `${path}.language`),
+      sourceFile: readRequiredString(payload.source_file, `${path}.source_file`),
+      modelRequest: readOptionalString(payload.model_request),
+      modelNameReportedByServer: readOptionalString(payload.model_name_reported_by_server),
+      selectionMode: readOptionalString(payload.selection_mode),
+      sourceTotalItems: readRequiredInt(payload.source_total_items, `${path}.source_total_items`),
+      sampleCountRequested: readRequiredInt(
+        payload.sample_count_requested,
+        `${path}.sample_count_requested`,
+      ),
+      repeatCount: readRequiredInt(payload.repeat_count, `${path}.repeat_count`),
+      maxTokens: readOptionalInt(payload.max_tokens),
+      seed: readOptionalInt(payload.seed),
+      device: parseDeviceInfo(payload),
+    };
+  }
+
+  private parseGenerationSummary(raw: unknown, path: string): ParsedGenerationSummary {
+    const payload = readObject(raw, path);
+
+    return {
+      runId: readRequiredString(payload.run_id, `${path}.run_id`),
+      status: readOptionalString(payload.status),
+      latestCompletedSampleIndex: readOptionalInt(payload.latest_completed_sample_index),
+      latestCompletedCategory: readOptionalString(payload.latest_completed_category),
+    };
+  }
+
+  private parseSampleFile(raw: unknown, path: string, expectedRunId: string): ParsedSample {
+    const payload = readObject(raw, path);
+    const runId = readRequiredString(payload.run_id, `${path}.run_id`);
+
+    if (runId !== expectedRunId) {
+      throw new BadRequestException(
+        `${path} run_id "${runId}" does not match manifest run_id "${expectedRunId}".`,
+      );
+    }
+
+    const sampleIndex = readRequiredInt(payload.sample_index, `${path}.sample_index`);
+    const attemptsInput = Array.isArray(payload.attempts) ? payload.attempts : [];
     const seenAttempts = new Set<number>();
-    for (const attempt of attempts) {
+    const attempts = attemptsInput.map((entry, index) => {
+      const attempt = this.parseSampleAttempt(entry, `${path}.attempts[${index}]`);
       if (seenAttempts.has(attempt.attempt)) {
         throw new BadRequestException(
-          `Duplicate attempt ${attempt.attempt} found for ${runId} sample ${sampleIndex}`,
+          `Duplicate attempt ${attempt.attempt} found in ${path}.`,
         );
       }
       seenAttempts.add(attempt.attempt);
-    }
+      return attempt;
+    });
 
     return {
-      runId,
-      language,
-      taskType,
-      sampleStatus,
       sampleIndex,
-      display,
-      prompt,
-      sourceFile,
-      sourceCategoryName: readOptionalString(parsed.source_category_name),
-      sourceCategoryIndex: readOptionalInt(parsed.source_category_index),
-      sourceItemIndex: readOptionalInt(parsed.source_item_index),
-      baseUrl: readOptionalString(parsed.base_url),
-      endpoint,
-      modelRequest: readOptionalString(parsed.model_request),
-      modelNameReportedByServer: readOptionalString(parsed.model_name_reported_by_server),
-      maxTokens: readOptionalInt(parsed.max_tokens),
-      repeatCountTarget: readOptionalInt(parsed.repeat_count_target),
-      repeatCountDone: readOptionalInt(parsed.repeat_count_done),
-      scoreStatus: readOptionalString(parsed.score_status) || 'pending',
-      sampleStartedAt: parseOptionalDate(parsed.started_at, 'started_at'),
-      sampleUpdatedAt: parseOptionalDate(parsed.updated_at, 'updated_at'),
-      sampleAverageScore: readOptionalNumber(parsed.average_score),
-      sampleScoredAt: parseOptionalDate(parsed.scored_at, 'scored_at'),
+      status: readRequiredString(payload.status, `${path}.status`),
+      renderingName: readRequiredString(payload.rendering_name, `${path}.rendering_name`),
+      prompt: readRequiredString(payload.prompt, `${path}.prompt`),
+      sourceFile: readRequiredString(payload.source_file, `${path}.source_file`),
+      sourceCategory: readRequiredString(payload.source_category, `${path}.source_category`),
+      sourceCategoryDisplayName: readRequiredString(
+        payload.source_category_display_name,
+        `${path}.source_category_display_name`,
+      ),
+      sourceCategoryIndex: readRequiredInt(
+        payload.source_category_index,
+        `${path}.source_category_index`,
+      ),
+      sourceItemIndex: readRequiredInt(payload.source_item_index, `${path}.source_item_index`),
+      baseUrl: readOptionalString(payload.base_url),
+      endpoint: readRequiredString(payload.endpoint, `${path}.endpoint`),
+      modelRequest: readOptionalString(payload.model_request),
+      modelNameReportedByServer: readOptionalString(payload.model_name_reported_by_server),
+      maxTokens: readOptionalInt(payload.max_tokens),
+      repeatCountTarget: readRequiredInt(payload.repeat_count_target, `${path}.repeat_count_target`),
+      repeatCountDone: readRequiredInt(payload.repeat_count_done, `${path}.repeat_count_done`),
+      sampleStartedAt: parseOptionalDate(payload.started_at, `${path}.started_at`),
+      sampleUpdatedAt: parseOptionalDate(payload.updated_at, `${path}.updated_at`),
+      averageWeightedScore: null,
+      averageRelevance: null,
+      averageQuality: null,
+      averageFluency: null,
+      averageSatisfaction: null,
+      scoredAttemptCount: 0,
+      device: parseDeviceInfo(payload),
       attempts,
     };
   }
 
-  private parseEvalManifest(
-    parsed: EvalManifestUploadInput,
-    input: ImportEvalSampleOptions,
-  ): NormalizedEvalManifest {
-    const deviceInfo = this.resolveEvalDeviceInfo(
-      parsed as Record<string, unknown> & { device?: unknown },
-      input,
-    );
+  private parseSampleAttempt(raw: unknown, path: string): ParsedSampleAttempt {
+    const payload = readObject(raw, path);
 
     return {
-      runId: readRequiredString(parsed.run_id, 'run_id'),
-      status: readOptionalString(parsed.status),
-      scoreStatus: readOptionalString(parsed.score_status),
-      runCreatedAt: parseOptionalDate(parsed.created_at, 'created_at'),
-      runUpdatedAt: parseOptionalDate(parsed.updated_at, 'updated_at'),
-      baseUrl: readOptionalString(parsed.base_url),
-      endpoint: readOptionalString(parsed.endpoint),
-      taskType: readOptionalString(parsed.task_type),
-      language: readOptionalString(parsed.language),
-      sourceFile: readOptionalString(parsed.source_file),
-      modelRequest: readOptionalString(parsed.model_request),
-      modelNameReportedByServer: readOptionalString(parsed.model_name_reported_by_server),
-      selectionMode: readOptionalString(parsed.selection_mode),
-      sourceTotalItems: readOptionalInt(parsed.source_total_items),
-      sampleCountRequested: readOptionalInt(parsed.sample_count_requested),
-      repeatCount: readOptionalInt(parsed.repeat_count),
-      maxTokens: readOptionalInt(parsed.max_tokens),
-      seed: readOptionalInt(parsed.seed),
-      totalSamples: readOptionalInt(parsed.total_samples),
-      completedSamples: readOptionalInt(parsed.completed_samples),
-      runningSamples: readOptionalInt(parsed.running_samples),
-      partialSamples: readOptionalInt(parsed.partial_samples),
-      errorSamples: readOptionalInt(parsed.error_samples),
-      pendingSamples: readOptionalInt(parsed.pending_samples),
-      doneAttempts: readOptionalInt(parsed.done_attempts),
-      totalAttempts: readOptionalInt(parsed.total_attempts),
-      samplesDir: readOptionalString(parsed.samples_dir),
-      evalDeviceLabel: deviceInfo.evalDeviceLabel,
-      evalDeviceChip: deviceInfo.evalDeviceChip,
+      attempt: readRequiredInt(payload.attempt, `${path}.attempt`),
+      status: readOptionalString(payload.status) || 'completed',
+      startedAt: parseOptionalDate(payload.started_at, `${path}.started_at`),
+      endedAt: parseOptionalDate(payload.ended_at, `${path}.ended_at`),
+      durationMs: readOptionalInt(payload.duration_ms),
+      responseChars: readOptionalInt(payload.response_chars),
+      response: readOptionalString(payload.response),
+      errorType: readOptionalString(payload.error_type),
+      errorMessage: readOptionalString(payload.error_message),
+      errorBody: stringifyNullableValue(payload.error_body),
+      relevance: null,
+      quality: null,
+      fluency: null,
+      satisfaction: null,
+      weightedScore: null,
+      briefNote: null,
     };
   }
 
-  private async upsertRunMetadata(
-    client: Prisma.TransactionClient | PrismaService,
-    runId: string,
-    payload: {
-      status?: string | null;
-      scoreStatus?: string | null;
-      runCreatedAt?: Date | null;
-      runUpdatedAt?: Date | null;
-      baseUrl?: string | null;
-      endpoint?: string | null;
-      taskType?: string | null;
-      language?: string | null;
-      sourceFile?: string | null;
-      modelRequest?: string | null;
-      modelNameReportedByServer?: string | null;
-      selectionMode?: string | null;
-      sourceTotalItems?: number | null;
-      sampleCountRequested?: number | null;
-      repeatCount?: number | null;
-      maxTokens?: number | null;
-      seed?: number | null;
-      totalSamples?: number | null;
-      completedSamples?: number | null;
-      runningSamples?: number | null;
-      partialSamples?: number | null;
-      errorSamples?: number | null;
-      pendingSamples?: number | null;
-      doneAttempts?: number | null;
-      totalAttempts?: number | null;
-      samplesDir?: string | null;
-      evalDeviceLabel?: string | null;
-      evalDeviceChip?: string | null;
-    },
-    input: ImportEvalSampleOptions,
-  ): Promise<void> {
-    const data = omitUndefined({
-      uploadedFileName: input.fileName,
-      uploadedBy: input.uploadedBy,
-      status: payload.status,
-      scoreStatus: payload.scoreStatus,
-      runCreatedAt: payload.runCreatedAt,
-      runUpdatedAt: payload.runUpdatedAt,
-      baseUrl: payload.baseUrl,
-      endpoint: payload.endpoint,
-      taskType: payload.taskType,
-      language: payload.language,
-      sourceFile: payload.sourceFile,
-      modelRequest: payload.modelRequest,
-      modelNameReportedByServer: payload.modelNameReportedByServer,
-      selectionMode: payload.selectionMode,
-      sourceTotalItems: payload.sourceTotalItems,
-      sampleCountRequested: payload.sampleCountRequested,
-      repeatCount: payload.repeatCount,
-      maxTokens: payload.maxTokens,
-      seed: payload.seed,
-      totalSamples: payload.totalSamples,
-      completedSamples: payload.completedSamples,
-      runningSamples: payload.runningSamples,
-      partialSamples: payload.partialSamples,
-      errorSamples: payload.errorSamples,
-      pendingSamples: payload.pendingSamples,
-      doneAttempts: payload.doneAttempts,
-      totalAttempts: payload.totalAttempts,
-      samplesDir: payload.samplesDir,
-      evalDeviceLabel: payload.evalDeviceLabel,
-      evalDeviceChip: payload.evalDeviceChip,
-    });
-
-    await client.evalRunMetadata.upsert({
-      where: { runId },
-      create: {
-        runId,
-        ...data,
-      },
-      update: data,
-    });
-  }
-
-  private resolveEvalDeviceInfo(
-    payload: { [key: string]: unknown; device?: unknown },
-    input: ImportEvalSampleOptions,
+  private parseScoreFile(
+    raw: unknown,
+    path: string,
+    expectedRunId: string,
   ): {
-    evalDeviceLabel: string | null;
-    evalDeviceChip: string | null;
+    sampleIndex: number;
+    renderingName: string;
+    prompt: string;
+    sourceCategory: string;
+    attempts: ParsedScoreAttempt[];
   } {
-    const nestedDevice =
-      payload.device && typeof payload.device === 'object' && !Array.isArray(payload.device)
-        ? (payload.device as Record<string, unknown>)
-        : null;
+    const payload = readObject(raw, path);
+    const sampleIndex = readRequiredInt(payload.sample_index, `${path}.sample_index`);
+    const attemptsInput = Array.isArray(payload.attempt_evals) ? payload.attempt_evals : [];
+    const seenAttempts = new Set<number>();
+
+    const attempts = attemptsInput.map((entry, index) => {
+      const evalPayload = readObject(entry, `${path}.attempt_evals[${index}]`);
+      const attempt = readRequiredInt(evalPayload.attempt, `${path}.attempt_evals[${index}].attempt`);
+      if (seenAttempts.has(attempt)) {
+        throw new BadRequestException(
+          `Duplicate score attempt ${attempt} found in ${path}.`,
+        );
+      }
+      seenAttempts.add(attempt);
+
+      const scores = readObject(
+        evalPayload.scores,
+        `${path}.attempt_evals[${index}].scores`,
+      );
+
+      return {
+        attempt,
+        relevance: readRequiredInt(scores.relevance, `${path}.scores.relevance`),
+        quality: readRequiredInt(scores.quality, `${path}.scores.quality`),
+        fluency: readRequiredInt(scores.fluency, `${path}.scores.fluency`),
+        satisfaction: readRequiredInt(scores.satisfaction, `${path}.scores.satisfaction`),
+        weightedScore: readRequiredNumber(
+          evalPayload.weighted_score,
+          `${path}.attempt_evals[${index}].weighted_score`,
+        ),
+        briefNote: readOptionalString(evalPayload.brief_note),
+      };
+    });
+
+    // expectedRunId is unused in score files on purpose: they do not carry run_id.
+    void expectedRunId;
 
     return {
-      evalDeviceLabel:
-        readOptionalString(input.deviceLabel) ||
-        readOptionalString(payload.eval_device_label) ||
-        readOptionalString(payload.device_label) ||
-        readOptionalString(payload.device_name) ||
-        readOptionalString(payload.hardware_name) ||
-        readOptionalString(nestedDevice?.label) ||
-        readOptionalString(nestedDevice?.name) ||
-        readOptionalString(nestedDevice?.model) ||
-        (typeof payload.device === 'string' ? readOptionalString(payload.device) : null),
-      evalDeviceChip:
-        readOptionalString(input.deviceChip) ||
-        readOptionalString(payload.eval_device_chip) ||
-        readOptionalString(payload.device_chip) ||
-        readOptionalString(payload.chip_name) ||
-        readOptionalString(payload.cpu_model) ||
-        readOptionalString(payload.chip) ||
-        readOptionalString(nestedDevice?.chip) ||
-        readOptionalString(nestedDevice?.processor) ||
-        readOptionalString(nestedDevice?.cpu),
+      sampleIndex,
+      renderingName: readRequiredString(payload.rendering_name, `${path}.rendering_name`),
+      prompt: readRequiredString(payload.prompt, `${path}.prompt`),
+      sourceCategory: readRequiredString(payload.source_category, `${path}.source_category`),
+      attempts,
     };
   }
+}
 
-  private parseAttempt(
-    input: EvalSampleAttemptInput,
-    index: number,
-    runId: string,
-    sampleIndex: number,
-  ): NormalizedEvalAttempt {
-    if (!input || Array.isArray(input) || typeof input !== 'object') {
+function normalizeArchiveFiles(zip: JSZip): Map<string, JSZip.JSZipObject> {
+  const rawEntries = Object.values(zip.files)
+    .filter((entry) => !entry.dir)
+    .map((entry) => ({
+      entry,
+      path: normalizeArchivePath(entry.name),
+    }))
+    .filter((item): item is { entry: JSZip.JSZipObject; path: string } => item.path !== null);
+
+  if (rawEntries.length === 0) {
+    throw new BadRequestException('Run archive does not contain any readable files.');
+  }
+
+  const allNestedUnderSingleRoot =
+    rawEntries.every((item) => item.path.includes('/')) &&
+    new Set(rawEntries.map((item) => item.path.split('/')[0])).size === 1;
+
+  const archiveFiles = new Map<string, JSZip.JSZipObject>();
+  for (const item of rawEntries) {
+    const normalizedPath = allNestedUnderSingleRoot
+      ? item.path.split('/').slice(1).join('/')
+      : item.path;
+
+    if (!normalizedPath) {
+      continue;
+    }
+
+    if (archiveFiles.has(normalizedPath)) {
+      throw new BadRequestException(`Archive contains duplicate path "${normalizedPath}".`);
+    }
+
+    archiveFiles.set(normalizedPath, item.entry);
+  }
+
+  return archiveFiles;
+}
+
+function normalizeArchivePath(rawPath: string): string | null {
+  const withForwardSlashes = rawPath.replace(/\\/g, '/').replace(/^\.\/+/, '');
+  const segments = withForwardSlashes.split('/').filter(Boolean);
+  if (segments.length === 0) {
+    return null;
+  }
+
+  if (segments.some((segment) => segment === '..')) {
+    throw new BadRequestException(`Archive path "${rawPath}" is not allowed.`);
+  }
+
+  if (segments[0] === '__MACOSX') {
+    return null;
+  }
+
+  const lastSegment = segments[segments.length - 1];
+  if (lastSegment === '.DS_Store') {
+    return null;
+  }
+
+  return segments.join('/');
+}
+
+async function readZipJson(entry: JSZip.JSZipObject, path: string): Promise<unknown> {
+  const content = await entry.async('string');
+  try {
+    return JSON.parse(content);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid JSON';
+    throw new BadRequestException(`Failed to parse ${path}: ${message}`);
+  }
+}
+
+function parseDeviceInfo(payload: Record<string, unknown>): EvalDeviceInfo {
+  return {
+    label: readOptionalString(payload.eval_device_label),
+    cpu: readOptionalString(payload.eval_device_cpu),
+    gpu: readOptionalString(payload.eval_device_gpu),
+    memoryGb: readOptionalNumber(payload.eval_device_memory_gb),
+    vramGb: readOptionalNumber(payload.eval_device_vram_gb),
+  };
+}
+
+function mergeDeviceInfo(primary: EvalDeviceInfo, fallback: EvalDeviceInfo): EvalDeviceInfo {
+  return {
+    label: primary.label || fallback.label,
+    cpu: primary.cpu || fallback.cpu,
+    gpu: primary.gpu || fallback.gpu,
+    memoryGb: primary.memoryGb ?? fallback.memoryGb,
+    vramGb: primary.vramGb ?? fallback.vramGb,
+  };
+}
+
+function emptyDeviceInfo(): EvalDeviceInfo {
+  return {
+    label: null,
+    cpu: null,
+    gpu: null,
+    memoryGb: null,
+    vramGb: null,
+  };
+}
+
+function validateScoreMetadata(
+  metadata: Record<string, string | number | null>,
+  sample: ParsedSample,
+  path: string,
+): void {
+  if (metadata.renderingName !== sample.renderingName) {
+    throw new BadRequestException(
+      `${path} rendering_name does not match sample ${sample.sampleIndex}.`,
+    );
+  }
+  if (metadata.prompt !== sample.prompt) {
+    throw new BadRequestException(`${path} prompt does not match sample ${sample.sampleIndex}.`);
+  }
+  if (metadata.sourceCategory !== sample.sourceCategory) {
+    throw new BadRequestException(
+      `${path} source_category does not match sample ${sample.sampleIndex}.`,
+    );
+  }
+}
+
+function applyScoresToSample(
+  sample: ParsedSample,
+  scores: ParsedScoreAttempt[],
+  path: string,
+): void {
+  const attemptMap = new Map(sample.attempts.map((attempt) => [attempt.attempt, attempt]));
+
+  for (const score of scores) {
+    const target = attemptMap.get(score.attempt);
+    if (!target) {
       throw new BadRequestException(
-        `Attempt #${index + 1} for ${runId} sample ${sampleIndex} must be an object`,
+        `${path} references attempt ${score.attempt}, but sample ${sample.sampleIndex} does not contain it.`,
       );
     }
 
+    target.relevance = score.relevance;
+    target.quality = score.quality;
+    target.fluency = score.fluency;
+    target.satisfaction = score.satisfaction;
+    target.weightedScore = roundToTwo(score.weightedScore);
+    target.briefNote = score.briefNote;
+  }
+}
+
+function finalizeSampleAverages(sample: ParsedSample): void {
+  const scoredAttempts = sample.attempts.filter((attempt) => attempt.weightedScore !== null);
+  sample.scoredAttemptCount = scoredAttempts.length;
+
+  if (scoredAttempts.length === 0) {
+    sample.averageWeightedScore = null;
+    sample.averageRelevance = null;
+    sample.averageQuality = null;
+    sample.averageFluency = null;
+    sample.averageSatisfaction = null;
+    return;
+  }
+
+  sample.averageWeightedScore = computeAverage(
+    scoredAttempts
+      .map((attempt) => attempt.weightedScore)
+      .filter((value): value is number => value !== null),
+  );
+  sample.averageRelevance = computeAverage(
+    scoredAttempts
+      .map((attempt) => attempt.relevance)
+      .filter((value): value is number => value !== null),
+  );
+  sample.averageQuality = computeAverage(
+    scoredAttempts
+      .map((attempt) => attempt.quality)
+      .filter((value): value is number => value !== null),
+  );
+  sample.averageFluency = computeAverage(
+    scoredAttempts
+      .map((attempt) => attempt.fluency)
+      .filter((value): value is number => value !== null),
+  );
+  sample.averageSatisfaction = computeAverage(
+    scoredAttempts
+      .map((attempt) => attempt.satisfaction)
+      .filter((value): value is number => value !== null),
+  );
+}
+
+function summarizeSampleStatuses(samples: ParsedSample[]): {
+  completedSamples: number;
+  runningSamples: number;
+  partialSamples: number;
+  errorSamples: number;
+  pendingSamples: number;
+  doneAttempts: number;
+  totalAttempts: number;
+} {
+  const summary = {
+    completedSamples: 0,
+    runningSamples: 0,
+    partialSamples: 0,
+    errorSamples: 0,
+    pendingSamples: 0,
+    doneAttempts: 0,
+    totalAttempts: 0,
+  };
+
+  for (const sample of samples) {
+    if (sample.status === 'completed') {
+      summary.completedSamples += 1;
+    } else if (sample.status === 'running') {
+      summary.runningSamples += 1;
+    } else if (sample.status === 'partial') {
+      summary.partialSamples += 1;
+    } else if (sample.status === 'error') {
+      summary.errorSamples += 1;
+    } else {
+      summary.pendingSamples += 1;
+    }
+
+    summary.doneAttempts += sample.repeatCountDone;
+    summary.totalAttempts += sample.repeatCountTarget;
+  }
+
+  return summary;
+}
+
+function getLatestCompletedSampleInfo(samples: ParsedSample[]): {
+  sampleIndex: number | null;
+  sourceCategory: string | null;
+} {
+  const completedSamples = samples
+    .filter((sample) => sample.status === 'completed')
+    .sort((left, right) => right.sampleIndex - left.sampleIndex);
+
+  if (completedSamples.length === 0) {
     return {
-      attempt: readRequiredInt(input.attempt, `attempts[${index}].attempt`),
-      attemptStatus: readOptionalString(input.status) || 'completed',
-      attemptStartedAt: parseOptionalDate(input.started_at, `attempts[${index}].started_at`),
-      attemptEndedAt: parseOptionalDate(input.ended_at, `attempts[${index}].ended_at`),
-      attemptDurationMs: readOptionalInt(input.duration_ms),
-      responseChars: readOptionalInt(input.response_chars),
-      response: readOptionalString(input.response),
-      score: readOptionalNumber(input.score),
-      scoreNote: readOptionalString(input.score_note),
-      errorType: readOptionalString(input.error_type),
-      errorMessage: readOptionalString(input.error_message),
-      errorBody:
-        input.error_body === undefined || input.error_body === null
-          ? null
-          : typeof input.error_body === 'string'
-            ? input.error_body
-            : JSON.stringify(input.error_body),
+      sampleIndex: null,
+      sourceCategory: null,
     };
   }
 
-  private computeAverageScore(
-    attempts: Array<Pick<NormalizedEvalAttempt | EvalQuestionAttemptSummary, 'score'>>,
-  ): number | null {
-    const scores = attempts
-      .map((attempt) => attempt.score)
-      .filter((score): score is number => typeof score === 'number' && Number.isFinite(score));
+  return {
+    sampleIndex: completedSamples[0].sampleIndex,
+    sourceCategory: completedSamples[0].sourceCategory,
+  };
+}
 
-    if (scores.length === 0) {
-      return null;
+function buildCategoryOptions(
+  samples: Array<{
+    sourceCategory: string;
+    sourceCategoryDisplayName: string;
+    sourceCategoryIndex: number;
+  }>,
+): EvalCategoryOption[] {
+  return dedupeCategoryOptions(samples);
+}
+
+function dedupeCategoryOptions(
+  categories: Array<{
+    sourceCategory: string;
+    sourceCategoryDisplayName: string;
+    sourceCategoryIndex?: number | null;
+  }>,
+): EvalCategoryOption[] {
+  const categoryMap = new Map<
+    string,
+    { key: string; displayName: string; index: number }
+  >();
+
+  for (const category of categories) {
+    const existing = categoryMap.get(category.sourceCategory);
+    const nextIndex =
+      typeof category.sourceCategoryIndex === 'number' ? category.sourceCategoryIndex : Number.MAX_SAFE_INTEGER;
+
+    if (!existing || nextIndex < existing.index) {
+      categoryMap.set(category.sourceCategory, {
+        key: category.sourceCategory,
+        displayName: category.sourceCategoryDisplayName,
+        index: nextIndex,
+      });
+    }
+  }
+
+  return [...categoryMap.values()]
+    .sort((left, right) => {
+      if (left.index !== right.index) {
+        return left.index - right.index;
+      }
+      return left.key.localeCompare(right.key);
+    })
+    .map(({ key, displayName }) => ({ key, displayName }));
+}
+
+function buildCategoryStats(
+  samples: Array<{
+    status: string;
+    sourceCategory: string;
+    sourceCategoryDisplayName: string;
+    sourceCategoryIndex: number;
+    repeatCountTarget: number;
+    repeatCountDone: number;
+    averageWeightedScore: number | null;
+    scoredAttemptCount: number;
+  }>,
+  passThreshold: number,
+): EvalRunCategoryStat[] {
+  const categoryMap = new Map<
+    string,
+    EvalRunCategoryStat & { sourceCategoryIndex: number; scoreValues: number[] }
+  >();
+
+  for (const sample of samples) {
+    let bucket = categoryMap.get(sample.sourceCategory);
+    if (!bucket) {
+      bucket = {
+        key: sample.sourceCategory,
+        displayName: sample.sourceCategoryDisplayName,
+        totalSamples: 0,
+        completedSamples: 0,
+        runningSamples: 0,
+        partialSamples: 0,
+        errorSamples: 0,
+        pendingSamples: 0,
+        doneAttempts: 0,
+        totalAttempts: 0,
+        scoredSamples: 0,
+        scoredAttempts: 0,
+        averageWeightedScore: null,
+        passedSamples: 0,
+        failedSamples: 0,
+        pendingScoreSamples: 0,
+        sourceCategoryIndex: sample.sourceCategoryIndex,
+        scoreValues: [],
+      };
+      categoryMap.set(sample.sourceCategory, bucket);
     }
 
-    return roundToTwo(scores.reduce((sum, score) => sum + score, 0) / scores.length);
+    bucket.totalSamples += 1;
+    bucket.doneAttempts += sample.repeatCountDone;
+    bucket.totalAttempts += sample.repeatCountTarget;
+    bucket.scoredAttempts += sample.scoredAttemptCount;
+
+    if (sample.status === 'completed') {
+      bucket.completedSamples += 1;
+    } else if (sample.status === 'running') {
+      bucket.runningSamples += 1;
+    } else if (sample.status === 'partial') {
+      bucket.partialSamples += 1;
+    } else if (sample.status === 'error') {
+      bucket.errorSamples += 1;
+    } else {
+      bucket.pendingSamples += 1;
+    }
+
+    const passState = getPassState(sample.averageWeightedScore, passThreshold);
+    if (passState === 'passed') {
+      bucket.passedSamples += 1;
+    } else if (passState === 'failed') {
+      bucket.failedSamples += 1;
+    } else {
+      bucket.pendingScoreSamples += 1;
+    }
+
+    if (sample.averageWeightedScore !== null) {
+      bucket.scoredSamples += 1;
+      bucket.scoreValues.push(sample.averageWeightedScore);
+    }
   }
+
+  return [...categoryMap.values()]
+    .sort((left, right) => {
+      if (left.sourceCategoryIndex !== right.sourceCategoryIndex) {
+        return left.sourceCategoryIndex - right.sourceCategoryIndex;
+      }
+      return left.key.localeCompare(right.key);
+    })
+    .map(({ scoreValues, sourceCategoryIndex, ...rest }) => ({
+      ...rest,
+      averageWeightedScore: computeAverage(scoreValues),
+    }));
+}
+
+function getPassState(
+  averageWeightedScore: number | null,
+  passThreshold: number,
+): EvalPassState {
+  if (averageWeightedScore === null) {
+    return 'pending';
+  }
+
+  return averageWeightedScore >= passThreshold ? 'passed' : 'failed';
+}
+
+function computeAverage(values: number[]): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+
+  return roundToTwo(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function normalizePassThreshold(value: number): number {
+  if (!Number.isFinite(value) || value < 0 || value > 10) {
+    throw new BadRequestException('passThreshold must be a finite number between 0 and 10.');
+  }
+
+  return roundToTwo(value);
+}
+
+function roundToTwo(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function nullableRoundToTwo(value: number | null | undefined): number | null {
+  return typeof value === 'number' ? roundToTwo(value) : null;
+}
+
+function toIsoString(value: Date | null | undefined): string | null {
+  return value ? value.toISOString() : null;
+}
+
+function clampInt(
+  value: number | null | undefined,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
+  if (!Number.isInteger(value)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, value));
+}
+
+function readObject(value: unknown, fieldName: string): Record<string, unknown> {
+  if (!value || Array.isArray(value) || typeof value !== 'object') {
+    throw new BadRequestException(`${fieldName} must be an object.`);
+  }
+
+  return value as Record<string, unknown>;
 }
 
 function readRequiredString(value: unknown, fieldName: string): string {
   if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new BadRequestException(`Field "${fieldName}" is required`);
+    throw new BadRequestException(`Field "${fieldName}" is required.`);
   }
+
   return value.trim();
 }
 
@@ -1160,6 +1573,7 @@ function readOptionalString(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null;
   }
+
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
@@ -1167,90 +1581,76 @@ function readOptionalString(value: unknown): string | null {
 function readRequiredInt(value: unknown, fieldName: string): number {
   const parsed = readOptionalInt(value);
   if (parsed === null) {
-    throw new BadRequestException(`Field "${fieldName}" must be an integer`);
+    throw new BadRequestException(`Field "${fieldName}" must be an integer.`);
   }
+
   return parsed;
 }
 
-function readOptionalInt(value: unknown, fieldName?: string): number | null {
-  if (value === undefined || value === null || value === '') {
-    return null;
+function readOptionalInt(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isInteger(value)) {
+    return value;
   }
 
-  const parsed =
-    typeof value === 'number'
-      ? value
-      : typeof value === 'string'
-        ? Number.parseInt(value, 10)
-        : Number.NaN;
-
-  if (!Number.isInteger(parsed)) {
-    if (fieldName) {
-      throw new BadRequestException(`Field "${fieldName}" must be an integer`);
-    }
-    return null;
+  if (typeof value === 'string' && /^-?\d+$/.test(value.trim())) {
+    const parsed = Number.parseInt(value.trim(), 10);
+    return Number.isInteger(parsed) ? parsed : null;
   }
+
+  return null;
+}
+
+function readRequiredNumber(value: unknown, fieldName: string): number {
+  const parsed = readOptionalNumber(value);
+  if (parsed === null) {
+    throw new BadRequestException(`Field "${fieldName}" must be a number.`);
+  }
+
   return parsed;
 }
 
 function readOptionalNumber(value: unknown): number | null {
-  if (value === undefined || value === null || value === '') {
-    return null;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
   }
 
-  const parsed =
-    typeof value === 'number'
-      ? value
-      : typeof value === 'string'
-        ? Number.parseFloat(value)
-        : Number.NaN;
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number.parseFloat(value.trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
 
-  return Number.isFinite(parsed) ? parsed : null;
+  return null;
 }
 
 function parseOptionalDate(value: unknown, fieldName: string): Date | null {
-  if (value === undefined || value === null || value === '') {
+  if (value === null || value === undefined || value === '') {
     return null;
   }
+
   if (typeof value !== 'string') {
-    throw new BadRequestException(`Field "${fieldName}" must be an ISO datetime string`);
+    throw new BadRequestException(`Field "${fieldName}" must be an ISO date string.`);
   }
 
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    throw new BadRequestException(`Field "${fieldName}" is not a valid datetime`);
+    throw new BadRequestException(`Field "${fieldName}" is not a valid date.`);
   }
 
   return parsed;
 }
 
-function toIsoString(value: Date | null): string | null {
-  return value ? value.toISOString() : null;
-}
-
-function maxIsoTimestamp(left: string | null, right: string | null): string | null {
-  if (!left) {
-    return right;
+function stringifyNullableValue(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
   }
-  if (!right) {
-    return left;
+
+  if (typeof value === 'string') {
+    return value;
   }
-  return left > right ? left : right;
-}
 
-function roundToTwo(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
-function omitUndefined<T extends Record<string, unknown>>(value: T): Partial<T> {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, entryValue]) => entryValue !== undefined),
-  ) as Partial<T>;
-}
-
-function clampInt(value: number | undefined, min: number, max: number, fallback: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return fallback;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
   }
-  return Math.min(Math.max(Math.trunc(value), min), max);
 }

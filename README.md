@@ -123,7 +123,8 @@ Each frontend build also writes deployment metadata into `frontend/public/build-
 You can check it with:
 
 ```bash
-curl https://rwkv.halowang.cloud/build-info.json
+curl
+https://rwkv.halowang.cloud/build-info.json
 ```
 
 You can also inspect the page source or DevTools and look for these meta tags:

@@ -5,7 +5,7 @@ import styles from './EvalLink.module.css';
 
 export function EvalLink() {
   return (
-    <Link href="/evals" className={styles.evalLink} aria-label="Eval Browser" title="Eval Browser">
+    <Link href="/admin/eval" className={styles.evalLink} aria-label="Eval Browser" title="Eval Browser">
       <svg
         className={styles.icon}
         viewBox="0 0 24 24"

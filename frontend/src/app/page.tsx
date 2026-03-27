@@ -20,7 +20,6 @@ import {
   LanguageSwitcher,
   GitHubLink,
   ReleaseNotesLink,
-  EvalLink,
 } from '@/components';
 import {
   areLatestDistributionsEqual,
@@ -870,7 +869,6 @@ export default function Home() {
           <div className={styles.navRight}>
             <LanguageSwitcher />
             <ThemeSwitcher />
-            <EvalLink />
             <ReleaseNotesLink />
             <GitHubLink />
           </div>
