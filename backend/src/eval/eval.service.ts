@@ -23,6 +23,19 @@ const EVAL_PASS_THRESHOLD_KEY = 'eval.pass_threshold';
 const DEFAULT_HIGH_SCORE_LANGUAGES = ['zh-Hans'];
 const EVAL_HIGH_SCORE_LANGUAGES_KEY = 'eval.high_score_languages';
 const FILE_SIZE_LIMIT_MB = 64;
+const HIGH_SCORE_CATEGORY_ORDER = [
+  'career',
+  'creation',
+  'family',
+  'life',
+  'role_play',
+  'encyclopedia',
+  'code',
+  'mathematics',
+] as const;
+const HIGH_SCORE_CATEGORY_ORDER_INDEX = new Map<string, number>(
+  HIGH_SCORE_CATEGORY_ORDER.map((category, index) => [category, index]),
+);
 
 interface ImportRunArchiveOptions {
   fileName: string;
@@ -368,7 +381,8 @@ export class EvalService {
       action: existing ? 'updated' : 'imported',
       sampleCount: bundle.samples.length,
       attemptCount: bundle.run.doneAttempts,
-      scoredSampleCount: bundle.samples.filter((sample) => sample.averageWeightedScore !== null).length,
+      scoredSampleCount: bundle.samples.filter((sample) => sample.averageWeightedScore !== null)
+        .length,
       scoredAttemptCount: bundle.samples.reduce(
         (sum, sample) => sum + sample.scoredAttemptCount,
         0,
@@ -538,7 +552,7 @@ export class EvalService {
       entry.items.push({ title: row.renderingName, prompt: row.prompt, score });
     }
 
-    // Build sorted categories (desc by average score)
+    // Build sorted categories using the product-defined fixed category order.
     const categories: EvalHighScoreCategoryGroup[] = Array.from(categoryMap.entries())
       .map(([category, { displayName, scoreSum, items }]) => ({
         category,
@@ -546,7 +560,7 @@ export class EvalService {
         averageScore: Math.round((scoreSum / items.length) * 10000) / 10000,
         items,
       }))
-      .sort((a, b) => b.averageScore - a.averageScore);
+      .sort((left, right) => compareHighScoreCategories(left.category, right.category));
 
     return { categories, minScore: threshold };
   }
@@ -653,7 +667,9 @@ export class EvalService {
     };
   }
 
-  private buildAvailableCategoryWhereInput(options: ListSamplesOptions): Prisma.EvalSampleWhereInput {
+  private buildAvailableCategoryWhereInput(
+    options: ListSamplesOptions,
+  ): Prisma.EvalSampleWhereInput {
     if (!options.runId) {
       return {};
     }
@@ -735,7 +751,10 @@ export class EvalService {
     };
   }
 
-  private toSampleSummary(row: EvalSampleWithAttempts | EvalSampleWithAttemptsNoResponse, passThreshold: number): EvalSampleSummary {
+  private toSampleSummary(
+    row: EvalSampleWithAttempts | EvalSampleWithAttemptsNoResponse,
+    passThreshold: number,
+  ): EvalSampleSummary {
     return {
       runId: row.run.runId,
       sampleIndex: row.sampleIndex,
@@ -767,11 +786,15 @@ export class EvalService {
     };
   }
 
-  private toAttemptSummary(attempt: Prisma.EvalSampleAttemptGetPayload<{
-    select: typeof sampleAttemptSelect;
-  }> | Prisma.EvalSampleAttemptGetPayload<{
-    select: typeof sampleAttemptSelectWithoutResponse;
-  }>): EvalSampleAttemptSummary {
+  private toAttemptSummary(
+    attempt:
+      | Prisma.EvalSampleAttemptGetPayload<{
+          select: typeof sampleAttemptSelect;
+        }>
+      | Prisma.EvalSampleAttemptGetPayload<{
+          select: typeof sampleAttemptSelectWithoutResponse;
+        }>,
+  ): EvalSampleAttemptSummary {
     return {
       id: attempt.id,
       attempt: attempt.attempt,
@@ -871,7 +894,14 @@ export class EvalService {
       );
     }
 
-    const scoreMap = new Map<number, { path: string; scores: ParsedScoreAttempt[]; metadata: Record<string, string | number | null> }>();
+    const scoreMap = new Map<
+      number,
+      {
+        path: string;
+        scores: ParsedScoreAttempt[];
+        metadata: Record<string, string | number | null>;
+      }
+    >();
     for (const [path, entry] of scoreEntries) {
       const parsed = this.parseScoreFile(await readZipJson(entry, path), path, manifest.runId);
       if (scoreMap.has(parsed.sampleIndex)) {
@@ -896,7 +926,9 @@ export class EvalService {
     for (const [path, entry] of sampleEntries) {
       const sample = this.parseSampleFile(await readZipJson(entry, path), path, manifest.runId);
       if (seenSampleIndexes.has(sample.sampleIndex)) {
-        throw new BadRequestException(`Duplicate sample_index ${sample.sampleIndex} found in ${path}.`);
+        throw new BadRequestException(
+          `Duplicate sample_index ${sample.sampleIndex} found in ${path}.`,
+        );
       }
       seenSampleIndexes.add(sample.sampleIndex);
 
@@ -998,9 +1030,7 @@ export class EvalService {
     const attempts = attemptsInput.map((entry, index) => {
       const attempt = this.parseSampleAttempt(entry, `${path}.attempts[${index}]`);
       if (seenAttempts.has(attempt.attempt)) {
-        throw new BadRequestException(
-          `Duplicate attempt ${attempt.attempt} found in ${path}.`,
-        );
+        throw new BadRequestException(`Duplicate attempt ${attempt.attempt} found in ${path}.`);
       }
       seenAttempts.add(attempt.attempt);
       return attempt;
@@ -1027,7 +1057,10 @@ export class EvalService {
       modelRequest: readOptionalString(payload.model_request),
       modelNameReportedByServer: readOptionalString(payload.model_name_reported_by_server),
       maxTokens: readOptionalInt(payload.max_tokens),
-      repeatCountTarget: readRequiredInt(payload.repeat_count_target, `${path}.repeat_count_target`),
+      repeatCountTarget: readRequiredInt(
+        payload.repeat_count_target,
+        `${path}.repeat_count_target`,
+      ),
       repeatCountDone: readRequiredInt(payload.repeat_count_done, `${path}.repeat_count_done`),
       sampleStartedAt: parseOptionalDate(payload.started_at, `${path}.started_at`),
       sampleUpdatedAt: parseOptionalDate(payload.updated_at, `${path}.updated_at`),
@@ -1083,18 +1116,16 @@ export class EvalService {
 
     const attempts = attemptsInput.map((entry, index) => {
       const evalPayload = readObject(entry, `${path}.attempt_evals[${index}]`);
-      const attempt = readRequiredInt(evalPayload.attempt, `${path}.attempt_evals[${index}].attempt`);
+      const attempt = readRequiredInt(
+        evalPayload.attempt,
+        `${path}.attempt_evals[${index}].attempt`,
+      );
       if (seenAttempts.has(attempt)) {
-        throw new BadRequestException(
-          `Duplicate score attempt ${attempt} found in ${path}.`,
-        );
+        throw new BadRequestException(`Duplicate score attempt ${attempt} found in ${path}.`);
       }
       seenAttempts.add(attempt);
 
-      const scores = readObject(
-        evalPayload.scores,
-        `${path}.attempt_evals[${index}].scores`,
-      );
+      const scores = readObject(evalPayload.scores, `${path}.attempt_evals[${index}].scores`);
 
       return {
         attempt,
@@ -1384,15 +1415,14 @@ function dedupeCategoryOptions(
     sourceCategoryIndex?: number | null;
   }>,
 ): EvalCategoryOption[] {
-  const categoryMap = new Map<
-    string,
-    { key: string; displayName: string; index: number }
-  >();
+  const categoryMap = new Map<string, { key: string; displayName: string; index: number }>();
 
   for (const category of categories) {
     const existing = categoryMap.get(category.sourceCategory);
     const nextIndex =
-      typeof category.sourceCategoryIndex === 'number' ? category.sourceCategoryIndex : Number.MAX_SAFE_INTEGER;
+      typeof category.sourceCategoryIndex === 'number'
+        ? category.sourceCategoryIndex
+        : Number.MAX_SAFE_INTEGER;
 
     if (!existing || nextIndex < existing.index) {
       categoryMap.set(category.sourceCategory, {
@@ -1411,6 +1441,17 @@ function dedupeCategoryOptions(
       return left.key.localeCompare(right.key);
     })
     .map(({ key, displayName }) => ({ key, displayName }));
+}
+
+function compareHighScoreCategories(leftCategory: string, rightCategory: string): number {
+  const leftIndex = HIGH_SCORE_CATEGORY_ORDER_INDEX.get(leftCategory) ?? Number.MAX_SAFE_INTEGER;
+  const rightIndex = HIGH_SCORE_CATEGORY_ORDER_INDEX.get(rightCategory) ?? Number.MAX_SAFE_INTEGER;
+
+  if (leftIndex !== rightIndex) {
+    return leftIndex - rightIndex;
+  }
+
+  return leftCategory.localeCompare(rightCategory);
 }
 
 function buildCategoryStats(
@@ -1502,10 +1543,7 @@ function buildCategoryStats(
     }));
 }
 
-function getPassState(
-  averageWeightedScore: number | null,
-  passThreshold: number,
-): EvalPassState {
+function getPassState(averageWeightedScore: number | null, passThreshold: number): EvalPassState {
   if (averageWeightedScore === null) {
     return 'pending';
   }
