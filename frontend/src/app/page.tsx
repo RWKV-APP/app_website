@@ -448,6 +448,13 @@ export default function Home() {
     }
   }, [selectedPlatform, cpuArchitecture, winArch]);
 
+  // Default Windows downloads to zip so the link can render without extra input
+  useEffect(() => {
+    if (selectedPlatform === 'windows' && winArch !== null && !winFormat) {
+      setWinFormat('zip');
+    }
+  }, [selectedPlatform, winArch, winFormat]);
+
   const homeCopy = getHomePageCopy(locale);
   const prefersChinaDownloadSources = shouldPreferChinaDownloadSources(location);
 
@@ -490,8 +497,8 @@ export default function Home() {
       // Auto-select arch (default to x64 if unknown)
       const arch = cpuArchitecture === 'arm64' ? 'arm64' : 'x64';
       setWinArch(arch);
-      // Default to installer
-      setWinFormat('installer');
+      // Default to zip so Windows users immediately see a download link
+      setWinFormat('zip');
       scrollTo(step2Ref);
     } else if (p === 'ios') {
       // iOS goes straight to source selection (TestFlight / App Store)
@@ -949,20 +956,20 @@ export default function Home() {
               </div>
               <div className={styles.optionRow}>
                 <button
-                  className={`${styles.optionCard} ${styles.optionCardWide} ${winFormat === 'installer' ? styles.optionCardSelected : ''}`}
-                  onClick={() => handleWinFormatSelect('installer')}
-                  type="button"
-                >
-                  <span className={styles.optionLabel}>{t.installer}</span>
-                  <span className={styles.optionDesc}>{homeCopy.installerRecommendedDesc}</span>
-                </button>
-                <button
                   className={`${styles.optionCard} ${styles.optionCardWide} ${winFormat === 'zip' ? styles.optionCardSelected : ''}`}
                   onClick={() => handleWinFormatSelect('zip')}
                   type="button"
                 >
                   <span className={styles.optionLabel}>{t.zip}</span>
                   <span className={styles.optionDesc}>{homeCopy.zipPortableDesc}</span>
+                </button>
+                <button
+                  className={`${styles.optionCard} ${styles.optionCardWide} ${winFormat === 'installer' ? styles.optionCardSelected : ''}`}
+                  onClick={() => handleWinFormatSelect('installer')}
+                  type="button"
+                >
+                  <span className={styles.optionLabel}>{t.installer}</span>
+                  <span className={styles.optionDesc}>{homeCopy.installerRecommendedDesc}</span>
                 </button>
               </div>
             </div>
