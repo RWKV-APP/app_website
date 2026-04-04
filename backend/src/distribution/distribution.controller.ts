@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Logger, Query, Req } from '@nestjs/common';
+import { Controller, Get, Post, Logger, Req } from '@nestjs/common';
 import { Request } from 'express';
 import { DistributionService } from './distribution.service';
 
@@ -18,37 +18,75 @@ export class DistributionController {
 
   constructor(private readonly distributionService: DistributionService) {}
 
-  @Get('latest')
-  async getLatestDistributions(@Req() request: Request) {
-    // Manually extract 'key' parameter from query string
-    // NestJS may not properly handle multiple query params with same name
-    const keyArray: string[] = [];
+  private normalizeKeys(keys: string[]): string[] {
+    const normalizedKeys: string[] = [];
+    const seen = new Set<string>();
 
-    // Method 1: Try to get from request.query (NestJS parsed)
+    for (const rawKey of keys) {
+      const key = rawKey.trim();
+      if (!key || seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      normalizedKeys.push(key);
+    }
+
+    return normalizedKeys;
+  }
+
+  private extractKeysFromRawQuery(queryString: string): string[] {
+    const candidates = [queryString];
+
+    try {
+      const decodedQueryString = decodeURIComponent(queryString);
+      if (decodedQueryString !== queryString) {
+        candidates.unshift(decodedQueryString);
+      }
+    } catch {
+      // Keep the raw query string when decoding fails.
+    }
+
+    let bestMatch: string[] = [];
+
+    for (const candidate of candidates) {
+      const params = new URLSearchParams(candidate);
+      const keys = this.normalizeKeys(params.getAll('key'));
+      if (keys.length > bestMatch.length) {
+        bestMatch = keys;
+      }
+    }
+
+    return bestMatch;
+  }
+
+  private extractRequestedKeys(request: Request): string[] {
+    const parsedKeys: string[] = [];
+
     if (request.query.key) {
       if (Array.isArray(request.query.key)) {
-        keyArray.push(...(request.query.key as string[]));
+        parsedKeys.push(...(request.query.key as string[]));
       } else {
-        keyArray.push(request.query.key as string);
+        parsedKeys.push(request.query.key as string);
       }
     }
 
-    // Method 2: Parse from raw query string if method 1 didn't work or only got one value
-    if (keyArray.length <= 1 && request.url) {
-      // Extract query string from URL
-      const queryString = request.url.split('?')[1];
-      if (queryString) {
-        // Parse query string manually using regex
-        const keyMatches = queryString.match(/key=([^&]+)/g);
-        if (keyMatches && keyMatches.length > keyArray.length) {
-          keyArray.length = 0;
-          for (const match of keyMatches) {
-            const value = decodeURIComponent(match.split('=')[1]);
-            keyArray.push(value);
-          }
-        }
-      }
+    const normalizedParsedKeys = this.normalizeKeys(parsedKeys);
+    const queryString = request.url?.split('?')[1];
+
+    if (!queryString) {
+      return normalizedParsedKeys;
     }
+
+    const rawQueryKeys = this.extractKeysFromRawQuery(queryString);
+    return rawQueryKeys.length > normalizedParsedKeys.length ? rawQueryKeys : normalizedParsedKeys;
+  }
+
+  @Get('latest')
+  async getLatestDistributions(@Req() request: Request) {
+    // Older clients accidentally percent-encode the whole repeated key query string,
+    // so we need to support both the standard format and the malformed encoded one.
+    const keyArray = this.extractRequestedKeys(request);
 
     // getLatestDistributions handles all errors internally and never throws
     // It always returns an object (may be empty if database is unavailable)
