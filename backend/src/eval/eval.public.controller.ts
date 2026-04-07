@@ -1,4 +1,4 @@
-import { Controller, Get, NotFoundException, Param, Query } from '@nestjs/common';
+import { Controller, Get, Headers, NotFoundException, Param, Query } from '@nestjs/common';
 import type { EvalPassState } from '../types/eval';
 import { EvalService } from './eval.service';
 
@@ -17,15 +17,32 @@ export class EvalPublicController {
   }
 
   @Get('high-score-languages')
-  async getHighScoreLanguages() {
-    return this.evalService.getHighScoreLanguages();
+  async getHighScoreLanguages(
+    @Headers('accept-language') acceptLanguage?: string,
+    @Headers('application-language') applicationLanguage?: string,
+  ) {
+    return this.evalService.getPublicHighScoreLanguages({
+      locale: applicationLanguage,
+      acceptLanguage,
+    });
   }
 
   @Get('high-score-samples')
-  async getHighScoreSamples(@Query('minScore') rawMinScore?: string) {
+  async getHighScoreSamples(
+    @Query('minScore') rawMinScore?: string,
+    @Query('language') language?: string,
+    @Query('locale') locale?: string,
+    @Headers('accept-language') acceptLanguage?: string,
+    @Headers('application-language') applicationLanguage?: string,
+  ) {
     const minScore = rawMinScore !== undefined ? Number.parseFloat(rawMinScore) : undefined;
     return this.evalService.getHighScoreSamples(
       minScore !== undefined && Number.isFinite(minScore) ? minScore : undefined,
+      {
+        language,
+        locale: locale ?? applicationLanguage,
+        acceptLanguage,
+      },
     );
   }
 

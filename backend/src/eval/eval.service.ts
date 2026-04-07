@@ -48,6 +48,12 @@ interface UpdateEvalSettingsInput {
   highScoreLanguages?: string[];
 }
 
+interface EvalLanguageSelectionInput {
+  language?: string | null;
+  locale?: string | null;
+  acceptLanguage?: string | null;
+}
+
 interface ListSamplesOptions {
   runId?: string;
   sourceCategory?: string;
@@ -418,7 +424,7 @@ export class EvalService {
 
     let highScoreLanguages: string[];
     if (input.highScoreLanguages !== undefined) {
-      highScoreLanguages = input.highScoreLanguages;
+      highScoreLanguages = normalizeSupportedEvalLanguages(input.highScoreLanguages);
       ops.push(
         this.prisma.appConfig.upsert({
           where: { key: EVAL_HIGH_SCORE_LANGUAGES_KEY },
@@ -435,20 +441,65 @@ export class EvalService {
   }
 
   async getHighScoreLanguages(): Promise<string[]> {
+    const configured = await this.readConfiguredHighScoreLanguages();
+    if (configured) {
+      return configured;
+    }
+
+    const derived = await this.deriveHighScoreLanguagesFromRuns();
+    if (derived.length > 0) {
+      return derived;
+    }
+
+    return DEFAULT_HIGH_SCORE_LANGUAGES;
+  }
+
+  async getPublicHighScoreLanguages(
+    languageSelection?: EvalLanguageSelectionInput,
+  ): Promise<string[]> {
+    const supportedLanguages = await this.getHighScoreLanguages();
+    return resolvePublicHighScoreLanguages(supportedLanguages, languageSelection);
+  }
+
+  private async readConfiguredHighScoreLanguages(): Promise<string[] | null> {
     const setting = await this.prisma.appConfig.findUnique({
       where: { key: EVAL_HIGH_SCORE_LANGUAGES_KEY },
       select: { value: true },
     });
-    if (!setting) return DEFAULT_HIGH_SCORE_LANGUAGES;
+    if (!setting) {
+      return null;
+    }
+
     try {
       const parsed = JSON.parse(setting.value);
       if (Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')) {
-        return parsed;
+        return normalizeSupportedEvalLanguages(parsed);
       }
     } catch {
       // fall through
     }
-    return DEFAULT_HIGH_SCORE_LANGUAGES;
+
+    return null;
+  }
+
+  private async deriveHighScoreLanguagesFromRuns(): Promise<string[]> {
+    const rows = await this.prisma.evalRun.findMany({
+      where: {
+        samples: {
+          some: {
+            averageWeightedScore: {
+              not: null,
+            },
+          },
+        },
+      },
+      select: {
+        language: true,
+      },
+      orderBy: [{ uploadedAt: 'desc' }, { runId: 'desc' }],
+    });
+
+    return normalizeSupportedEvalLanguages(rows.map((row) => row.language));
   }
 
   async listRuns(): Promise<EvalRunSummary[]> {
@@ -522,10 +573,30 @@ export class EvalService {
     };
   }
 
-  async getHighScoreSamples(minScore?: number): Promise<EvalHighScoreSamplesResponse> {
+  async getHighScoreSamples(
+    minScore?: number,
+    languageSelection?: EvalLanguageSelectionInput,
+  ): Promise<EvalHighScoreSamplesResponse> {
     const threshold = minScore ?? (await this.getPassThreshold());
+    const supportedLanguages = await this.getHighScoreLanguages();
+    const effectiveLanguages = resolvePublicHighScoreLanguages(
+      supportedLanguages,
+      languageSelection,
+    );
+
+    if (effectiveLanguages.length === 0) {
+      return { categories: [], minScore: threshold };
+    }
+
+    const where: Prisma.EvalSampleWhereInput = {
+      averageWeightedScore: { gte: threshold },
+      run: {
+        is: buildEvalRunLanguagesWhereInput(effectiveLanguages),
+      },
+    };
+
     const rows = await this.prisma.evalSample.findMany({
-      where: { averageWeightedScore: { gte: threshold } },
+      where,
       select: {
         renderingName: true,
         prompt: true,
@@ -1589,6 +1660,160 @@ function clampInt(
     return fallback;
   }
   return Math.min(max, Math.max(min, value));
+}
+
+function normalizeSupportedEvalLanguages(values: string[]): string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+
+  for (const value of values) {
+    const code = normalizeEvalLanguageCode(value);
+    if (!code || seen.has(code)) {
+      continue;
+    }
+    seen.add(code);
+    normalized.push(code);
+  }
+
+  return normalized;
+}
+
+function resolvePublicHighScoreLanguages(
+  supportedLanguages: string[],
+  input: EvalLanguageSelectionInput | undefined,
+): string[] {
+  if (!hasExplicitEvalAcceptLanguage(input)) {
+    return [...DEFAULT_HIGH_SCORE_LANGUAGES];
+  }
+
+  const normalizedLanguage = resolveEvalLanguageSelection(input);
+  if (!normalizedLanguage) {
+    return [];
+  }
+
+  return supportedLanguages.includes(normalizedLanguage) ? [normalizedLanguage] : [];
+}
+
+function resolveEvalLanguageSelection(
+  input: EvalLanguageSelectionInput | undefined,
+): string | null {
+  const candidates = [
+    input?.locale ?? null,
+    input?.language ?? null,
+    extractPrimaryLanguageTag(input?.acceptLanguage ?? null),
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeEvalLanguageCode(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+
+function hasExplicitEvalAcceptLanguage(input: EvalLanguageSelectionInput | undefined): boolean {
+  return Boolean(input?.acceptLanguage?.trim());
+}
+
+function extractPrimaryLanguageTag(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const primary = value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => entry.split(';')[0]?.trim() ?? '')
+    .find(Boolean);
+
+  return primary || null;
+}
+
+function normalizeEvalLanguageCode(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.trim().replace(/_/g, '-');
+  if (!normalized) {
+    return null;
+  }
+
+  const lower = normalized.toLowerCase();
+  if (
+    lower === 'zh' ||
+    lower.startsWith('zh-cn') ||
+    lower.startsWith('zh-sg') ||
+    lower.startsWith('zh-hans')
+  ) {
+    return 'zh-Hans';
+  }
+
+  if (
+    lower.startsWith('zh-tw') ||
+    lower.startsWith('zh-hk') ||
+    lower.startsWith('zh-mo') ||
+    lower.startsWith('zh-hant')
+  ) {
+    return 'zh-Hant';
+  }
+
+  const [languageCode] = lower.split('-');
+  if (!languageCode) {
+    return null;
+  }
+
+  return languageCode;
+}
+
+function buildEvalRunLanguageWhereInput(language: string): Prisma.EvalRunWhereInput {
+  if (language === 'zh-Hans') {
+    return {
+      OR: [
+        { language: 'zh' },
+        { language: 'zh-CN' },
+        { language: 'zh_CN' },
+        { language: 'zh-Hans' },
+        { language: 'zh_Hans' },
+      ],
+    };
+  }
+
+  if (language === 'zh-Hant') {
+    return {
+      OR: [
+        { language: 'zh-Hant' },
+        { language: 'zh_Hant' },
+        { language: 'zh-TW' },
+        { language: 'zh_TW' },
+        { language: 'zh-HK' },
+        { language: 'zh_HK' },
+        { language: 'zh-MO' },
+        { language: 'zh_MO' },
+      ],
+    };
+  }
+
+  return {
+    OR: [
+      { language },
+      { language: { startsWith: `${language}-` } },
+      { language: { startsWith: `${language}_` } },
+    ],
+  };
+}
+
+function buildEvalRunLanguagesWhereInput(languages: string[]): Prisma.EvalRunWhereInput {
+  if (languages.length === 1) {
+    return buildEvalRunLanguageWhereInput(languages[0]);
+  }
+
+  return {
+    OR: languages.map((language) => buildEvalRunLanguageWhereInput(language)),
+  };
 }
 
 function readObject(value: unknown, fieldName: string): Record<string, unknown> {

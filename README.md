@@ -16,6 +16,10 @@ pnpm dev
 pnpm deploy:prod
 ```
 
+## Documentation
+
+- Eval run zip format: [`docs/eval-run-zip-format.md`](./docs/eval-run-zip-format.md)
+
 ## Repository Layout
 
 ```text
