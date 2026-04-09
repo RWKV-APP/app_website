@@ -1,0 +1,362 @@
+.main {
+  min-height: 100vh;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  padding-top: 2.75rem;
+}
+
+.container {
+  width: 100%;
+  padding: 20px 16px 36px;
+}
+
+.hero {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.eyebrow {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--color-primary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.title {
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  font-weight: 700;
+}
+
+.description {
+  color: var(--color-secondary);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.tabSection {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.tabScroller {
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.tabRow {
+  display: flex;
+  gap: 8px;
+  width: max-content;
+}
+
+.tabButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background-color: var(--color-background);
+  color: var(--color-secondary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+.tabButton:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.tabButtonSelected {
+  border-color: var(--color-primary);
+  background-color: var(--color-primary-tint);
+  color: var(--color-primary);
+}
+
+.metaBlock {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--color-secondary);
+  font-size: 0.75rem;
+}
+
+.sectionHeader {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.sectionTitle {
+  font-size: 1rem;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.sectionDescription {
+  color: var(--color-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.tableSection {
+  margin-bottom: 12px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background-color: var(--color-background);
+}
+
+.table {
+  width: max-content;
+  border-collapse: collapse;
+}
+
+.table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background-color: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
+  padding: 8px 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table thead th:last-child {
+  border-right: none;
+}
+
+.rowHead {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  min-width: 208px;
+  width: 208px;
+}
+
+.weightHead {
+  min-width: 118px;
+  width: 118px;
+}
+
+.weightTitle {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+.weightMeta {
+  margin-top: 2px;
+  font-size: 0.6875rem;
+  color: var(--color-secondary);
+}
+
+.table tbody th,
+.table tbody td {
+  border-bottom: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.table tbody tr:last-child th,
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody td:last-child {
+  border-right: none;
+}
+
+.rowCell {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 208px;
+  width: 208px;
+  padding: 10px;
+  background-color: var(--color-background);
+  text-align: left;
+}
+
+.rowTopline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.vendorTag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background-color: var(--color-primary-tint);
+  color: var(--color-primary);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.rowName {
+  font-size: 0.875rem;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.rowSubtitle,
+.rowMeta {
+  color: var(--color-secondary);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.rowSubtitle {
+  margin-top: 4px;
+}
+
+.rowMeta {
+  margin-top: 2px;
+}
+
+.speedCell {
+  min-width: 118px;
+  width: 118px;
+  padding: 8px 10px;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.metricLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.metricLine + .metricLine {
+  margin-top: 4px;
+}
+
+.metricLabel {
+  color: var(--color-secondary);
+}
+
+.metricValue {
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+.noteTag {
+  margin-top: 7px;
+  color: var(--color-secondary);
+  font-size: 0.625rem;
+  line-height: 1.3;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.cellStrong {
+  background-color: rgba(20, 184, 166, 0.08);
+}
+
+.cellGood {
+  background-color: rgba(20, 184, 166, 0.04);
+}
+
+.cellTight {
+  background-color: rgba(245, 158, 11, 0.08);
+}
+
+.cellWeak {
+  background-color: rgba(239, 68, 68, 0.06);
+}
+
+.cellUnavailable {
+  background-color: rgba(148, 163, 184, 0.12);
+}
+
+.comingSoonBox {
+  padding: 16px;
+  margin-bottom: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background-color: var(--color-surface);
+}
+
+.comingSoonTitle {
+  font-size: 0.95rem;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.comingSoonText {
+  margin-top: 6px;
+  color: var(--color-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 14px;
+  color: var(--color-secondary);
+  font-size: 0.75rem;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legendSwatch {
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+}
+
+.notes {
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background-color: var(--color-surface);
+}
+
+.notesTitle {
+  font-size: 0.95rem;
+  line-height: 1.35;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.notesList {
+  padding-left: 18px;
+  color: var(--color-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+@media (max-width: 920px) {
+  .container {
+    padding: 16px 10px 28px;
+  }
+}
