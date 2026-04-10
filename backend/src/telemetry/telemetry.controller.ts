@@ -16,8 +16,9 @@ export class TelemetryController {
     @Query('socName') socName?: string,
     @Query('modelSha256') modelSha256?: string,
     @Query('backend') backend?: string,
+    @Query('os') os?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.telemetryService.leaderboard({ socName, modelSha256, backend, limit });
+    return this.telemetryService.leaderboard({ socName, modelSha256, backend, os, limit });
   }
 }

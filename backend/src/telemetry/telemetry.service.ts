@@ -46,6 +46,7 @@ interface LeaderboardQuery {
   socName?: string;
   modelSha256?: string;
   backend?: string;
+  os?: string;
   limit?: string;
 }
 
@@ -66,8 +67,8 @@ export class TelemetryService {
   constructor(private readonly prisma: PrismaService) {}
 
   async ingest(body: TelemetryPerfBody, ip: string | null): Promise<{ accepted: boolean; reason?: string }> {
-    // Validate required fields
-    if (!body?.device?.socName || !body?.model?.sha256 || !body?.model?.backend) {
+    // Validate required fields (sha256 is optional — fileName serves as fallback identifier)
+    if (!body?.device?.socName || !body?.model?.backend) {
       return { accepted: false, reason: 'missing_required_fields' };
     }
 
@@ -122,7 +123,7 @@ export class TelemetryService {
           appBuild: body.app?.build ?? '',
           modelName: body.model.name ?? '',
           modelFileName: body.model.fileName ?? '',
-          modelSha256: body.model.sha256.toLowerCase().trim(),
+          modelSha256: (body.model.sha256 || body.model.fileName || '').toLowerCase().trim(),
           modelSizeB: body.model.sizeB ?? null,
           quantization: body.model.quantization?.toLowerCase().trim() ?? null,
           backend: body.model.backend.toLowerCase().trim(),
@@ -146,10 +147,11 @@ export class TelemetryService {
     if (query.socName) where.socName = query.socName.toLowerCase().trim();
     if (query.modelSha256) where.modelSha256 = query.modelSha256.toLowerCase().trim();
     if (query.backend) where.backend = query.backend.toLowerCase().trim();
+    if (query.os) where.os = query.os.toLowerCase().trim();
 
-    // Group by (modelSha256, socName, backend) and compute aggregates
+    // Group by (os, modelSha256, socName, backend) and compute aggregates
     const groups = await this.prisma.telemetryPerf.groupBy({
-      by: ['modelSha256', 'modelName', 'modelFileName', 'socName', 'socBrand', 'backend'],
+      by: ['os', 'modelSha256', 'modelName', 'modelFileName', 'modelSizeB', 'quantization', 'socName', 'socBrand', 'backend'],
       where,
       _count: { id: true },
       _max: { decodeSpeed: true, prefillSpeed: true },
@@ -179,9 +181,12 @@ export class TelemetryService {
       });
 
       results.push({
+        os: group.os,
         modelSha256: group.modelSha256,
         modelName: group.modelName,
         modelFileName: group.modelFileName,
+        modelSizeB: group.modelSizeB,
+        quantization: group.quantization,
         socName: group.socName,
         socBrand: group.socBrand,
         backend: group.backend,
