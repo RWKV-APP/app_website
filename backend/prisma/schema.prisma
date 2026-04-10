@@ -169,3 +169,39 @@ model EvalSampleAttempt {
   @@unique([evalSampleId, attempt])
   @@index([weightedScore])
 }
+
+model TelemetryPerf {
+  id             Int      @id @default(autoincrement())
+  schemaVersion  Int      @default(1)
+
+  installIdHash  String
+
+  socName        String
+  socBrand       String
+  os             String
+  osVersion      String?
+  deviceModel    String?
+  totalMemoryMb  Int?
+
+  appVersion     String
+  appBuild       String
+
+  modelName      String
+  modelFileName  String
+  modelSha256    String
+  modelSizeB     Float?
+  quantization   String?
+  backend        String
+
+  prefillSpeed   Float
+  decodeSpeed    Float
+
+  clientTimestamp DateTime
+  createdAt      DateTime @default(now())
+
+  @@index([modelSha256, socName, backend, decodeSpeed])
+  @@index([modelSha256, socName, backend, prefillSpeed])
+  @@index([socName, backend])
+  @@index([installIdHash, createdAt])
+  @@index([createdAt])
+}

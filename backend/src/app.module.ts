@@ -17,6 +17,8 @@ import { WebhookController } from './webhook/webhook.controller';
 import { EvalService } from './eval/eval.service';
 import { EvalAdminController } from './eval/eval.admin.controller';
 import { EvalPublicController } from './eval/eval.public.controller';
+import { TelemetryController } from './telemetry/telemetry.controller';
+import { TelemetryService } from './telemetry/telemetry.service';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
@@ -30,6 +32,7 @@ import { EvalPublicController } from './eval/eval.public.controller';
     WebhookController,
     EvalAdminController,
     EvalPublicController,
+    TelemetryController,
   ],
   providers: [
     AppService,
@@ -40,6 +43,7 @@ import { EvalPublicController } from './eval/eval.public.controller';
     AdminAuthService,
     AdminAuthGuard,
     EvalService,
+    TelemetryService,
   ],
 })
 export class AppModule {}
