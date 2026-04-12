@@ -193,14 +193,17 @@ model TelemetryPerf {
   quantization   String?
   backend        String
 
+  isBatch        Boolean  @default(false)
+  batchCount     Int      @default(1)
+
   prefillSpeed   Float
   decodeSpeed    Float
 
   clientTimestamp DateTime
   createdAt      DateTime @default(now())
 
-  @@index([modelSha256, socName, backend, decodeSpeed])
-  @@index([modelSha256, socName, backend, prefillSpeed])
+  @@index([modelSha256, socName, backend, isBatch, decodeSpeed])
+  @@index([modelSha256, socName, backend, isBatch, prefillSpeed])
   @@index([socName, backend])
   @@index([installIdHash, createdAt])
   @@index([createdAt])

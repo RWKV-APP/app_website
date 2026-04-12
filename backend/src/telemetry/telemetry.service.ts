@@ -4,10 +4,6 @@ import { PrismaService } from '../prisma/prisma.service';
 
 const TELEMETRY_SALT = process.env.TELEMETRY_SALT || 'rwkv-telemetry-default-salt';
 
-// Rate limit: max 3 records per installIdHash per 5 minutes
-const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
-const RATE_LIMIT_MAX = 3;
-
 // Reasonable speed bounds
 const MAX_PREFILL_SPEED = 100_000;
 const MAX_DECODE_SPEED = 5_000;
@@ -38,6 +34,8 @@ interface TelemetryPerfBody {
   perf: {
     prefillSpeed: number;
     decodeSpeed: number;
+    isBatch?: boolean;
+    batchCount?: number;
   };
   clientTimestamp: number;
 }
@@ -46,6 +44,16 @@ interface LeaderboardQuery {
   socName?: string;
   modelSha256?: string;
   backend?: string;
+  os?: string;
+  isBatch?: string;
+  limit?: string;
+}
+
+interface RecordsQuery {
+  socName: string;
+  modelSha256: string;
+  backend: string;
+  isBatch?: string;
   os?: string;
   limit?: string;
 }
@@ -67,45 +75,36 @@ export class TelemetryService {
   constructor(private readonly prisma: PrismaService) {}
 
   async ingest(body: TelemetryPerfBody, ip: string | null): Promise<{ accepted: boolean; reason?: string }> {
+    this.logger.log(`📥 收到测评数据: soc=${body?.device?.socName} model=${body?.model?.fileName} backend=${body?.model?.backend} prefill=${body?.perf?.prefillSpeed} decode=${body?.perf?.decodeSpeed} isBatch=${body?.perf?.isBatch} batchCount=${body?.perf?.batchCount} ip=${ip}`);
+
     // Validate required fields (sha256 is optional — fileName serves as fallback identifier)
     if (!body?.device?.socName || !body?.model?.backend) {
+      this.logger.warn('❌ 拒绝: missing_required_fields');
       return { accepted: false, reason: 'missing_required_fields' };
     }
 
     if (!body?.perf?.prefillSpeed || !body?.perf?.decodeSpeed) {
+      this.logger.warn('❌ 拒绝: missing_speed');
       return { accepted: false, reason: 'missing_speed' };
     }
 
     if (!body?.installId) {
+      this.logger.warn('❌ 拒绝: missing_install_id');
       return { accepted: false, reason: 'missing_install_id' };
     }
 
     // Speed range validation
     if (body.perf.prefillSpeed <= 0 || body.perf.prefillSpeed > MAX_PREFILL_SPEED) {
+      this.logger.warn(`❌ 拒绝: invalid_prefill_speed (${body.perf.prefillSpeed})`);
       return { accepted: false, reason: 'invalid_prefill_speed' };
     }
 
     if (body.perf.decodeSpeed <= 0 || body.perf.decodeSpeed > MAX_DECODE_SPEED) {
+      this.logger.warn(`❌ 拒绝: invalid_decode_speed (${body.perf.decodeSpeed})`);
       return { accepted: false, reason: 'invalid_decode_speed' };
     }
 
     const installIdHash = sha256(body.installId + TELEMETRY_SALT);
-
-    // Rate limiting
-    try {
-      const recentCount = await this.prisma.telemetryPerf.count({
-        where: {
-          installIdHash,
-          createdAt: { gte: new Date(Date.now() - RATE_LIMIT_WINDOW_MS) },
-        },
-      });
-
-      if (recentCount >= RATE_LIMIT_MAX) {
-        return { accepted: false, reason: 'rate_limited' };
-      }
-    } catch (e) {
-      this.logger.warn(`Rate limit check failed: ${e}`);
-    }
 
     // Insert
     try {
@@ -127,16 +126,19 @@ export class TelemetryService {
           modelSizeB: body.model.sizeB ?? null,
           quantization: body.model.quantization?.toLowerCase().trim() ?? null,
           backend: body.model.backend.toLowerCase().trim(),
+          isBatch: body.perf.isBatch === true,
+          batchCount: body.perf.batchCount ?? 1,
           prefillSpeed: body.perf.prefillSpeed,
           decodeSpeed: body.perf.decodeSpeed,
           clientTimestamp: new Date(body.clientTimestamp ?? Date.now()),
         },
       });
     } catch (e) {
-      this.logger.error(`Failed to insert telemetry: ${e}`);
+      this.logger.error(`❌ 写入失败: ${e}`);
       return { accepted: false, reason: 'db_error' };
     }
 
+    this.logger.log(`✅ 已入库: soc=${body.device.socName} decode=${body.perf.decodeSpeed} backend=${body.model.backend}`);
     return { accepted: true };
   }
 
@@ -148,61 +150,83 @@ export class TelemetryService {
     if (query.modelSha256) where.modelSha256 = query.modelSha256.toLowerCase().trim();
     if (query.backend) where.backend = query.backend.toLowerCase().trim();
     if (query.os) where.os = query.os.toLowerCase().trim();
+    if (query.isBatch !== undefined) where.isBatch = query.isBatch === 'true';
 
-    // Group by (os, modelSha256, socName, backend) and compute aggregates
+    // Group by (os, modelSha256, socName, backend, isBatch) and compute aggregates
     const groups = await this.prisma.telemetryPerf.groupBy({
-      by: ['os', 'modelSha256', 'modelName', 'modelFileName', 'modelSizeB', 'quantization', 'socName', 'socBrand', 'backend'],
+      by: ['os', 'modelSha256', 'modelName', 'modelFileName', 'modelSizeB', 'quantization', 'socName', 'socBrand', 'backend', 'isBatch', 'batchCount'],
       where,
       _count: { id: true },
       _max: { decodeSpeed: true, prefillSpeed: true },
       _avg: { decodeSpeed: true, prefillSpeed: true },
-      orderBy: { _max: { decodeSpeed: 'desc' } },
+      orderBy: { _avg: { decodeSpeed: 'desc' } },
       take: limit,
     });
 
-    // For each group, compute P90 using a subquery
-    const results = [];
-    for (const group of groups) {
-      const count = group._count.id;
-      const offset = Math.max(0, Math.floor(count * 0.1));
+    return groups.map((group) => ({
+      os: group.os,
+      modelSha256: group.modelSha256,
+      modelName: group.modelName,
+      modelFileName: group.modelFileName,
+      modelSizeB: group.modelSizeB,
+      quantization: group.quantization,
+      socName: group.socName,
+      socBrand: group.socBrand,
+      backend: group.backend,
+      isBatch: group.isBatch,
+      batchCount: group.batchCount,
+      sampleCount: group._count.id,
+      decodeSpeed: {
+        avg: Math.round((group._avg.decodeSpeed ?? 0) * 100) / 100,
+        max: group._max.decodeSpeed,
+      },
+      prefillSpeed: {
+        avg: Math.round((group._avg.prefillSpeed ?? 0) * 100) / 100,
+        max: group._max.prefillSpeed,
+      },
+    }));
+  }
 
-      // P90 for decodeSpeed: the value at the 90th percentile position
-      const p90Rows = await this.prisma.telemetryPerf.findMany({
-        where: {
-          modelSha256: group.modelSha256,
-          socName: group.socName,
-          backend: group.backend,
-          ...where,
-        },
-        orderBy: { decodeSpeed: 'desc' },
-        skip: offset,
-        take: 1,
-        select: { decodeSpeed: true, prefillSpeed: true },
-      });
+  async records(query: RecordsQuery): Promise<any[]> {
+    const limit = Math.min(parseInt(query.limit ?? '50', 10) || 50, 200);
 
-      results.push({
-        os: group.os,
-        modelSha256: group.modelSha256,
-        modelName: group.modelName,
-        modelFileName: group.modelFileName,
-        modelSizeB: group.modelSizeB,
-        quantization: group.quantization,
-        socName: group.socName,
-        socBrand: group.socBrand,
-        backend: group.backend,
-        sampleCount: count,
-        decodeSpeed: {
-          max: group._max.decodeSpeed,
-          avg: Math.round((group._avg.decodeSpeed ?? 0) * 100) / 100,
-          p90: p90Rows[0]?.decodeSpeed ?? group._max.decodeSpeed,
-        },
-        prefillSpeed: {
-          max: group._max.prefillSpeed,
-          avg: Math.round((group._avg.prefillSpeed ?? 0) * 100) / 100,
-        },
-      });
-    }
+    const where: any = {
+      socName: query.socName.toLowerCase().trim(),
+      modelSha256: query.modelSha256.toLowerCase().trim(),
+      backend: query.backend.toLowerCase().trim(),
+    };
+    if (query.os) where.os = query.os.toLowerCase().trim();
+    if (query.isBatch !== undefined) where.isBatch = query.isBatch === 'true';
 
-    return results;
+    const rows = await this.prisma.telemetryPerf.findMany({
+      where,
+      orderBy: { decodeSpeed: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        socName: true,
+        socBrand: true,
+        os: true,
+        osVersion: true,
+        deviceModel: true,
+        totalMemoryMb: true,
+        appVersion: true,
+        appBuild: true,
+        modelName: true,
+        modelFileName: true,
+        modelSha256: true,
+        modelSizeB: true,
+        quantization: true,
+        backend: true,
+        isBatch: true,
+        batchCount: true,
+        prefillSpeed: true,
+        decodeSpeed: true,
+        clientTimestamp: true,
+        createdAt: true,
+      },
+    });
+
+    return rows;
   }
 }
