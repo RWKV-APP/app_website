@@ -53,7 +53,7 @@ interface RecordEntry {
 }
 
 interface WeightColumn {
-  key: string; // modelSha256 + batch dimension
+  key: string; // modelSha256 + backend + batch dimension
   label: string;
   quant: string;
   backend: string;
@@ -269,7 +269,7 @@ function formatTimestamp(ts: string): string {
 /** 生成唯一的列 key：同一个模型的不同 batch 配置视为不同列，不同类型（VL/Chat）也分开 */
 function columnKey(entry: LeaderboardEntry): string {
   const tag = deriveModelTag(entry);
-  let key = `${entry.modelSha256}__${tag}`;
+  let key = `${entry.modelSha256}__${entry.backend}__${tag}`;
   if (entry.isBatch && entry.batchCount > 1) {
     key += `__batch${entry.batchCount}`;
   }
@@ -408,7 +408,9 @@ async function fetchRecords(params: {
   modelSha256: string;
   backend: string;
   isBatch: boolean;
+  batchCount: number;
   os?: string;
+  appVersion?: string;
 }): Promise<RecordEntry[]> {
   const base = getApiBaseUrl();
   const qs = new URLSearchParams({
@@ -416,9 +418,11 @@ async function fetchRecords(params: {
     modelSha256: params.modelSha256,
     backend: params.backend,
     isBatch: String(params.isBatch),
+    batchCount: String(params.batchCount),
     limit: '100',
   });
   if (params.os) qs.set('os', params.os);
+  if (params.appVersion && params.appVersion !== 'all') qs.set('appVersion', params.appVersion);
   const res = await fetch(`${base}/public-api/telemetry/records?${qs}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
@@ -628,13 +632,15 @@ export default function ModelFitPreviewPage() {
         modelSha256: cell.modelSha256,
         backend: cell.backend,
         isBatch: cell.isBatch,
+        batchCount: cell.batchCount,
         os: cell.os,
+        appVersion: selectedVersion,
       });
       setSidebar((prev) => ({ ...prev, loading: false, records }));
     } catch {
       setSidebar((prev) => ({ ...prev, loading: false }));
     }
-  }, []);
+  }, [selectedVersion]);
 
   const closeSidebar = useCallback(() => {
     setSidebar({ open: false, loading: false, records: [], cellInfo: null });

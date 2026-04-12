@@ -56,7 +56,9 @@ interface RecordsQuery {
   modelSha256: string;
   backend: string;
   isBatch?: string;
+  batchCount?: string;
   os?: string;
+  appVersion?: string;
   limit?: string;
 }
 
@@ -214,6 +216,8 @@ export class TelemetryService {
     };
     if (query.os) where.os = query.os.toLowerCase().trim();
     if (query.isBatch !== undefined) where.isBatch = query.isBatch === 'true';
+    if (query.batchCount !== undefined) where.batchCount = Math.max(parseInt(query.batchCount, 10) || 1, 1);
+    if (query.appVersion) where.appVersion = query.appVersion.trim();
 
     const rows = await this.prisma.telemetryPerf.findMany({
       where,

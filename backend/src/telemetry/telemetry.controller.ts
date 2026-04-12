@@ -36,12 +36,14 @@ export class TelemetryController {
     @Query('modelSha256') modelSha256: string,
     @Query('backend') backend: string,
     @Query('isBatch') isBatch?: string,
+    @Query('batchCount') batchCount?: string,
     @Query('os') os?: string,
+    @Query('appVersion') appVersion?: string,
     @Query('limit') limit?: string,
   ) {
     if (!socName || !modelSha256 || !backend) {
       return { error: 'socName, modelSha256, and backend are required' };
     }
-    return this.telemetryService.records({ socName, modelSha256, backend, isBatch, os, limit });
+    return this.telemetryService.records({ socName, modelSha256, backend, isBatch, batchCount, os, appVersion, limit });
   }
 }

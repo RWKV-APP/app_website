@@ -43,6 +43,45 @@ export class ReleaseNotesService {
     }
   }
 
+  private parseSemanticVersion(version: string): { major: number; minor: number; patch: number } | null {
+    const match = version.match(/^(\d+)\.(\d+)\.(\d+)$/);
+    if (!match) {
+      return null;
+    }
+
+    return {
+      major: parseInt(match[1], 10),
+      minor: parseInt(match[2], 10),
+      patch: parseInt(match[3], 10),
+    };
+  }
+
+  private compareVersionDesc(aVersion: string, bVersion: string): number {
+    const a = this.parseSemanticVersion(aVersion);
+    const b = this.parseSemanticVersion(bVersion);
+
+    if (a && b) {
+      if (a.major !== b.major) {
+        return b.major - a.major;
+      }
+      if (a.minor !== b.minor) {
+        return b.minor - a.minor;
+      }
+      if (a.patch !== b.patch) {
+        return b.patch - a.patch;
+      }
+      return 0;
+    }
+
+    if (a && !b) {
+      return -1;
+    }
+    if (!a && b) {
+      return 1;
+    }
+    return bVersion.localeCompare(aVersion, undefined, { numeric: true });
+  }
+
   /**
    * Get release notes directory for a specific language
    * @param locale - Locale string
@@ -312,15 +351,33 @@ export class ReleaseNotesService {
       }
 
       const files = await fs.readdir(langDir);
-      const matchingFiles = files.filter((file) => {
-        // Match pattern: {buildNumber}-{version}.md
-        const match = file.match(/^(\d+)-(.+)\.md$/);
-        if (match) {
+      const matchingFiles = files
+        .map((file) => {
+          const match = file.match(/^(\d+)-(.+)\.md$/);
+          if (!match) {
+            return null;
+          }
+
           const fileBuildNumber = parseInt(match[1], 10);
-          return fileBuildNumber === buildNumber;
-        }
-        return false;
-      });
+          if (fileBuildNumber !== buildNumber) {
+            return null;
+          }
+
+          return {
+            fileName: file,
+            buildNumber: fileBuildNumber,
+            version: match[2],
+          };
+        })
+        .filter(
+          (
+            file,
+          ): file is {
+            fileName: string;
+            buildNumber: number;
+            version: string;
+          } => file !== null,
+        );
 
       if (matchingFiles.length === 0) {
         // If no matching file found, try fallback to zh-Hans (Simplified Chinese)
@@ -332,29 +389,47 @@ export class ReleaseNotesService {
           try {
             await fs.access(fallbackLangDir);
             const files = await fs.readdir(fallbackLangDir);
-            const fallbackFiles = files.filter((file) => {
-              const match = file.match(/^(\d+)-(.+)\.md$/);
-              if (match) {
+            const fallbackFiles = files
+              .map((file) => {
+                const match = file.match(/^(\d+)-(.+)\.md$/);
+                if (!match) {
+                  return null;
+                }
+
                 const fileBuildNumber = parseInt(match[1], 10);
-                return fileBuildNumber === buildNumber;
-              }
-              return false;
-            });
+                if (fileBuildNumber !== buildNumber) {
+                  return null;
+                }
+
+                return {
+                  fileName: file,
+                  buildNumber: fileBuildNumber,
+                  version: match[2],
+                };
+              })
+              .filter(
+                (
+                  file,
+                ): file is {
+                  fileName: string;
+                  buildNumber: number;
+                  version: string;
+                } => file !== null,
+              );
 
             if (fallbackFiles.length > 0) {
-              const filePath = path.join(fallbackLangDir, fallbackFiles[0]);
+              fallbackFiles.sort((a, b) => this.compareVersionDesc(a.version, b.version));
+              const filePath = path.join(fallbackLangDir, fallbackFiles[0].fileName);
               const resolvedPath = path.resolve(filePath);
               const resolvedDir = path.resolve(fallbackLangDir);
               if (resolvedPath.startsWith(resolvedDir)) {
                 const content = await fs.readFile(filePath, 'utf-8');
-                const filenameMatch = fallbackFiles[0].match(/^(\d+)-(.+)\.md$/);
-                const version = filenameMatch ? filenameMatch[2] : null;
                 this.logger.debug(
                   `Using zh-Hans fallback for build ${buildNumber} (requested ${locale})`,
                 );
                 return {
                   build: buildNumber,
-                  version,
+                  version: fallbackFiles[0].version,
                   content: content.trim(),
                 };
               }
@@ -409,14 +484,28 @@ export class ReleaseNotesService {
         }
       }
 
+      matchingFiles.sort((a, b) => this.compareVersionDesc(a.version, b.version));
+
+      let selectedFile = matchingFiles[0];
+      const trimmedRequestedVersion = requestedVersion?.trim();
+
+      if (trimmedRequestedVersion) {
+        const fallbackVersions = this.generateFallbackVersions(trimmedRequestedVersion);
+        const requestedMatch = matchingFiles.find((file) =>
+          fallbackVersions.includes(file.version),
+        );
+        if (requestedMatch) {
+          selectedFile = requestedMatch;
+        }
+      }
+
       if (matchingFiles.length > 1) {
         this.logger.warn(
-          `Multiple files found for build ${buildNumber}: ${matchingFiles.join(', ')}. Using the first one.`,
+          `Multiple files found for build ${buildNumber}: ${matchingFiles.map((file) => file.fileName).join(', ')}. Selected ${selectedFile.fileName}.`,
         );
       }
 
-      // Use the first matching file
-      const fileName = matchingFiles[0];
+      const fileName = selectedFile.fileName;
       const filePath = path.join(langDir, fileName);
 
       // Security check: ensure the resolved path is within the release notes directory
@@ -430,19 +519,16 @@ export class ReleaseNotesService {
       }
 
       // Extract version from filename: {buildNumber}-{version}.md
-      const filenameMatch = fileName.match(/^(\d+)-(.+)\.md$/);
-      const version = filenameMatch ? filenameMatch[2] : null;
-
       // Read file content
       const content = await fs.readFile(filePath, 'utf-8');
 
       this.logger.debug(
-        `Successfully read release notes for build ${buildNumber}, version ${version}`,
+        `Successfully read release notes for build ${buildNumber}, version ${selectedFile.version}`,
       );
 
       return {
         build: buildNumber,
-        version,
+        version: selectedFile.version,
         content: content.trim(),
       };
     } catch (error: unknown) {
