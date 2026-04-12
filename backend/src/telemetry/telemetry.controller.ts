@@ -19,9 +19,15 @@ export class TelemetryController {
     @Query('backend') backend?: string,
     @Query('os') os?: string,
     @Query('isBatch') isBatch?: string,
+    @Query('appVersion') appVersion?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.telemetryService.leaderboard({ socName, modelSha256, backend, os, isBatch, limit });
+    return this.telemetryService.leaderboard({ socName, modelSha256, backend, os, isBatch, appVersion, limit });
+  }
+
+  @Get('filters')
+  async filters() {
+    return this.telemetryService.filters();
   }
 
   @Get('records')

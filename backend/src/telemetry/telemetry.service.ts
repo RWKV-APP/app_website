@@ -18,6 +18,7 @@ interface TelemetryPerfBody {
     osVersion?: string;
     deviceModel?: string;
     totalMemoryMb?: number;
+    totalVramMb?: number;
   };
   app: {
     version: string;
@@ -46,6 +47,7 @@ interface LeaderboardQuery {
   backend?: string;
   os?: string;
   isBatch?: string;
+  appVersion?: string;
   limit?: string;
 }
 
@@ -118,6 +120,7 @@ export class TelemetryService {
           osVersion: stripOsVersion(body.device.osVersion),
           deviceModel: body.device.deviceModel?.trim() || null,
           totalMemoryMb: body.device.totalMemoryMb ?? null,
+          totalVramMb: body.device.totalVramMb ?? null,
           appVersion: body.app?.version ?? '',
           appBuild: body.app?.build ?? '',
           modelName: body.model.name ?? '',
@@ -151,6 +154,7 @@ export class TelemetryService {
     if (query.backend) where.backend = query.backend.toLowerCase().trim();
     if (query.os) where.os = query.os.toLowerCase().trim();
     if (query.isBatch !== undefined) where.isBatch = query.isBatch === 'true';
+    if (query.appVersion) where.appVersion = query.appVersion.trim();
 
     // Group by (os, modelSha256, socName, backend, isBatch) and compute aggregates
     const groups = await this.prisma.telemetryPerf.groupBy({
@@ -187,6 +191,19 @@ export class TelemetryService {
     }));
   }
 
+  async filters(): Promise<{ appVersions: string[] }> {
+    const versions = await this.prisma.telemetryPerf.groupBy({
+      by: ['appVersion'],
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+    });
+    const appVersions = versions
+      .map((v) => v.appVersion)
+      .filter((v) => v && v.length > 0)
+      .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+    return { appVersions };
+  }
+
   async records(query: RecordsQuery): Promise<any[]> {
     const limit = Math.min(parseInt(query.limit ?? '50', 10) || 50, 200);
 
@@ -210,6 +227,7 @@ export class TelemetryService {
         osVersion: true,
         deviceModel: true,
         totalMemoryMb: true,
+        totalVramMb: true,
         appVersion: true,
         appBuild: true,
         modelName: true,

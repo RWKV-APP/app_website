@@ -182,6 +182,7 @@ model TelemetryPerf {
   osVersion      String?
   deviceModel    String?
   totalMemoryMb  Int?
+  totalVramMb    Int?
 
   appVersion     String
   appBuild       String
