@@ -19,6 +19,7 @@ pnpm deploy:prod
 ## Documentation
 
 - Eval run zip format: [`docs/eval-run-zip-format.md`](./docs/eval-run-zip-format.md)
+- Production deploy playbook: [`docs/production-deploy-playbook.md`](./docs/production-deploy-playbook.md)
 
 ## Repository Layout
 

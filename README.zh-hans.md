@@ -19,6 +19,7 @@ pnpm deploy:prod
 ## 文档
 
 - Eval Run Zip 格式说明：[`docs/eval-run-zip-format.md`](./docs/eval-run-zip-format.md)
+- Linux 线上机发布流程：[`docs/production-deploy-playbook.md`](./docs/production-deploy-playbook.md)
 
 ## 仓库结构
 

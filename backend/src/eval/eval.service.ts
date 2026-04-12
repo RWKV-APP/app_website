@@ -457,8 +457,22 @@ export class EvalService {
   async getPublicHighScoreLanguages(
     languageSelection?: EvalLanguageSelectionInput,
   ): Promise<string[]> {
-    const supportedLanguages = await this.getHighScoreLanguages();
+    const supportedLanguages = await this.getPublicSupportedHighScoreLanguages();
     return resolvePublicHighScoreLanguages(supportedLanguages, languageSelection);
+  }
+
+  private async getPublicSupportedHighScoreLanguages(): Promise<string[]> {
+    const [configured, derived] = await Promise.all([
+      this.readConfiguredHighScoreLanguages(),
+      this.deriveHighScoreLanguagesFromRuns(),
+    ]);
+
+    const merged = normalizeSupportedEvalLanguages([...(configured ?? []), ...derived]);
+    if (merged.length > 0) {
+      return merged;
+    }
+
+    return [...DEFAULT_HIGH_SCORE_LANGUAGES];
   }
 
   private async readConfiguredHighScoreLanguages(): Promise<string[] | null> {
@@ -578,7 +592,7 @@ export class EvalService {
     languageSelection?: EvalLanguageSelectionInput,
   ): Promise<EvalHighScoreSamplesResponse> {
     const threshold = minScore ?? (await this.getPassThreshold());
-    const supportedLanguages = await this.getHighScoreLanguages();
+    const supportedLanguages = await this.getPublicSupportedHighScoreLanguages();
     const effectiveLanguages = resolvePublicHighScoreLanguages(
       supportedLanguages,
       languageSelection,
@@ -1776,8 +1790,16 @@ function buildEvalRunLanguageWhereInput(language: string): Prisma.EvalRunWhereIn
         { language: 'zh' },
         { language: 'zh-CN' },
         { language: 'zh_CN' },
+        { language: 'zh-cn' },
+        { language: 'zh_cn' },
         { language: 'zh-Hans' },
         { language: 'zh_Hans' },
+        { language: 'zh-hans' },
+        { language: 'zh_hans' },
+        { language: 'zh-SG' },
+        { language: 'zh_SG' },
+        { language: 'zh-sg' },
+        { language: 'zh_sg' },
       ],
     };
   }
@@ -1787,12 +1809,20 @@ function buildEvalRunLanguageWhereInput(language: string): Prisma.EvalRunWhereIn
       OR: [
         { language: 'zh-Hant' },
         { language: 'zh_Hant' },
+        { language: 'zh-hant' },
+        { language: 'zh_hant' },
         { language: 'zh-TW' },
         { language: 'zh_TW' },
+        { language: 'zh-tw' },
+        { language: 'zh_tw' },
         { language: 'zh-HK' },
         { language: 'zh_HK' },
+        { language: 'zh-hk' },
+        { language: 'zh_hk' },
         { language: 'zh-MO' },
         { language: 'zh_MO' },
+        { language: 'zh-mo' },
+        { language: 'zh_mo' },
       ],
     };
   }
