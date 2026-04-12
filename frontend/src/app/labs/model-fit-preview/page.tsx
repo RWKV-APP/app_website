@@ -1,725 +1,1071 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { ThemeSwitcher } from '@/components';
+import { fetchAdminSession } from '@/utils/api';
 import styles from './page.module.css';
 
-type PlatformId = 'macos' | 'android' | 'ios' | 'windows' | 'linux' | 'huawei';
-type WeightClass =
-  | '0.4B'
-  | '0.5B'
-  | '1.5B-Q4_K_M'
-  | '1.5B-INT6'
-  | '2.9B-Q4_K_M'
-  | '2.9B-INT6'
-  | '7B'
-  | '14B';
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface LeaderboardEntry {
+  os: string;
+  modelSha256: string;
+  modelName: string;
+  modelFileName: string;
+  modelSizeB: number | null;
+  quantization: string | null;
+  socName: string;
+  socBrand: string;
+  backend: string;
+  isBatch: boolean;
+  batchCount: number;
+  sampleCount: number;
+  decodeSpeed: { avg: number; max: number | null };
+  prefillSpeed: { avg: number; max: number | null };
+}
+
+interface RecordEntry {
+  id: number;
+  socName: string;
+  socBrand: string;
+  os: string;
+  osVersion: string | null;
+  deviceModel: string | null;
+  totalMemoryMb: number | null;
+  totalVramMb: number | null;
+  appVersion: string;
+  appBuild: string;
+  modelName: string;
+  modelFileName: string;
+  modelSha256: string;
+  modelSizeB: number | null;
+  quantization: string | null;
+  backend: string;
+  isBatch: boolean;
+  batchCount: number;
+  prefillSpeed: number;
+  decodeSpeed: number;
+  clientTimestamp: string;
+  createdAt: string;
+}
 
 interface WeightColumn {
-  id: WeightClass;
+  key: string; // modelSha256 + batch dimension
   label: string;
   quant: string;
+  backend: string;
+  modelTag: string; // Chat / VL / TTS / Translate / Neko
+  isBatch: boolean;
+  batchCount: number;
+  sortOrder: number;
 }
 
 interface MatrixCell {
-  prefill: number | null;
-  decode: number | null;
-  note?: string;
+  prefillMax: number | null;
+  decodeMax: number | null;
+  sampleCount: number;
+  backend: string;
+  isBatch: boolean;
+  batchCount: number;
+  // Keys for fetching individual records
+  socName: string;
+  modelSha256: string;
+  os: string;
 }
 
 interface MatrixRow {
+  socName: string;
+  socBrand: string;
+  cells: Record<string, MatrixCell>; // key = modelSha256
+}
+
+interface PlatformData {
   id: string;
-  vendor?: string;
-  name: string;
-  subtitle: string;
-  meta: string;
-  results: Record<WeightClass, MatrixCell>;
-}
-
-interface PlatformMatrix {
-  id: PlatformId;
   label: string;
-  title: string;
-  subtitle: string;
-  rowHeader: string;
   rows: MatrixRow[];
-  comingSoon?: boolean;
 }
 
-const weightColumns: WeightColumn[] = [
-  { id: '0.4B', label: '0.4B', quant: 'Q4' },
-  { id: '0.5B', label: '0.5B', quant: 'Q4' },
-  { id: '1.5B-Q4_K_M', label: '1.5B', quant: 'Q4_K_M' },
-  { id: '1.5B-INT6', label: '1.5B', quant: 'INT6' },
-  { id: '2.9B-Q4_K_M', label: '2.9B', quant: 'Q4_K_M' },
-  { id: '2.9B-INT6', label: '2.9B', quant: 'INT6' },
-  { id: '7B', label: '7B', quant: 'Q4_K_M' },
-  { id: '14B', label: '14B', quant: 'Q4_K_M' },
-];
-
-function cell(prefill: number | null, decode: number | null, note?: string): MatrixCell {
-  return { prefill, decode, note };
+interface SidebarState {
+  open: boolean;
+  loading: boolean;
+  records: RecordEntry[];
+  cellInfo: { socName: string; modelSha256: string; backend: string; isBatch: boolean; os: string; label: string } | null;
 }
 
-const platformMatrices: Record<PlatformId, PlatformMatrix> = {
-  macos: {
-    id: 'macos',
-    label: 'macOS',
-    title: 'macOS 芯片 x 权重',
-    subtitle:
-      '纵轴是 Apple Silicon 芯片 / 机型档位，横轴是不同权重和量化。单元格展示 Prefill / Decode 假数据。',
-    rowHeader: 'Chip / Device',
-    rows: [
-      {
-        id: 'm4-max',
-        vendor: 'Apple',
-        name: 'M4 Max',
-        subtitle: 'MacBook Pro / Studio',
-        meta: '48-128 GB unified',
-        results: {
-          '0.4B': cell(828, 182.0),
-          '0.5B': cell(720, 158.0),
-          '1.5B-Q4_K_M': cell(516, 112.4),
-          '1.5B-INT6': cell(442, 96.1),
-          '2.9B-Q4_K_M': cell(358, 76.8),
-          '2.9B-INT6': cell(302, 64.0),
-          '7B': cell(170, 34.8),
-          '14B': cell(88, 18.1),
-        },
-      },
-      {
-        id: 'm3-max',
-        vendor: 'Apple',
-        name: 'M3 Max',
-        subtitle: 'MacBook Pro / Studio',
-        meta: '36-64 GB unified',
-        results: {
-          '0.4B': cell(764, 164.4),
-          '0.5B': cell(664, 142.0),
-          '1.5B-Q4_K_M': cell(468, 101.2),
-          '1.5B-INT6': cell(400, 86.7),
-          '2.9B-Q4_K_M': cell(323, 69.1),
-          '2.9B-INT6': cell(272, 57.2),
-          '7B': cell(149, 30.2),
-          '14B': cell(76, 15.2),
-        },
-      },
-      {
-        id: 'm4-pro',
-        vendor: 'Apple',
-        name: 'M4 Pro',
-        subtitle: 'Mac mini / MacBook Pro',
-        meta: '24-48 GB unified',
-        results: {
-          '0.4B': cell(628, 138.0),
-          '0.5B': cell(542, 118.4),
-          '1.5B-Q4_K_M': cell(384, 83.9),
-          '1.5B-INT6': cell(326, 71.6),
-          '2.9B-Q4_K_M': cell(258, 56.7),
-          '2.9B-INT6': cell(216, 46.9),
-          '7B': cell(118, 24.1),
-          '14B': cell(56, 10.9),
-        },
-      },
-      {
-        id: 'm3',
-        vendor: 'Apple',
-        name: 'M3',
-        subtitle: 'MacBook Air / iMac',
-        meta: '16-24 GB unified',
-        results: {
-          '0.4B': cell(494, 108.0),
-          '0.5B': cell(418, 92.0),
-          '1.5B-Q4_K_M': cell(292, 64.8),
-          '1.5B-INT6': cell(248, 55.0),
-          '2.9B-Q4_K_M': cell(192, 42.1),
-          '2.9B-INT6': cell(161, 35.1),
-          '7B': cell(84, 16.5),
-          '14B': cell(36, 6.2),
-        },
-      },
-      {
-        id: 'm2',
-        vendor: 'Apple',
-        name: 'M2',
-        subtitle: 'MacBook Air / Mac mini',
-        meta: '8-24 GB unified',
-        results: {
-          '0.4B': cell(428, 89.5),
-          '0.5B': cell(364, 76.2),
-          '1.5B-Q4_K_M': cell(248, 53.4),
-          '1.5B-INT6': cell(208, 44.8),
-          '2.9B-Q4_K_M': cell(156, 33.5),
-          '2.9B-INT6': cell(128, 27.1),
-          '7B': cell(62, 11.7),
-          '14B': cell(24, 3.9, 'tight'),
-        },
-      },
-    ],
-  },
-  android: {
-    id: 'android',
-    label: '安卓',
-    title: 'Android SoC x 权重',
-    subtitle:
-      '纵轴是手机 SoC。单元格是 Prefill / Decode 假数据，重点看高权重在手机端的落点和 1.5B / 2.9B 的不同量化。',
-    rowHeader: 'SoC',
-    rows: [
-      {
-        id: 'snapdragon-8-elite',
-        vendor: 'Qualcomm',
-        name: 'Snapdragon 8 Elite',
-        subtitle: 'Xiaomi 15 / OnePlus 13',
-        meta: '3nm · 12-16 GB',
-        results: {
-          '0.4B': cell(432, 61.8),
-          '0.5B': cell(338, 48.1),
-          '1.5B-Q4_K_M': cell(256, 35.2),
-          '1.5B-INT6': cell(219, 29.9),
-          '2.9B-Q4_K_M': cell(173, 22.6),
-          '2.9B-INT6': cell(147, 19.0),
-          '7B': cell(84, 8.9),
-          '14B': cell(34, 3.8, 'tight'),
-        },
-      },
-      {
-        id: 'dimensity-9400',
-        vendor: 'MediaTek',
-        name: 'Dimensity 9400',
-        subtitle: 'vivo X200 Pro / Find X8',
-        meta: '3nm · 12-16 GB',
-        results: {
-          '0.4B': cell(406, 57.2),
-          '0.5B': cell(321, 44.6),
-          '1.5B-Q4_K_M': cell(238, 32.5),
-          '1.5B-INT6': cell(202, 27.3),
-          '2.9B-Q4_K_M': cell(162, 20.9),
-          '2.9B-INT6': cell(136, 17.4),
-          '7B': cell(76, 8.1),
-          '14B': cell(30, 3.2, 'tight'),
-        },
-      },
-      {
-        id: 'snapdragon-8-gen-3',
-        vendor: 'Qualcomm',
-        name: 'Snapdragon 8 Gen 3',
-        subtitle: 'Galaxy S24 Ultra / Xiaomi 14',
-        meta: '4nm · 12 GB',
-        results: {
-          '0.4B': cell(364, 50.8),
-          '0.5B': cell(286, 39.5),
-          '1.5B-Q4_K_M': cell(214, 29.7),
-          '1.5B-INT6': cell(184, 25.1),
-          '2.9B-Q4_K_M': cell(148, 17.8),
-          '2.9B-INT6': cell(126, 15.0),
-          '7B': cell(64, 6.5),
-          '14B': cell(24, 2.3, 'borderline'),
-        },
-      },
-      {
-        id: 'exynos-2400',
-        vendor: 'Samsung',
-        name: 'Exynos 2400',
-        subtitle: 'Galaxy S24 / S24+',
-        meta: '4nm · 8-12 GB',
-        results: {
-          '0.4B': cell(326, 43.4),
-          '0.5B': cell(254, 33.0),
-          '1.5B-Q4_K_M': cell(184, 23.8),
-          '1.5B-INT6': cell(156, 19.6),
-          '2.9B-Q4_K_M': cell(122, 14.9),
-          '2.9B-INT6': cell(102, 12.3),
-          '7B': cell(48, 4.8),
-          '14B': cell(16, 1.4, 'borderline'),
-        },
-      },
-      {
-        id: 'snapdragon-7-plus-gen-3',
-        vendor: 'Qualcomm',
-        name: 'Snapdragon 7+ Gen 3',
-        subtitle: 'Ace 3V / GT Neo',
-        meta: '4nm · 8-12 GB',
-        results: {
-          '0.4B': cell(236, 28.4),
-          '0.5B': cell(182, 21.4),
-          '1.5B-Q4_K_M': cell(129, 15.7),
-          '1.5B-INT6': cell(108, 13.0),
-          '2.9B-Q4_K_M': cell(78, 8.6),
-          '2.9B-INT6': cell(66, 7.0),
-          '7B': cell(24, 1.8, 'tight'),
-          '14B': cell(null, null, 'no fit'),
-        },
-      },
-    ],
-  },
-  ios: {
-    id: 'ios',
-    label: 'iOS',
-    title: 'iPhone SoC x 权重',
-    subtitle: '纵轴是 iPhone SoC。保持同一套横轴，并给 1.5B / 2.9B 分别补两个量化档位的 Prefill / Decode。',
-    rowHeader: 'SoC',
-    rows: [
-      {
-        id: 'a18-pro',
-        vendor: 'Apple',
-        name: 'A18 Pro',
-        subtitle: 'iPhone 16 Pro / Pro Max',
-        meta: '3nm · 8 GB',
-        results: {
-          '0.4B': cell(438, 63.5),
-          '0.5B': cell(346, 47.2),
-          '1.5B-Q4_K_M': cell(270, 34.8),
-          '1.5B-INT6': cell(232, 29.6),
-          '2.9B-Q4_K_M': cell(181, 21.4),
-          '2.9B-INT6': cell(152, 17.9),
-          '7B': cell(78, 8.6),
-          '14B': cell(31, 3.4, 'borderline'),
-        },
-      },
-      {
-        id: 'a17-pro',
-        vendor: 'Apple',
-        name: 'A17 Pro',
-        subtitle: 'iPhone 15 Pro / Pro Max',
-        meta: '3nm · 8 GB',
-        results: {
-          '0.4B': cell(412, 58.2),
-          '0.5B': cell(326, 43.0),
-          '1.5B-Q4_K_M': cell(248, 31.6),
-          '1.5B-INT6': cell(212, 26.5),
-          '2.9B-Q4_K_M': cell(169, 18.7),
-          '2.9B-INT6': cell(140, 15.6),
-          '7B': cell(72, 7.2),
-          '14B': cell(26, 2.8, 'tight'),
-        },
-      },
-      {
-        id: 'a16-bionic',
-        vendor: 'Apple',
-        name: 'A16 Bionic',
-        subtitle: 'iPhone 15 / 15 Plus',
-        meta: '4nm · 6 GB',
-        results: {
-          '0.4B': cell(306, 40.8),
-          '0.5B': cell(242, 31.7),
-          '1.5B-Q4_K_M': cell(178, 24.6),
-          '1.5B-INT6': cell(149, 20.2),
-          '2.9B-Q4_K_M': cell(118, 14.1),
-          '2.9B-INT6': cell(98, 11.7),
-          '7B': cell(44, 4.1),
-          '14B': cell(null, null, 'no fit'),
-        },
-      },
-      {
-        id: 'a15-bionic',
-        vendor: 'Apple',
-        name: 'A15 Bionic',
-        subtitle: 'iPhone 14 / 13',
-        meta: '5nm · 6 GB',
-        results: {
-          '0.4B': cell(256, 31.4),
-          '0.5B': cell(204, 25.9),
-          '1.5B-Q4_K_M': cell(146, 18.8),
-          '1.5B-INT6': cell(121, 15.4),
-          '2.9B-Q4_K_M': cell(92, 10.3),
-          '2.9B-INT6': cell(76, 8.5),
-          '7B': cell(31, 2.4, 'ram-limited'),
-          '14B': cell(null, null, 'no fit'),
-        },
-      },
-      {
-        id: 'a14-bionic',
-        vendor: 'Apple',
-        name: 'A14 Bionic',
-        subtitle: 'iPhone 12 / 12 Pro',
-        meta: '5nm · 4-6 GB',
-        results: {
-          '0.4B': cell(208, 25.0),
-          '0.5B': cell(164, 20.8),
-          '1.5B-Q4_K_M': cell(112, 13.9),
-          '1.5B-INT6': cell(92, 11.4),
-          '2.9B-Q4_K_M': cell(64, 7.0),
-          '2.9B-INT6': cell(52, 5.6),
-          '7B': cell(18, 1.3, 'tight'),
-          '14B': cell(null, null, 'no fit'),
-        },
-      },
-    ],
-  },
-  windows: {
-    id: 'windows',
-    label: 'Windows',
-    title: 'Windows 芯片 / 配置 x 权重',
-    subtitle: '纵轴是 Windows 设备常见芯片或配置。补了 0.4B 列，并把 2.9B / 1.5B 拆成两个量化档位。',
-    rowHeader: 'Chip / Device',
-    rows: [
-      {
-        id: 'snapdragon-x-elite',
-        vendor: 'Qualcomm',
-        name: 'Snapdragon X Elite',
-        subtitle: 'Copilot+ PC',
-        meta: '16-32 GB LPDDR5X',
-        results: {
-          '0.4B': cell(388, 55.8),
-          '0.5B': cell(302, 43.0),
-          '1.5B-Q4_K_M': cell(219, 30.4),
-          '1.5B-INT6': cell(188, 26.0),
-          '2.9B-Q4_K_M': cell(150, 20.1),
-          '2.9B-INT6': cell(127, 16.8),
-          '7B': cell(70, 8.3),
-          '14B': cell(28, 3.1, 'tight'),
-        },
-      },
-      {
-        id: 'intel-ultra-258v',
-        vendor: 'Intel',
-        name: 'Core Ultra 7 258V',
-        subtitle: 'Lunar Lake laptop',
-        meta: '32 GB LPDDR5X',
-        results: {
-          '0.4B': cell(364, 49.7),
-          '0.5B': cell(286, 38.2),
-          '1.5B-Q4_K_M': cell(206, 27.0),
-          '1.5B-INT6': cell(176, 23.0),
-          '2.9B-Q4_K_M': cell(140, 17.8),
-          '2.9B-INT6': cell(117, 14.8),
-          '7B': cell(60, 7.1),
-          '14B': cell(22, 2.6, 'tight'),
-        },
-      },
-      {
-        id: 'ryzen-ai-370',
-        vendor: 'AMD',
-        name: 'Ryzen AI 9 HX 370',
-        subtitle: 'Strix Point laptop',
-        meta: '32-64 GB LPDDR5X',
-        results: {
-          '0.4B': cell(432, 60.9),
-          '0.5B': cell(344, 46.8),
-          '1.5B-Q4_K_M': cell(248, 33.8),
-          '1.5B-INT6': cell(214, 29.0),
-          '2.9B-Q4_K_M': cell(176, 22.4),
-          '2.9B-INT6': cell(150, 18.9),
-          '7B': cell(84, 10.2),
-          '14B': cell(38, 4.1),
-        },
-      },
-      {
-        id: 'rtx-4060-laptop',
-        vendor: 'NVIDIA',
-        name: 'RTX 4060 Laptop',
-        subtitle: 'Consumer laptop GPU',
-        meta: '8 GB VRAM · 32 GB RAM',
-        results: {
-          '0.4B': cell(518, 92.2),
-          '0.5B': cell(408, 71.0),
-          '1.5B-Q4_K_M': cell(302, 52.4),
-          '1.5B-INT6': cell(258, 44.8),
-          '2.9B-Q4_K_M': cell(221, 36.2),
-          '2.9B-INT6': cell(188, 30.6),
-          '7B': cell(118, 19.6),
-          '14B': cell(58, 9.3),
-        },
-      },
-      {
-        id: 'rtx-4070-desktop',
-        vendor: 'NVIDIA',
-        name: 'RTX 4070 Desktop',
-        subtitle: 'Consumer desktop GPU',
-        meta: '12 GB VRAM · 64 GB RAM',
-        results: {
-          '0.4B': cell(614, 109.6),
-          '0.5B': cell(486, 84.6),
-          '1.5B-Q4_K_M': cell(358, 61.8),
-          '1.5B-INT6': cell(306, 52.7),
-          '2.9B-Q4_K_M': cell(264, 43.1),
-          '2.9B-INT6': cell(226, 36.8),
-          '7B': cell(140, 23.8),
-          '14B': cell(72, 12.2),
-        },
-      },
-    ],
-  },
-  linux: {
-    id: 'linux',
-    label: 'Linux',
-    title: 'Linux 配置 x 权重',
-    subtitle: '纵轴是 Linux 侧常见测试配置。这里更偏内部 benchmark 工作机和服务器档位。',
-    rowHeader: 'Config',
-    rows: [
-      {
-        id: '7840u',
-        vendor: 'AMD',
-        name: 'Ryzen 7 7840U',
-        subtitle: 'Mini PC / handheld class',
-        meta: '32 GB LPDDR5',
-        results: {
-          '0.4B': cell(228, 31.0),
-          '0.5B': cell(176, 24.0),
-          '1.5B-Q4_K_M': cell(126, 16.2),
-          '1.5B-INT6': cell(107, 13.8),
-          '2.9B-Q4_K_M': cell(84, 10.1),
-          '2.9B-INT6': cell(70, 8.4),
-          '7B': cell(28, 2.7, 'tight'),
-          '14B': cell(null, null, 'no fit'),
-        },
-      },
-      {
-        id: 'arc-a770',
-        vendor: 'Intel',
-        name: 'Arc A770',
-        subtitle: 'Desktop GPU',
-        meta: '16 GB VRAM · 64 GB RAM',
-        results: {
-          '0.4B': cell(504, 81.6),
-          '0.5B': cell(392, 62.4),
-          '1.5B-Q4_K_M': cell(282, 45.6),
-          '1.5B-INT6': cell(242, 39.0),
-          '2.9B-Q4_K_M': cell(194, 29.8),
-          '2.9B-INT6': cell(164, 25.2),
-          '7B': cell(96, 13.6),
-          '14B': cell(46, 6.4),
-        },
-      },
-      {
-        id: 'rx-7800-xt',
-        vendor: 'AMD',
-        name: 'RX 7800 XT',
-        subtitle: 'Desktop GPU',
-        meta: '16 GB VRAM · 64 GB RAM',
-        results: {
-          '0.4B': cell(562, 90.4),
-          '0.5B': cell(438, 68.8),
-          '1.5B-Q4_K_M': cell(316, 49.8),
-          '1.5B-INT6': cell(271, 42.6),
-          '2.9B-Q4_K_M': cell(228, 33.2),
-          '2.9B-INT6': cell(194, 28.2),
-          '7B': cell(114, 17.4),
-          '14B': cell(54, 8.1),
-        },
-      },
-      {
-        id: 'rtx-3090',
-        vendor: 'NVIDIA',
-        name: 'RTX 3090',
-        subtitle: 'Desktop GPU',
-        meta: '24 GB VRAM · 128 GB RAM',
-        results: {
-          '0.4B': cell(664, 122.0),
-          '0.5B': cell(522, 92.0),
-          '1.5B-Q4_K_M': cell(382, 67.4),
-          '1.5B-INT6': cell(326, 57.1),
-          '2.9B-Q4_K_M': cell(282, 46.2),
-          '2.9B-INT6': cell(238, 39.2),
-          '7B': cell(156, 26.1),
-          '14B': cell(84, 14.1),
-        },
-      },
-      {
-        id: '4090-server',
-        vendor: 'NVIDIA',
-        name: 'RTX 4090 / 5090 class',
-        subtitle: 'Internal benchmark box',
-        meta: '24-32 GB VRAM · 128 GB RAM',
-        results: {
-          '0.4B': cell(798, 152.0),
-          '0.5B': cell(626, 118.0),
-          '1.5B-Q4_K_M': cell(462, 87.5),
-          '1.5B-INT6': cell(394, 74.0),
-          '2.9B-Q4_K_M': cell(348, 61.8),
-          '2.9B-INT6': cell(296, 52.1),
-          '7B': cell(194, 34.4),
-          '14B': cell(108, 19.1),
-        },
-      },
-    ],
-  },
-  huawei: {
-    id: 'huawei',
-    label: '华为',
-    title: '华为平台',
-    subtitle: 'Kirin / NPU / 推理栈还在适配中。',
-    rowHeader: 'SoC',
-    rows: [],
-    comingSoon: true,
-  },
+// ---------------------------------------------------------------------------
+// localStorage persistence keys
+// ---------------------------------------------------------------------------
+
+const LS_KEY_MODEL_TAG = 'rwkv-perf-filter-model-tag';
+const LS_KEY_SIZE = 'rwkv-perf-filter-size';
+const LS_KEY_BRAND = 'rwkv-perf-filter-brand';
+
+function readLs(key: string, fallback: string): string {
+  if (typeof window === 'undefined') return fallback;
+  return localStorage.getItem(key) ?? fallback;
+}
+function writeLs(key: string, value: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(key, value);
+}
+
+// ---------------------------------------------------------------------------
+// Brand icons — cdn.simpleicons.org (official Simple Icons CDN)
+// Format: /[slug]/[light_color]/[dark_color]
+// ---------------------------------------------------------------------------
+
+const BRAND_ICON_SLUGS: Record<string, string> = {
+  apple: 'apple',
+  qualcomm: 'qualcomm',
+  snapdragon: 'qualcomm',
+  nvidia: 'nvidia',
+  amd: 'amd',
+  intel: 'intel',
+  mediatek: 'mediatek',
+  samsung: 'samsung',
 };
 
-function formatCompactSpeed(value: number | null): string {
-  if (value === null) {
-    return '—';
-  }
+function brandIconUrl(brand: string): string | null {
+  const slug = BRAND_ICON_SLUGS[brand.toLowerCase()];
+  if (!slug) return null;
+  // 亮色用深灰，暗色用浅灰，确保在两种主题下都清晰可见
+  return `https://cdn.simpleicons.org/${slug}/555555/cccccc`;
+}
 
+function BrandIcon({ brand, className }: { brand: string; className?: string }) {
+  const url = brandIconUrl(brand);
+  if (!url) return null;
+  return <img src={url} alt={brand} className={className} />;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const OS_LABELS: Record<string, string> = {
+  macos: 'macOS',
+  android: '安卓',
+  ios: 'iOS',
+  windows: 'Windows',
+  linux: 'Linux',
+};
+
+const OS_ORDER = ['macos', 'android', 'ios', 'windows', 'linux'];
+
+const ALL_TAB_ID = '__all__';
+
+const BRAND_LABELS: Record<string, string> = {
+  apple: 'Apple',
+  qualcomm: 'Qualcomm',
+  snapdragon: 'Qualcomm',
+  nvidia: 'NVIDIA',
+  amd: 'AMD',
+  intel: 'Intel',
+  mediatek: 'MediaTek',
+  samsung: 'Samsung',
+};
+
+const BRAND_ORDER = ['apple', 'qualcomm', 'nvidia', 'amd', 'intel', 'mediatek', 'samsung'];
+
+/** 从 socName 推断 brand（当 socBrand 为 unknown 时） */
+function inferBrand(socName: string, socBrand: string): string {
+  if (socBrand && socBrand !== 'unknown') {
+    // 统一 snapdragon → qualcomm
+    if (socBrand.toLowerCase() === 'snapdragon') return 'qualcomm';
+    return socBrand.toLowerCase();
+  }
+  const lower = socName.toLowerCase();
+  if (lower.includes('rtx') || lower.includes('gtx') || lower.includes('nvidia')) return 'nvidia';
+  if (lower.includes('radeon') || lower.includes('amd') || lower.includes('rx ')) return 'amd';
+  if (lower.includes('intel') || lower.includes('arc ')) return 'intel';
+  if (lower.includes('apple') || lower.includes(' m1') || lower.includes(' m2') || lower.includes(' m3') || lower.includes(' m4')) return 'apple';
+  if (lower.includes('mediatek') || lower.includes('dimensity') || lower.includes('helio')) return 'mediatek';
+  if (lower.includes('exynos') || lower.includes('samsung')) return 'samsung';
+  return 'unknown';
+}
+
+const MODEL_TAG_LABELS: Record<string, string> = {
+  Chat: 'Chat',
+  VL: 'VL',
+  TTS: 'TTS',
+  Translate: 'Translate',
+  Neko: 'Neko',
+};
+
+function deriveWeightLabel(entry: LeaderboardEntry): string {
+  const size = entry.modelSizeB;
+  if (size != null && size > 0) {
+    return `${size}B`;
+  }
+  const match = entry.modelFileName.match(/(\d+\.?\d*)B/i);
+  if (match) return `${match[1]}B`;
+  return entry.modelName || entry.modelFileName;
+}
+
+function deriveQuantLabel(entry: LeaderboardEntry): string {
+  if (entry.quantization) return entry.quantization.toUpperCase();
+  const match = entry.modelFileName.match(/\d+\.?\d*B[_-]?([\w_]+?)\.gguf/i);
+  if (match) return match[1].toUpperCase();
+  return entry.backend;
+}
+
+function deriveSortOrder(entry: LeaderboardEntry): number {
+  if (entry.modelSizeB != null && entry.modelSizeB > 0) return entry.modelSizeB;
+  const match = entry.modelFileName.match(/(\d+\.?\d*)B/i);
+  if (match) return parseFloat(match[1]);
+  return 999;
+}
+
+function capitalizeBrand(brand: string): string {
+  if (!brand) return '';
+  const map: Record<string, string> = {
+    snapdragon: 'Qualcomm',
+    qualcomm: 'Qualcomm',
+    mediatek: 'MediaTek',
+    apple: 'Apple',
+    samsung: 'Samsung',
+    nvidia: 'NVIDIA',
+    amd: 'AMD',
+    intel: 'Intel',
+    unknown: '',
+  };
+  return map[brand.toLowerCase()] ?? brand.charAt(0).toUpperCase() + brand.slice(1);
+}
+
+function formatSpeed(value: number | null): string {
+  if (value === null || value === undefined) return '—';
   return value % 1 === 0 ? value.toFixed(0) : value.toFixed(1);
 }
 
-function buildCellClass(prefill: number | null, decode: number | null): string {
-  if (prefill === null || decode === null) {
-    return styles.cellUnavailable;
-  }
+function deriveModelTag(entry: LeaderboardEntry): string {
+  const name = (entry.modelName || entry.modelFileName).toLowerCase();
+  if (name.includes('-vl') || name.includes('_vl') || name.includes(' vl') || name.includes('rwkv-vl')) return 'VL';
+  if (name.includes('tts') || name.includes('spark') || name.includes('voice')) return 'TTS';
+  if (name.includes('translate') || name.includes('-trans') || name.includes('translation')) return 'Translate';
+  if (name.includes('neko')) return 'Neko';
+  return 'Chat';
+}
 
-  if (decode >= 35) {
-    return styles.cellStrong;
-  }
-
-  if (decode >= 15) {
-    return styles.cellGood;
-  }
-
-  if (decode >= 4) {
-    return styles.cellTight;
-  }
-
+function buildCellClass(decode: number | null): string {
+  if (decode === null) return '';
+  if (decode >= 35) return styles.cellStrong;
+  if (decode >= 15) return styles.cellGood;
+  if (decode >= 4) return styles.cellTight;
   return styles.cellWeak;
 }
 
+function formatTimestamp(ts: string): string {
+  const d = new Date(ts);
+  return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+// ---------------------------------------------------------------------------
+// Data transform
+// ---------------------------------------------------------------------------
+
+/** 生成唯一的列 key：同一个模型的不同 batch 配置视为不同列，不同类型（VL/Chat）也分开 */
+function columnKey(entry: LeaderboardEntry): string {
+  const tag = deriveModelTag(entry);
+  let key = `${entry.modelSha256}__${tag}`;
+  if (entry.isBatch && entry.batchCount > 1) {
+    key += `__batch${entry.batchCount}`;
+  }
+  return key;
+}
+
+function buildPlatforms(data: LeaderboardEntry[], filterOs: string | null): {
+  platforms: PlatformData[];
+  weightColumns: WeightColumn[];
+} {
+  // Filter by OS if not "all"
+  const filtered = filterOs ? data.filter((e) => e.os === filterOs) : data;
+
+  // Build unique weight columns (by modelSha256 + batch dimension)
+  const weightMap = new Map<string, WeightColumn>();
+  for (const entry of filtered) {
+    const ck = columnKey(entry);
+    if (!weightMap.has(ck)) {
+      const tag = deriveModelTag(entry);
+      const isBatchCol = entry.isBatch && entry.batchCount > 1;
+      weightMap.set(ck, {
+        key: ck,
+        label: deriveWeightLabel(entry),
+        quant: deriveQuantLabel(entry),
+        backend: entry.backend,
+        modelTag: tag,
+        isBatch: isBatchCol,
+        batchCount: entry.batchCount,
+        sortOrder: deriveSortOrder(entry) + (isBatchCol ? 0.01 * entry.batchCount : 0),
+      });
+    }
+  }
+  const weightColumns = Array.from(weightMap.values()).sort((a, b) => a.sortOrder - b.sortOrder);
+
+  // Group entries by OS
+  const byOs = new Map<string, LeaderboardEntry[]>();
+  for (const entry of filtered) {
+    const os = entry.os || 'unknown';
+    if (!byOs.has(os)) byOs.set(os, []);
+    byOs.get(os)!.push(entry);
+  }
+
+  const platforms: PlatformData[] = [];
+  const osKeys = Array.from(byOs.keys()).sort((a, b) => {
+    const ia = OS_ORDER.indexOf(a);
+    const ib = OS_ORDER.indexOf(b);
+    if (ia !== -1 && ib !== -1) return ia - ib;
+    if (ia !== -1) return -1;
+    if (ib !== -1) return 1;
+    return a.localeCompare(b);
+  });
+
+  for (const os of osKeys) {
+    const entries = byOs.get(os)!;
+
+    const bySoc = new Map<string, MatrixRow>();
+    for (const entry of entries) {
+      if (!bySoc.has(entry.socName)) {
+        bySoc.set(entry.socName, {
+          socName: entry.socName,
+          socBrand: entry.socBrand,
+          cells: {},
+        });
+      }
+      const row = bySoc.get(entry.socName)!;
+      const ck = columnKey(entry);
+      const existing = row.cells[ck];
+      const entryDecodeMax = entry.decodeSpeed.max ?? entry.decodeSpeed.avg;
+      const entryPrefillMax = entry.prefillSpeed.max ?? entry.prefillSpeed.avg;
+      // Keep entry with higher decode max
+      if (!existing || (entryDecodeMax ?? 0) > (existing.decodeMax ?? 0)) {
+        row.cells[ck] = {
+          prefillMax: entryPrefillMax,
+          decodeMax: entryDecodeMax,
+          sampleCount: entry.sampleCount,
+          backend: entry.backend,
+          isBatch: entry.isBatch,
+          batchCount: entry.batchCount,
+          socName: entry.socName,
+          modelSha256: entry.modelSha256,
+          os: entry.os,
+        };
+      }
+    }
+
+    const rows = Array.from(bySoc.values()).sort((a, b) => {
+      const maxA = Math.max(...Object.values(a.cells).map((c) => c.decodeMax ?? 0));
+      const maxB = Math.max(...Object.values(b.cells).map((c) => c.decodeMax ?? 0));
+      return maxB - maxA;
+    });
+
+    platforms.push({
+      id: os,
+      label: OS_LABELS[os] ?? os,
+      rows,
+    });
+  }
+
+  return { platforms, weightColumns };
+}
+
+// ---------------------------------------------------------------------------
+// API
+// ---------------------------------------------------------------------------
+
+const getApiBaseUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    if (hostname === 'rwkv.halowang.cloud') {
+      return 'https://api.rwkv.halowang.cloud';
+    }
+    // dev 模式：Next.js rewrites 已将 /public-api/* 代理到 localhost:3001
+    return '';
+  }
+  return '';
+};
+
+async function fetchLeaderboard(appVersion?: string): Promise<LeaderboardEntry[]> {
+  const base = getApiBaseUrl();
+  const qs = new URLSearchParams({ limit: '500' });
+  if (appVersion && appVersion !== 'all') qs.set('appVersion', appVersion);
+  const res = await fetch(`${base}/public-api/telemetry/leaderboard?${qs}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function fetchFilters(): Promise<{ appVersions: string[] }> {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/public-api/telemetry/filters`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function fetchRecords(params: {
+  socName: string;
+  modelSha256: string;
+  backend: string;
+  isBatch: boolean;
+  os?: string;
+}): Promise<RecordEntry[]> {
+  const base = getApiBaseUrl();
+  const qs = new URLSearchParams({
+    socName: params.socName,
+    modelSha256: params.modelSha256,
+    backend: params.backend,
+    isBatch: String(params.isBatch),
+    limit: '100',
+  });
+  if (params.os) qs.set('os', params.os);
+  const res = await fetch(`${base}/public-api/telemetry/records?${qs}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export default function ModelFitPreviewPage() {
-  const [selectedPlatform, setSelectedPlatform] = useState<PlatformId>('android');
-  const activeMatrix = platformMatrices[selectedPlatform];
+  const router = useRouter();
+  const [authed, setAuthed] = useState(false);
+  const [data, setData] = useState<LeaderboardEntry[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [appVersions, setAppVersions] = useState<string[]>([]);
+  const [selectedTab, setSelectedTab] = useState<string>('');
+  const [selectedBatch, setSelectedBatch] = useState<string>('all');
+  const [selectedVersion, setSelectedVersion] = useState<string>('all');
+  const [selectedSize, setSelectedSize] = useState<string>(() => readLs(LS_KEY_SIZE, 'all'));
+  const [selectedModelTag, setSelectedModelTag] = useState<string>(() => readLs(LS_KEY_MODEL_TAG, 'Chat'));
+  const [selectedBrand, setSelectedBrand] = useState<string>(() => readLs(LS_KEY_BRAND, 'all'));
+  const [selectedSoc, setSelectedSoc] = useState<string>('all');
+  const [sidebar, setSidebar] = useState<SidebarState>({ open: false, loading: false, records: [], cellInfo: null });
+  const [hoveredCell, setHoveredCell] = useState<{ rowKey: string; colKey: string } | null>(null);
+
+  // Auth guard: redirect to login if not authenticated
+  useEffect(() => {
+    fetchAdminSession()
+      .then((session) => {
+        if (!session) {
+          router.replace('/admin/login?next=/labs/model-fit-preview');
+          return;
+        }
+        setAuthed(true);
+      })
+      .catch(() => {
+        router.replace('/admin/login?next=/labs/model-fit-preview');
+      });
+  }, [router]);
+
+  // Load available filters once
+  useEffect(() => {
+    if (!authed) return;
+    fetchFilters()
+      .then((f) => setAppVersions(f.appVersions))
+      .catch(() => {});
+  }, [authed]);
+
+  // Fetch leaderboard data (re-fetch when version filter changes)
+  useEffect(() => {
+    if (!authed) return;
+    setLoading(true);
+    fetchLeaderboard(selectedVersion)
+      .then((entries) => {
+        setData(entries);
+        setLoading(false);
+      })
+      .catch((e) => {
+        setError(e.message);
+        setLoading(false);
+      });
+  }, [authed, selectedVersion]);
+
+  // Available batch counts from data
+  const availableBatchCounts = useMemo(() => {
+    if (!data) return [];
+    const counts = new Set(data.map((e) => e.batchCount));
+    return Array.from(counts).sort((a, b) => a - b);
+  }, [data]);
+
+  // Available model tags from data
+  const availableModelTags = useMemo(() => {
+    if (!data) return [];
+    const tags = new Set(data.map((e) => deriveModelTag(e)));
+    // Fixed order
+    return ['Chat', 'VL', 'TTS', 'Translate', 'Neko'].filter((t) => tags.has(t));
+  }, [data]);
+
+  // Available weight sizes from data
+  const availableSizes = useMemo(() => {
+    if (!data) return [];
+    const sizes = new Map<string, number>();
+    for (const entry of data) {
+      const label = deriveWeightLabel(entry);
+      const sort = deriveSortOrder(entry);
+      if (!sizes.has(label)) sizes.set(label, sort);
+    }
+    return Array.from(sizes.entries())
+      .sort((a, b) => a[1] - b[1])
+      .map(([label]) => label);
+  }, [data]);
+
+  // Available individual SoCs from data, sorted by data count desc
+  const availableSocs = useMemo(() => {
+    if (!data) return [];
+    const counts = new Map<string, number>();
+    for (const entry of data) {
+      counts.set(entry.socName, (counts.get(entry.socName) ?? 0) + entry.sampleCount);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([name]) => name);
+  }, [data]);
+
+  // Available SoC brands from data
+  const availableBrands = useMemo(() => {
+    if (!data) return [];
+    const brands = new Set(data.map((e) => inferBrand(e.socName, e.socBrand)));
+    return BRAND_ORDER.filter((b) => brands.has(b));
+  }, [data]);
+
+  // Persist filter selections to localStorage
+  const handleModelTagChange = useCallback((tag: string) => {
+    setSelectedModelTag(tag);
+    writeLs(LS_KEY_MODEL_TAG, tag);
+  }, []);
+
+  const handleSizeChange = useCallback((size: string) => {
+    setSelectedSize(size);
+    writeLs(LS_KEY_SIZE, size);
+  }, []);
+
+  const handleBrandChange = useCallback((brand: string) => {
+    setSelectedBrand(brand);
+    writeLs(LS_KEY_BRAND, brand);
+  }, []);
+
+  const handleResetFilters = useCallback(() => {
+    setSelectedTab('');
+    setSelectedBatch('all');
+    setSelectedModelTag('all');
+    setSelectedSize('all');
+    setSelectedBrand('all');
+    setSelectedSoc('all');
+    setSelectedVersion('all');
+    writeLs(LS_KEY_MODEL_TAG, 'all');
+    writeLs(LS_KEY_SIZE, 'all');
+    writeLs(LS_KEY_BRAND, 'all');
+  }, []);
+
+  // Filter data by batch + size + model tag + brand
+  const filteredData = useMemo(() => {
+    if (!data) return [];
+    let filtered = data;
+    if (selectedBatch !== 'all') {
+      const bc = parseInt(selectedBatch, 10);
+      filtered = filtered.filter((e) => e.batchCount === bc);
+    }
+    if (selectedSize !== 'all') {
+      filtered = filtered.filter((e) => deriveWeightLabel(e) === selectedSize);
+    }
+    if (selectedModelTag !== 'all') {
+      filtered = filtered.filter((e) => deriveModelTag(e) === selectedModelTag);
+    }
+    if (selectedBrand !== 'all') {
+      filtered = filtered.filter((e) => inferBrand(e.socName, e.socBrand) === selectedBrand);
+    }
+    if (selectedSoc !== 'all') {
+      filtered = filtered.filter((e) => e.socName === selectedSoc);
+    }
+    return filtered;
+  }, [data, selectedBatch, selectedSize, selectedModelTag, selectedBrand, selectedSoc]);
+
+  // Compute available OS tabs from filtered data
+  const availableOsTabs = useMemo(() => {
+    const osSet = new Set(filteredData.map((e) => e.os));
+    return OS_ORDER.filter((os) => osSet.has(os));
+  }, [filteredData]);
+
+  // Auto-select tab: default to "全部"
+  const activeTab = useMemo(() => {
+    if (selectedTab && (availableOsTabs.includes(selectedTab) || selectedTab === ALL_TAB_ID)) return selectedTab;
+    return ALL_TAB_ID;
+  }, [selectedTab, availableOsTabs]);
+
+  // Build matrix for current tab
+  const { platforms, weightColumns } = useMemo(() => {
+    if (filteredData.length === 0) return { platforms: [], weightColumns: [] };
+    const filterOs = activeTab === ALL_TAB_ID ? null : activeTab;
+    return buildPlatforms(filteredData, filterOs);
+  }, [filteredData, activeTab]);
+
+  // Merge all platform rows when viewing single-OS tab, or keep separate for "all"
+  const displayRows = useMemo(() => {
+    if (activeTab === ALL_TAB_ID) {
+      // Flatten all platforms, prefixed with OS
+      return platforms.flatMap((p) => p.rows.map((r) => ({ ...r, osLabel: p.label })));
+    }
+    return platforms.flatMap((p) => p.rows.map((r) => ({ ...r, osLabel: undefined })));
+  }, [platforms, activeTab]);
+
+  const handleCellClick = useCallback(async (cell: MatrixCell, weightLabel: string) => {
+    const info = {
+      socName: cell.socName,
+      modelSha256: cell.modelSha256,
+      backend: cell.backend,
+      isBatch: cell.isBatch,
+      os: cell.os,
+      label: `${cell.socName} × ${weightLabel}`,
+    };
+    setSidebar({ open: true, loading: true, records: [], cellInfo: info });
+
+    try {
+      const records = await fetchRecords({
+        socName: cell.socName,
+        modelSha256: cell.modelSha256,
+        backend: cell.backend,
+        isBatch: cell.isBatch,
+        os: cell.os,
+      });
+      setSidebar((prev) => ({ ...prev, loading: false, records }));
+    } catch {
+      setSidebar((prev) => ({ ...prev, loading: false }));
+    }
+  }, []);
+
+  const closeSidebar = useCallback(() => {
+    setSidebar({ open: false, loading: false, records: [], cellInfo: null });
+  }, []);
+
+  if (!authed) {
+    return (
+      <main className={styles.main}>
+        <div className={styles.navbarWrap}>
+          <nav className={styles.navbar}>
+            <a href="/" className={styles.navLeft}>
+              <span className={styles.navTitle}>RWKV Chat</span>
+            </a>
+          </nav>
+        </div>
+        <div className={styles.container}>
+          <section className={styles.comingSoonBox}>
+            <h3 className={styles.comingSoonTitle}>正在验证登录状态...</h3>
+          </section>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className={styles.main}>
+      {/* Navbar */}
+      <div className={styles.navbarWrap}>
+        <nav className={styles.navbar}>
+          <a href="/" className={styles.navLeft}>
+            <span className={styles.navTitle}>RWKV Chat</span>
+          </a>
+          <div className={styles.navRight}>
+            <ThemeSwitcher />
+          </div>
+        </nav>
+      </div>
+
       <div className={styles.container}>
         <section className={styles.hero}>
-          <p className={styles.eyebrow}>Internal Preview</p>
+          <p className={styles.eyebrow}>Performance Leaderboard</p>
           <h1 className={styles.title}>RWKV prefill / decode matrix</h1>
           <p className={styles.description}>
-            顶部按平台切 Tab。表格按内容宽度渲染，列数继续增加时会横向滚动。当前包含 0.4B，
-            以及 1.5B / 2.9B 的 `Q4_K_M` 和 `INT6` 两个量化列。
+            按平台切换 Tab，纵轴是芯片，横轴是模型权重。数据来源于用户匿名上传的真实推理速度，展示各组合的最佳成绩。点击单元格查看所有上报记录。
           </p>
         </section>
 
-        <section className={styles.tabSection}>
-          <div className={styles.tabScroller}>
-            <div className={styles.tabRow}>
-              {(
-                ['macos', 'android', 'ios', 'windows', 'linux', 'huawei'] as const
-              ).map((platformId) => {
-                const platform = platformMatrices[platformId];
-                return (
-                  <button
-                    key={platform.id}
-                    type="button"
-                    className={`${styles.tabButton} ${selectedPlatform === platform.id ? styles.tabButtonSelected : ''}`}
-                    onClick={() => setSelectedPlatform(platform.id)}
-                  >
-                    {platform.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className={styles.metaBlock}>
-            <span>{activeMatrix.title}</span>
-            <span>Rows: {activeMatrix.rows.length}</span>
-            <span>Weights: {weightColumns.length}</span>
-            <span>H-scroll: on</span>
-          </div>
-        </section>
-
-        <section className={styles.sectionHeader}>
-          <h2 className={styles.sectionTitle}>{activeMatrix.title}</h2>
-          <p className={styles.sectionDescription}>{activeMatrix.subtitle}</p>
-        </section>
-
-        {activeMatrix.comingSoon ? (
+        {loading ? (
           <section className={styles.comingSoonBox}>
-            <h3 className={styles.comingSoonTitle}>华为平台正在适配中</h3>
+            <h3 className={styles.comingSoonTitle}>Loading...</h3>
+            <p className={styles.comingSoonText}>正在从服务器获取性能数据</p>
+          </section>
+        ) : error ? (
+          <section className={styles.comingSoonBox}>
+            <h3 className={styles.comingSoonTitle}>加载失败</h3>
+            <p className={styles.comingSoonText}>{error}</p>
+          </section>
+        ) : availableOsTabs.length === 0 ? (
+          <section className={styles.comingSoonBox}>
+            <h3 className={styles.comingSoonTitle}>暂无数据</h3>
             <p className={styles.comingSoonText}>
-              先预留 Tab，等 Kirin / 推理链路 / benchmark 口径稳定后再补完整矩阵。
+              还没有收到任何性能上报数据。请在 RWKV Chat App 中运行一次推理，数据会在回复完成后自动上传。
             </p>
           </section>
         ) : (
-          <section className={styles.tableSection}>
-            <div className={styles.tableWrap}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th className={styles.rowHead}>{activeMatrix.rowHeader}</th>
-                    {weightColumns.map((column) => (
-                      <th key={column.id} className={styles.weightHead}>
-                        <div className={styles.weightTitle}>{column.label}</div>
-                        <div className={styles.weightMeta}>{column.quant}</div>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
+          <>
+            {/* Filters */}
+            <section className={styles.tabSection}>
+              {/* Platform */}
+              <div className={styles.tabRow}>
+                <span className={styles.filterLabel}>平台</span>
+                <button
+                  type="button"
+                  className={`${styles.tabButtonSmall} ${activeTab === ALL_TAB_ID ? styles.tabButtonSelected : ''}`}
+                  onClick={() => setSelectedTab(ALL_TAB_ID)}
+                >
+                  不限制
+                </button>
+                {availableOsTabs.map((os) => (
+                  <button
+                    key={os}
+                    type="button"
+                    className={`${styles.tabButtonSmall} ${activeTab === os ? styles.tabButtonSelected : ''}`}
+                    onClick={() => setSelectedTab(os)}
+                  >
+                    {OS_LABELS[os] ?? os}
+                  </button>
+                ))}
+              </div>
 
-                <tbody>
-                  {activeMatrix.rows.map((row) => (
-                    <tr key={row.id}>
-                      <th className={styles.rowCell}>
-                        <div className={styles.rowTopline}>
-                          {row.vendor ? <span className={styles.vendorTag}>{row.vendor}</span> : null}
-                          <strong className={styles.rowName}>{row.name}</strong>
-                        </div>
-                        <div className={styles.rowSubtitle}>{row.subtitle}</div>
-                        <div className={styles.rowMeta}>{row.meta}</div>
-                      </th>
-
-                      {weightColumns.map((column) => {
-                        const result = row.results[column.id];
-                      return (
-                        <td
-                          key={column.id}
-                          className={`${styles.speedCell} ${buildCellClass(result.prefill, result.decode)}`}
-                        >
-                          <div className={styles.metricLine}>
-                            <span className={styles.metricLabel}>Prefill</span>
-                            <strong className={styles.metricValue}>
-                              {formatCompactSpeed(result.prefill)}
-                            </strong>
-                          </div>
-                            <div className={styles.metricLine}>
-                              <span className={styles.metricLabel}>Decode</span>
-                              <strong className={styles.metricValue}>
-                                {formatCompactSpeed(result.decode)}
-                              </strong>
-                            </div>
-                            {result.note ? <div className={styles.noteTag}>{result.note}</div> : null}
-                          </td>
-                        );
-                      })}
-                    </tr>
+              {/* Batch */}
+              {availableBatchCounts.length > 1 ? (
+                <div className={styles.tabRow}>
+                  <span className={styles.filterLabel}>并发</span>
+                  <button
+                    type="button"
+                    className={`${styles.tabButtonSmall} ${selectedBatch === 'all' ? styles.tabButtonSelected : ''}`}
+                    onClick={() => setSelectedBatch('all')}
+                  >
+                    不限制
+                  </button>
+                  {availableBatchCounts.map((bc) => (
+                    <button
+                      key={bc}
+                      type="button"
+                      className={`${styles.tabButtonSmall} ${selectedBatch === String(bc) ? styles.tabButtonSelected : ''}`}
+                      onClick={() => setSelectedBatch(String(bc))}
+                    >
+                      {bc === 1 ? '单条' : `batch×${bc}`}
+                    </button>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+                </div>
+              ) : null}
+
+              {/* Model type */}
+              {availableModelTags.length > 1 ? (
+                <div className={styles.tabRow}>
+                  <span className={styles.filterLabel}>类型</span>
+                  <button
+                    type="button"
+                    className={`${styles.tabButtonSmall} ${selectedModelTag === 'all' ? styles.tabButtonSelected : ''}`}
+                    onClick={() => handleModelTagChange('all')}
+                  >
+                    不限制
+                  </button>
+                  {availableModelTags.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      className={`${styles.tabButtonSmall} ${selectedModelTag === tag ? styles.tabButtonSelected : ''}`}
+                      onClick={() => handleModelTagChange(tag)}
+                    >
+                      {MODEL_TAG_LABELS[tag] ?? tag}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {/* Weight size */}
+              {availableSizes.length > 1 ? (
+                <div className={styles.tabRow}>
+                  <span className={styles.filterLabel}>权重</span>
+                  <button
+                    type="button"
+                    className={`${styles.tabButtonSmall} ${selectedSize === 'all' ? styles.tabButtonSelected : ''}`}
+                    onClick={() => handleSizeChange('all')}
+                  >
+                    不限制
+                  </button>
+                  {availableSizes.map((size) => (
+                    <button
+                      key={size}
+                      type="button"
+                      className={`${styles.tabButtonSmall} ${selectedSize === size ? styles.tabButtonSelected : ''}`}
+                      onClick={() => handleSizeChange(size)}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {/* SoC brand */}
+              {availableBrands.length > 1 ? (
+                <div className={styles.tabRow}>
+                  <span className={styles.filterLabel}>芯片</span>
+                  <button
+                    type="button"
+                    className={`${styles.brandFilterTag} ${selectedBrand === 'all' ? styles.tabButtonSelected : ''}`}
+                    onClick={() => handleBrandChange('all')}
+                  >
+                    不限制
+                  </button>
+                  {availableBrands.map((brand) => (
+                    <button
+                      key={brand}
+                      type="button"
+                      className={`${styles.brandFilterTag} ${selectedBrand === brand ? styles.tabButtonSelected : ''}`}
+                      onClick={() => handleBrandChange(brand)}
+                    >
+                      <BrandIcon brand={brand} className={styles.brandFilterIcon} />
+                      {BRAND_LABELS[brand] ?? brand}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {/* Individual SoC */}
+              {availableSocs.length > 1 ? (
+                <div className={styles.tabRow}>
+                  <span className={styles.filterLabel}>SoC</span>
+                  <button
+                    type="button"
+                    className={`${styles.tabButtonSmall} ${selectedSoc === 'all' ? styles.tabButtonSelected : ''}`}
+                    onClick={() => setSelectedSoc('all')}
+                  >
+                    不限制
+                  </button>
+                  {availableSocs.map((soc) => (
+                    <button
+                      key={soc}
+                      type="button"
+                      className={`${styles.tabButtonSmall} ${selectedSoc === soc ? styles.tabButtonSelected : ''}`}
+                      onClick={() => setSelectedSoc(soc)}
+                    >
+                      {soc}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {/* APP version */}
+              {appVersions.length > 1 ? (
+                <div className={styles.tabRow}>
+                  <span className={styles.filterLabel}>版本</span>
+                  <button
+                    type="button"
+                    className={`${styles.tabButtonSmall} ${selectedVersion === 'all' ? styles.tabButtonSelected : ''}`}
+                    onClick={() => setSelectedVersion('all')}
+                  >
+                    不限制
+                  </button>
+                  {appVersions.map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      className={`${styles.tabButtonSmall} ${selectedVersion === v ? styles.tabButtonSelected : ''}`}
+                      onClick={() => setSelectedVersion(v)}
+                    >
+                      v{v}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {/* Reset + Meta */}
+              <div className={styles.metaBlock}>
+                <button type="button" className={styles.resetButton} onClick={handleResetFilters}>
+                  重置筛选
+                </button>
+                <span>Chips: {displayRows.length}</span>
+                <span>Models: {weightColumns.length}</span>
+              </div>
+            </section>
+
+            {/* Table */}
+            {displayRows.length === 0 ? (
+              <section className={styles.comingSoonBox}>
+                <h3 className={styles.comingSoonTitle}>该平台暂无数据</h3>
+                <p className={styles.comingSoonText}>等待用户上报</p>
+              </section>
+            ) : (
+              <>
+                <section className={styles.sectionHeader}>
+                  <h2 className={styles.sectionTitle}>
+                    {activeTab === ALL_TAB_ID ? '全平台' : (OS_LABELS[activeTab] ?? activeTab)} SoC × Model
+                  </h2>
+                  <p className={styles.sectionDescription}>
+                    展示所有上报数据的最大 Prefill / Decode 速度 (tokens/s)，按 Decode 速度着色。点击单元格查看明细。
+                  </p>
+                </section>
+
+                <section className={styles.tableSection}>
+                  <div className={styles.tableWrap}>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th className={styles.rowHead}>SoC</th>
+                          {weightColumns.map((col) => (
+                            <th
+                              key={col.key}
+                              className={`${styles.weightHead} ${hoveredCell?.colKey === col.key ? styles.colHighlight : ''}`}
+                            >
+                              <div className={styles.weightTitle}>{col.label}</div>
+                              <div className={styles.weightMeta}>
+                                {col.modelTag !== 'Chat' ? <span className={styles.modelTag}>{col.modelTag}</span> : null}
+                                {col.isBatch ? <span className={styles.batchTag}>×{col.batchCount}</span> : null}
+                                {col.quant} · {col.backend}
+                              </div>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {displayRows.map((row) => {
+                          const rowKey = `${row.osLabel ?? ''}-${row.socName}`;
+                          const isRowHighlighted = hoveredCell?.rowKey === rowKey;
+                          return (
+                            <tr key={rowKey}>
+                              <th className={`${styles.rowCell} ${isRowHighlighted ? styles.rowHighlight : ''}`}>
+                                <div className={styles.rowTopline}>
+                                  {(() => {
+                                    const brand = inferBrand(row.socName, row.socBrand);
+                                    if (brand === 'unknown') return null;
+                                    return (
+                                      <span className={styles.vendorTag}>
+                                        <BrandIcon brand={brand} className={styles.vendorIcon} />
+                                        {capitalizeBrand(brand)}
+                                      </span>
+                                    );
+                                  })()}
+                                  <strong className={styles.rowName}>{row.socName}</strong>
+                                </div>
+                                {'osLabel' in row && row.osLabel ? (
+                                  <div className={styles.rowMeta}>{row.osLabel}</div>
+                                ) : null}
+                              </th>
+
+                              {weightColumns.map((col) => {
+                                const cell = row.cells[col.key];
+                                if (!cell) {
+                                  return (
+                                    <td
+                                      key={col.key}
+                                      className={styles.speedCell}
+                                      onMouseEnter={() => setHoveredCell({ rowKey, colKey: col.key })}
+                                      onMouseLeave={() => setHoveredCell(null)}
+                                    />
+                                  );
+                                }
+                                const prefill = cell.prefillMax;
+                                const decode = cell.decodeMax;
+                                return (
+                                  <td
+                                    key={col.key}
+                                    className={`${styles.speedCell} ${buildCellClass(decode)} ${styles.speedCellClickable}`}
+                                    onClick={() => handleCellClick(cell, col.label)}
+                                    onMouseEnter={() => setHoveredCell({ rowKey, colKey: col.key })}
+                                    onMouseLeave={() => setHoveredCell(null)}
+                                  >
+                                    <div className={styles.metricLine}>
+                                      <span className={styles.metricLabel}>Prefill</span>
+                                      <strong className={styles.metricValue}>
+                                        {formatSpeed(prefill)}
+                                      </strong>
+                                    </div>
+                                    <div className={styles.metricLine}>
+                                      <span className={styles.metricLabel}>Decode</span>
+                                      <strong className={styles.metricValue}>
+                                        {formatSpeed(decode)}
+                                      </strong>
+                                    </div>
+                                    <div className={styles.noteTag}>
+                                      {cell.sampleCount}次测评
+                                    </div>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              </>
+            )}
+
+            {/* Legend */}
+            <section className={styles.legend}>
+              <div className={styles.legendItem}>
+                <span className={`${styles.legendSwatch} ${styles.cellStrong}`} />
+                <span>Decode ≥ 35</span>
+              </div>
+              <div className={styles.legendItem}>
+                <span className={`${styles.legendSwatch} ${styles.cellGood}`} />
+                <span>Decode 15-34.9</span>
+              </div>
+              <div className={styles.legendItem}>
+                <span className={`${styles.legendSwatch} ${styles.cellTight}`} />
+                <span>Decode 4-14.9</span>
+              </div>
+              <div className={styles.legendItem}>
+                <span className={`${styles.legendSwatch} ${styles.cellWeak}`} />
+                <span>Decode &lt; 4</span>
+              </div>
+            </section>
+          </>
         )}
-
-        <section className={styles.legend}>
-          <div className={styles.legendItem}>
-            <span className={`${styles.legendSwatch} ${styles.cellStrong}`} />
-            <span>Decode ≥ 35</span>
-          </div>
-          <div className={styles.legendItem}>
-            <span className={`${styles.legendSwatch} ${styles.cellGood}`} />
-            <span>Decode 15-34.9</span>
-          </div>
-          <div className={styles.legendItem}>
-            <span className={`${styles.legendSwatch} ${styles.cellTight}`} />
-            <span>Decode 4-14.9</span>
-          </div>
-          <div className={styles.legendItem}>
-            <span className={`${styles.legendSwatch} ${styles.cellWeak}`} />
-            <span>Decode &lt; 4</span>
-          </div>
-          <div className={styles.legendItem}>
-            <span className={`${styles.legendSwatch} ${styles.cellUnavailable}`} />
-            <span>Unavailable</span>
-          </div>
-        </section>
-
-        <section className={styles.notes}>
-          <h2 className={styles.notesTitle}>Notes</h2>
-          <ul className={styles.notesList}>
-            <li>现在全部还是假数据，目的只是先把矩阵的阅读方式和信息密度做对。</li>
-            <li>这版优先内部使用，不做用户导向解释，不做营销文案。</li>
-            <li>真实版可以直接接 benchmark JSON，平台和权重继续扩展时表格会横向滚动。</li>
-          </ul>
-        </section>
       </div>
+
+      {/* Sidebar */}
+      {sidebar.open ? (
+        <>
+          <div className={styles.sidebarOverlay} onClick={closeSidebar} />
+          <aside className={styles.sidebar}>
+            <div className={styles.sidebarHeader}>
+              <h3 className={styles.sidebarTitle}>{sidebar.cellInfo?.label ?? 'Records'}</h3>
+              <button type="button" className={styles.sidebarClose} onClick={closeSidebar}>✕</button>
+            </div>
+
+            {sidebar.loading ? (
+              <div className={styles.sidebarLoading}>加载中...</div>
+            ) : sidebar.records.length === 0 ? (
+              <div className={styles.sidebarLoading}>暂无明细记录</div>
+            ) : (
+              <div className={styles.sidebarRecords}>
+                <div className={styles.recordTableHeader}>
+                  <span className={styles.recordColSpeed}>Prefill</span>
+                  <span className={styles.recordColSpeed}>Decode</span>
+                  <span className={styles.recordColInfo}>Backend</span>
+                  <span className={styles.recordColInfo}>Device</span>
+                  <span className={styles.recordColInfo}>Memory</span>
+                  <span className={styles.recordColInfo}>Version</span>
+                  <span className={styles.recordColInfo}>Time</span>
+                </div>
+                {sidebar.records.map((r) => {
+                  // Memory: VRAM 优先（Windows/Linux），否则总内存
+                  const memoryLabel = r.totalVramMb
+                    ? `${(r.totalVramMb / 1024).toFixed(0)} GB VRAM`
+                    : r.totalMemoryMb
+                      ? `${(r.totalMemoryMb / 1024).toFixed(0)} GB`
+                      : '—';
+                  return (
+                    <div key={r.id} className={styles.recordRow}>
+                      <span className={styles.recordColSpeed}><strong>{r.prefillSpeed.toFixed(1)}</strong> t/s</span>
+                      <span className={styles.recordColSpeed}><strong>{r.decodeSpeed.toFixed(1)}</strong> t/s</span>
+                      <span className={styles.recordColInfo}>{r.backend}{r.isBatch ? ` batch×${r.batchCount}` : ''}</span>
+                      <span className={styles.recordColInfo}>{r.deviceModel || '—'}</span>
+                      <span className={styles.recordColInfo}>{memoryLabel}</span>
+                      <span className={styles.recordColInfo}>{r.appVersion || '—'}</span>
+                      <span className={styles.recordColInfo}>{formatTimestamp(r.createdAt)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </aside>
+        </>
+      ) : null}
     </main>
   );
 }
