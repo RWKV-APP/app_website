@@ -137,7 +137,10 @@
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
-  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    color 0.2s ease;
 }
 
 .resetButton:hover {
@@ -159,7 +162,10 @@
   font-size: 0.8125rem;
   font-weight: 500;
   white-space: nowrap;
-  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    color 0.2s ease;
 }
 
 .tabButton:hover {
@@ -186,7 +192,10 @@
   font-size: 0.6875rem;
   font-weight: 500;
   white-space: nowrap;
-  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    color 0.2s ease;
 }
 
 .tabButtonSmall:hover {
@@ -421,7 +430,10 @@
   font-size: 0.6875rem;
   font-weight: 500;
   white-space: nowrap;
-  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    color 0.2s ease;
 }
 
 .brandFilterTag:hover {
@@ -657,8 +669,12 @@
 }
 
 @keyframes slideIn {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
 }
 
 .sidebarHeader {
@@ -716,7 +732,7 @@
 
 .recordTableHeader {
   display: grid;
-  grid-template-columns: 1fr 1fr 1.2fr 1.2fr 1fr 0.7fr 0.8fr;
+  grid-template-columns: 0.9fr 0.9fr 1.1fr 1fr 1.8fr 0.9fr 0.7fr 0.8fr;
   gap: 8px;
   padding: 8px 12px;
   font-size: 0.6875rem;
@@ -733,7 +749,7 @@
 
 .recordRow {
   display: grid;
-  grid-template-columns: 1fr 1fr 1.2fr 1.2fr 1fr 0.7fr 0.8fr;
+  grid-template-columns: 0.9fr 0.9fr 1.1fr 1fr 1.8fr 0.9fr 0.7fr 0.8fr;
   gap: 8px;
   align-items: center;
   padding: 6px 12px;
@@ -757,9 +773,10 @@
 .recordColInfo {
   color: var(--color-secondary);
   font-size: 0.75rem;
-  white-space: nowrap;
+  white-space: normal;
   overflow: hidden;
   text-overflow: ellipsis;
+  word-break: break-word;
 }
 
 @media (max-width: 920px) {

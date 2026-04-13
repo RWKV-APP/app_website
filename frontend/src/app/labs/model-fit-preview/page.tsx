@@ -35,6 +35,8 @@ interface RecordEntry {
   os: string;
   osVersion: string | null;
   deviceModel: string | null;
+  cpuName: string | null;
+  gpuName: string | null;
   totalMemoryMb: number | null;
   totalVramMb: number | null;
   appVersion: string;
@@ -99,7 +101,14 @@ interface SidebarState {
   open: boolean;
   loading: boolean;
   records: RecordEntry[];
-  cellInfo: { socName: string; modelSha256: string; backend: string; isBatch: boolean; os: string; label: string } | null;
+  cellInfo: {
+    socName: string;
+    modelSha256: string;
+    backend: string;
+    isBatch: boolean;
+    os: string;
+    label: string;
+  } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,8 +197,16 @@ function inferBrand(socName: string, socBrand: string): string {
   if (lower.includes('rtx') || lower.includes('gtx') || lower.includes('nvidia')) return 'nvidia';
   if (lower.includes('radeon') || lower.includes('amd') || lower.includes('rx ')) return 'amd';
   if (lower.includes('intel') || lower.includes('arc ')) return 'intel';
-  if (lower.includes('apple') || lower.includes(' m1') || lower.includes(' m2') || lower.includes(' m3') || lower.includes(' m4')) return 'apple';
-  if (lower.includes('mediatek') || lower.includes('dimensity') || lower.includes('helio')) return 'mediatek';
+  if (
+    lower.includes('apple') ||
+    lower.includes(' m1') ||
+    lower.includes(' m2') ||
+    lower.includes(' m3') ||
+    lower.includes(' m4')
+  )
+    return 'apple';
+  if (lower.includes('mediatek') || lower.includes('dimensity') || lower.includes('helio'))
+    return 'mediatek';
   if (lower.includes('exynos') || lower.includes('samsung')) return 'samsung';
   return 'unknown';
 }
@@ -247,11 +264,25 @@ function formatSpeed(value: number | null): string {
   return value % 1 === 0 ? value.toFixed(0) : value.toFixed(1);
 }
 
+function formatHardwareSummary(cpuName: string | null, gpuName: string | null): string {
+  if (cpuName && gpuName) return `${cpuName} / ${gpuName}`;
+  if (cpuName) return cpuName;
+  if (gpuName) return gpuName;
+  return '—';
+}
+
 function deriveModelTag(entry: LeaderboardEntry): string {
   const name = (entry.modelName || entry.modelFileName).toLowerCase();
-  if (name.includes('-vl') || name.includes('_vl') || name.includes(' vl') || name.includes('rwkv-vl')) return 'VL';
+  if (
+    name.includes('-vl') ||
+    name.includes('_vl') ||
+    name.includes(' vl') ||
+    name.includes('rwkv-vl')
+  )
+    return 'VL';
   if (name.includes('tts') || name.includes('spark') || name.includes('voice')) return 'TTS';
-  if (name.includes('translate') || name.includes('-trans') || name.includes('translation')) return 'Translate';
+  if (name.includes('translate') || name.includes('-trans') || name.includes('translation'))
+    return 'Translate';
   if (name.includes('neko')) return 'Neko';
   return 'Chat';
 }
@@ -266,7 +297,12 @@ function buildCellClass(decode: number | null): string {
 
 function formatTimestamp(ts: string): string {
   const d = new Date(ts);
-  return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function isBatchColumn(input: { isBatch: boolean; batchCount: number }): boolean {
@@ -709,7 +745,10 @@ function columnKey(entry: LeaderboardEntry): string {
   return key;
 }
 
-function buildPlatforms(data: LeaderboardEntry[], filterOs: string | null): {
+function buildPlatforms(
+  data: LeaderboardEntry[],
+  filterOs: string | null,
+): {
   platforms: PlatformData[];
   weightColumns: WeightColumn[];
 } {
@@ -877,10 +916,17 @@ export default function ModelFitPreviewPage() {
   const [selectedBatch, setSelectedBatch] = useState<string>('all');
   const [selectedVersion, setSelectedVersion] = useState<string>('all');
   const [selectedSize, setSelectedSize] = useState<string>(() => readLs(LS_KEY_SIZE, 'all'));
-  const [selectedModelTag, setSelectedModelTag] = useState<string>(() => readLs(LS_KEY_MODEL_TAG, 'Chat'));
+  const [selectedModelTag, setSelectedModelTag] = useState<string>(() =>
+    readLs(LS_KEY_MODEL_TAG, 'Chat'),
+  );
   const [selectedBrand, setSelectedBrand] = useState<string>(() => readLs(LS_KEY_BRAND, 'all'));
   const [selectedSoc, setSelectedSoc] = useState<string>('all');
-  const [sidebar, setSidebar] = useState<SidebarState>({ open: false, loading: false, records: [], cellInfo: null });
+  const [sidebar, setSidebar] = useState<SidebarState>({
+    open: false,
+    loading: false,
+    records: [],
+    cellInfo: null,
+  });
 
   // Auth guard: redirect to login if not authenticated
   useEffect(() => {
@@ -1017,7 +1063,8 @@ export default function ModelFitPreviewPage() {
 
   // Auto-select tab: default to "全部"
   const activeTab = useMemo(() => {
-    if (selectedTab && (availableOsTabs.includes(selectedTab) || selectedTab === ALL_TAB_ID)) return selectedTab;
+    if (selectedTab && (availableOsTabs.includes(selectedTab) || selectedTab === ALL_TAB_ID))
+      return selectedTab;
     return ALL_TAB_ID;
   }, [selectedTab, availableOsTabs]);
 
@@ -1037,9 +1084,12 @@ export default function ModelFitPreviewPage() {
     return platforms.flatMap((p) => p.rows.map((r) => ({ ...r, osLabel: undefined, osId: p.id })));
   }, [platforms, activeTab]);
 
-  const matrixGridStyle = useMemo<CSSProperties>(() => ({
-    gridTemplateColumns: `var(--soc-column-width) repeat(${Math.max(weightColumns.length, 1)}, var(--metric-column-width))`,
-  }), [weightColumns.length]);
+  const matrixGridStyle = useMemo<CSSProperties>(
+    () => ({
+      gridTemplateColumns: `var(--soc-column-width) repeat(${Math.max(weightColumns.length, 1)}, var(--metric-column-width))`,
+    }),
+    [weightColumns.length],
+  );
 
   const exportFileBaseName = useMemo(() => {
     const parts = [
@@ -1126,32 +1176,35 @@ export default function ModelFitPreviewPage() {
     weightColumns,
   ]);
 
-  const handleCellClick = useCallback(async (cell: MatrixCell, weightLabel: string) => {
-    const info = {
-      socName: cell.socName,
-      modelSha256: cell.modelSha256,
-      backend: cell.backend,
-      isBatch: cell.isBatch,
-      os: cell.os,
-      label: `${cell.socName} × ${weightLabel}`,
-    };
-    setSidebar({ open: true, loading: true, records: [], cellInfo: info });
-
-    try {
-      const records = await fetchRecords({
+  const handleCellClick = useCallback(
+    async (cell: MatrixCell, weightLabel: string) => {
+      const info = {
         socName: cell.socName,
         modelSha256: cell.modelSha256,
         backend: cell.backend,
         isBatch: cell.isBatch,
-        batchCount: cell.batchCount,
         os: cell.os,
-        appVersion: selectedVersion,
-      });
-      setSidebar((prev) => ({ ...prev, loading: false, records }));
-    } catch {
-      setSidebar((prev) => ({ ...prev, loading: false }));
-    }
-  }, [selectedVersion]);
+        label: `${cell.socName} × ${weightLabel}`,
+      };
+      setSidebar({ open: true, loading: true, records: [], cellInfo: info });
+
+      try {
+        const records = await fetchRecords({
+          socName: cell.socName,
+          modelSha256: cell.modelSha256,
+          backend: cell.backend,
+          isBatch: cell.isBatch,
+          batchCount: cell.batchCount,
+          os: cell.os,
+          appVersion: selectedVersion,
+        });
+        setSidebar((prev) => ({ ...prev, loading: false, records }));
+      } catch {
+        setSidebar((prev) => ({ ...prev, loading: false }));
+      }
+    },
+    [selectedVersion],
+  );
 
   const closeSidebar = useCallback(() => {
     setSidebar({ open: false, loading: false, records: [], cellInfo: null });
@@ -1195,7 +1248,9 @@ export default function ModelFitPreviewPage() {
           <p className={styles.eyebrow}>Performance Leaderboard</p>
           <h1 className={styles.title}>RWKV prefill / decode matrix</h1>
           <p className={styles.description}>
-            按平台切换 Tab，纵轴是芯片，横轴是模型权重。非 batch 单元格展示 top 10% 位次成绩；batch 单元格同时展示 Decode 总值和 Decode / Batch，并按 Decode / Batch 着色。每个 SoC 的 header column 可单独导出统计。
+            按平台切换 Tab，纵轴是芯片，横轴是模型权重。非 batch 单元格展示
+            top 10% 位次成绩；batch 单元格同时展示 Decode 总值和 Decode / Batch，并按
+            Decode / Batch 着色。每个 SoC 的 header column 可单独导出统计，点击单元格可查看上报记录。
           </p>
         </section>
 
@@ -1213,7 +1268,8 @@ export default function ModelFitPreviewPage() {
           <section className={styles.comingSoonBox}>
             <h3 className={styles.comingSoonTitle}>暂无数据</h3>
             <p className={styles.comingSoonText}>
-              还没有收到任何性能上报数据。请在 RWKV Chat App 中运行一次推理，数据会在回复完成后自动上传。
+              还没有收到任何性能上报数据。请在 RWKV Chat App
+              中运行一次推理，数据会在回复完成后自动上传。
             </p>
           </section>
         ) : (
@@ -1407,10 +1463,13 @@ export default function ModelFitPreviewPage() {
               <>
                 <section className={styles.sectionHeader}>
                   <h2 className={styles.sectionTitle}>
-                    {activeTab === ALL_TAB_ID ? '全平台' : (OS_LABELS[activeTab] ?? activeTab)} SoC × Model
+                    {activeTab === ALL_TAB_ID ? '全平台' : (OS_LABELS[activeTab] ?? activeTab)} SoC
+                    × Model
                   </h2>
                   <p className={styles.sectionDescription}>
-                    非 batch 单元格展示 top 10% 位次 Prefill / Decode；batch 单元格会同时展示 Decode 和 Decode / Batch，单元格颜色按 Decode / Batch 计算。每个 SoC 的 header column 内可导出该 SoC 在当前筛选下的报表和全部统计。
+                    非 batch 单元格展示 top 10% 位次 Prefill / Decode；batch 单元格会同时展示
+                    Decode 和 Decode / Batch，单元格颜色按 Decode / Batch 计算。每个 SoC 的
+                    header column 内可导出该 SoC 在当前筛选下的报表和全部统计。
                   </p>
                 </section>
 
@@ -1425,8 +1484,12 @@ export default function ModelFitPreviewPage() {
                         >
                           <div className={styles.weightTitle}>{col.label}</div>
                           <div className={styles.weightMeta}>
-                            {col.modelTag !== 'Chat' ? <span className={styles.modelTag}>{col.modelTag}</span> : null}
-                            {col.isBatch ? <span className={styles.batchTag}>×{col.batchCount}</span> : null}
+                            {col.modelTag !== 'Chat' ? (
+                              <span className={styles.modelTag}>{col.modelTag}</span>
+                            ) : null}
+                            {col.isBatch ? (
+                              <span className={styles.batchTag}>×{col.batchCount}</span>
+                            ) : null}
                             {col.quant} · {col.backend}
                           </div>
                         </div>
@@ -1568,7 +1631,9 @@ export default function ModelFitPreviewPage() {
           <aside className={styles.sidebar}>
             <div className={styles.sidebarHeader}>
               <h3 className={styles.sidebarTitle}>{sidebar.cellInfo?.label ?? 'Records'}</h3>
-              <button type="button" className={styles.sidebarClose} onClick={closeSidebar}>✕</button>
+              <button type="button" className={styles.sidebarClose} onClick={closeSidebar}>
+                ✕
+              </button>
             </div>
 
             {sidebar.loading ? (
@@ -1582,6 +1647,7 @@ export default function ModelFitPreviewPage() {
                   <span className={styles.recordColSpeed}>Decode</span>
                   <span className={styles.recordColInfo}>Backend</span>
                   <span className={styles.recordColInfo}>Device</span>
+                  <span className={styles.recordColInfo}>Hardware</span>
                   <span className={styles.recordColInfo}>Memory</span>
                   <span className={styles.recordColInfo}>Version</span>
                   <span className={styles.recordColInfo}>Time</span>
@@ -1595,10 +1661,20 @@ export default function ModelFitPreviewPage() {
                       : '—';
                   return (
                     <div key={r.id} className={styles.recordRow}>
-                      <span className={styles.recordColSpeed}><strong>{r.prefillSpeed.toFixed(1)}</strong> t/s</span>
-                      <span className={styles.recordColSpeed}><strong>{r.decodeSpeed.toFixed(1)}</strong> t/s</span>
-                      <span className={styles.recordColInfo}>{r.backend}{r.isBatch ? ` batch×${r.batchCount}` : ''}</span>
+                      <span className={styles.recordColSpeed}>
+                        <strong>{r.prefillSpeed.toFixed(1)}</strong> t/s
+                      </span>
+                      <span className={styles.recordColSpeed}>
+                        <strong>{r.decodeSpeed.toFixed(1)}</strong> t/s
+                      </span>
+                      <span className={styles.recordColInfo}>
+                        {r.backend}
+                        {r.isBatch ? ` batch×${r.batchCount}` : ''}
+                      </span>
                       <span className={styles.recordColInfo}>{r.deviceModel || '—'}</span>
+                      <span className={styles.recordColInfo}>
+                        {formatHardwareSummary(r.cpuName, r.gpuName)}
+                      </span>
                       <span className={styles.recordColInfo}>{memoryLabel}</span>
                       <span className={styles.recordColInfo}>{r.appVersion || '—'}</span>
                       <span className={styles.recordColInfo}>{formatTimestamp(r.createdAt)}</span>

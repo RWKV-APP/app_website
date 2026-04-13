@@ -181,6 +181,8 @@ model TelemetryPerf {
   os             String
   osVersion      String?
   deviceModel    String?
+  cpuName        String?
+  gpuName        String?
   totalMemoryMb  Int?
   totalVramMb    Int?
 

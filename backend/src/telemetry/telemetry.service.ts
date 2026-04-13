@@ -17,6 +17,8 @@ interface TelemetryPerfBody {
     os: string;
     osVersion?: string;
     deviceModel?: string;
+    cpuName?: string;
+    gpuName?: string;
     totalMemoryMb?: number;
     totalVramMb?: number;
   };
@@ -134,14 +136,314 @@ function stripOsVersion(version: string | undefined): string | null {
   return version.replace(/\s*\(.*\)\s*/g, '').trim() || null;
 }
 
+interface TelemetryDeviceAlias {
+  socBrand: string;
+  cpuName?: string;
+  gpuName?: string;
+}
+
+interface TelemetryDeviceInput {
+  socName?: string | null;
+  socBrand?: string | null;
+  os?: string | null;
+  osVersion?: string | null;
+  deviceModel?: string | null;
+  cpuName?: string | null;
+  gpuName?: string | null;
+  totalMemoryMb?: number | null;
+  totalVramMb?: number | null;
+}
+
+interface NormalizedTelemetryDevice {
+  socName: string;
+  socNameKey: string;
+  socBrand: string;
+  os: string;
+  osVersion: string | null;
+  deviceModel: string | null;
+  cpuName: string | null;
+  gpuName: string | null;
+  totalMemoryMb: number | null;
+  totalVramMb: number | null;
+}
+
+interface TelemetryLeaderboardRow {
+  os: string;
+  modelSha256: string;
+  modelName: string;
+  modelFileName: string;
+  modelSizeB: number | null;
+  quantization: string | null;
+  socName: string;
+  socBrand: string;
+  osVersion: string | null;
+  deviceModel: string | null;
+  cpuName: string | null;
+  gpuName: string | null;
+  totalMemoryMb: number | null;
+  totalVramMb: number | null;
+  backend: string;
+  isBatch: boolean;
+  batchCount: number;
+  prefillSpeed: number;
+  decodeSpeed: number;
+}
+
+interface TelemetryRecordRow extends TelemetryLeaderboardRow {
+  id: number;
+  appVersion: string;
+  appBuild: string;
+  clientTimestamp: Date;
+  createdAt: Date;
+}
+
+interface NormalizedTelemetryLeaderboardRow extends TelemetryLeaderboardRow {
+  socName: string;
+  socBrand: string;
+  osVersion: string | null;
+  deviceModel: string | null;
+  cpuName: string | null;
+  gpuName: string | null;
+  socNameKey: string;
+}
+
+interface NormalizedTelemetryRecordRow extends TelemetryRecordRow {
+  socName: string;
+  socBrand: string;
+  osVersion: string | null;
+  deviceModel: string | null;
+  cpuName: string | null;
+  gpuName: string | null;
+  socNameKey: string;
+}
+
+const TELEMETRY_DEVICE_ALIASES: Record<string, TelemetryDeviceAlias> = {
+  'windows 11 home china': {
+    socBrand: 'intel',
+    cpuName: 'Intel(R) Core(TM) Ultra X7 358H',
+    gpuName: 'Intel(R) Arc(TM) B390 GPU',
+  },
+  '(tm) 8060s graphics': {
+    socBrand: 'amd',
+    cpuName: 'AMD Ryzen AI Max+ 395 w/ Radeon 8060S',
+    gpuName: 'AMD Radeon(TM) 8060S Graphics',
+  },
+  'amd radeon(tm) 8060s graphics': {
+    socBrand: 'amd',
+    cpuName: 'AMD Ryzen AI Max+ 395 w/ Radeon 8060S',
+    gpuName: 'AMD Radeon(TM) 8060S Graphics',
+  },
+  'radeon(tm) 8060s graphics': {
+    socBrand: 'amd',
+    cpuName: 'AMD Ryzen AI Max+ 395 w/ Radeon 8060S',
+    gpuName: 'AMD Radeon(TM) 8060S Graphics',
+  },
+};
+
+function cleanOptionalString(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value
+    .replace(/^["']+|["']+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeLookupKey(value: string | null | undefined): string {
+  return cleanOptionalString(value)?.toLowerCase() ?? '';
+}
+
+function normalizeBrand(value: string | null | undefined): string {
+  const key = normalizeLookupKey(value);
+  if (!key || key === 'unknown') return 'unknown';
+  if (key === 'qualcomm') return 'snapdragon';
+  return key;
+}
+
+function normalizeNullableNumber(value: number | null | undefined): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  return value;
+}
+
+function inferBrandFromHardware(values: Array<string | null | undefined>): string {
+  const combined = values
+    .map((value) => normalizeLookupKey(value))
+    .filter((value) => value.length > 0)
+    .join(' ');
+
+  if (!combined) return 'unknown';
+  if (
+    combined.includes('snapdragon') ||
+    combined.includes('qualcomm') ||
+    combined.includes('x elite')
+  ) {
+    return 'snapdragon';
+  }
+  if (
+    combined.includes('nvidia') ||
+    combined.includes('rtx ') ||
+    combined.includes('gtx ') ||
+    combined.includes('geforce')
+  ) {
+    return 'nvidia';
+  }
+  if (combined.includes('amd') || combined.includes('radeon') || combined.includes('ryzen')) {
+    return 'amd';
+  }
+  if (combined.includes('intel') || combined.includes(' arc')) {
+    return 'intel';
+  }
+  if (combined.includes('apple') || /\bm[1-4]\b/.test(combined)) {
+    return 'apple';
+  }
+  if (
+    combined.includes('mediatek') ||
+    combined.includes('dimensity') ||
+    combined.includes('helio')
+  ) {
+    return 'mediatek';
+  }
+  if (combined.includes('samsung') || combined.includes('exynos')) {
+    return 'samsung';
+  }
+  return 'unknown';
+}
+
+function isGenericSocName(value: string | null | undefined, os: string): boolean {
+  const key = normalizeLookupKey(value);
+  if (!key || key === 'unknown') return true;
+  if (key === os) return true;
+  if (key.startsWith('windows ')) return true;
+  if (key === 'windows') return true;
+  if (key.startsWith('linux')) return true;
+  if (key.startsWith('ubuntu')) return true;
+  if (key.startsWith('macos')) return true;
+  if (key === 'android') return true;
+  if (key === 'ios') return true;
+  return false;
+}
+
+function shouldPreferGpuAsSocName(backend: string | null | undefined): boolean {
+  return normalizeLookupKey(backend) === 'webrwkv';
+}
+
+function findTelemetryDeviceAlias(device: {
+  socName?: string | null;
+  deviceModel?: string | null;
+  cpuName?: string | null;
+  gpuName?: string | null;
+}): TelemetryDeviceAlias | null {
+  const keys = [
+    normalizeLookupKey(device.socName),
+    normalizeLookupKey(device.deviceModel),
+    normalizeLookupKey(device.cpuName),
+    normalizeLookupKey(device.gpuName),
+  ];
+
+  for (const key of keys) {
+    if (!key) continue;
+    const alias = TELEMETRY_DEVICE_ALIASES[key];
+    if (alias) return alias;
+  }
+
+  return null;
+}
+
+function normalizeTelemetryDevice(
+  device: TelemetryDeviceInput,
+  backend: string | null | undefined,
+): NormalizedTelemetryDevice {
+  const rawSocName = cleanOptionalString(device.socName);
+  const os = normalizeLookupKey(device.os) || 'unknown';
+  const alias = findTelemetryDeviceAlias(device);
+  const cpuName = cleanOptionalString(device.cpuName) ?? alias?.cpuName ?? null;
+  const gpuName = cleanOptionalString(device.gpuName) ?? alias?.gpuName ?? null;
+  const deviceModel = cleanOptionalString(device.deviceModel);
+  const normalizedBrandFromInput = normalizeBrand(device.socBrand);
+
+  let socBrand = normalizedBrandFromInput;
+  if (socBrand === 'unknown' && alias) {
+    socBrand = alias.socBrand;
+  }
+  if (socBrand === 'unknown') {
+    socBrand = inferBrandFromHardware([gpuName, cpuName, rawSocName, deviceModel]);
+  }
+
+  let canonicalSocName = rawSocName;
+  if (shouldPreferGpuAsSocName(backend) && gpuName) {
+    canonicalSocName = gpuName;
+  } else if (isGenericSocName(canonicalSocName, os)) {
+    canonicalSocName = shouldPreferGpuAsSocName(backend)
+      ? (gpuName ?? cpuName ?? canonicalSocName)
+      : (cpuName ?? gpuName ?? canonicalSocName);
+  } else if (
+    !shouldPreferGpuAsSocName(backend) &&
+    cpuName &&
+    normalizeLookupKey(canonicalSocName) === normalizeLookupKey(gpuName)
+  ) {
+    canonicalSocName = cpuName;
+  } else if (
+    alias?.gpuName &&
+    normalizeLookupKey(rawSocName) === normalizeLookupKey(alias.gpuName)
+  ) {
+    canonicalSocName = alias.gpuName;
+  } else if (alias?.gpuName && shouldPreferGpuAsSocName(backend)) {
+    canonicalSocName = alias.gpuName;
+  }
+
+  if (!canonicalSocName) {
+    canonicalSocName = gpuName ?? cpuName ?? deviceModel ?? rawSocName ?? os;
+  }
+
+  const osVersion = stripOsVersion(cleanOptionalString(device.osVersion) ?? undefined);
+
+  return {
+    socName: canonicalSocName,
+    socNameKey: normalizeLookupKey(canonicalSocName),
+    socBrand,
+    os,
+    osVersion,
+    deviceModel,
+    cpuName,
+    gpuName,
+    totalMemoryMb: normalizeNullableNumber(device.totalMemoryMb),
+    totalVramMb: normalizeNullableNumber(device.totalVramMb),
+  };
+}
+
+function normalizeTelemetryLeaderboardRow(
+  row: TelemetryLeaderboardRow,
+): NormalizedTelemetryLeaderboardRow {
+  const normalized = normalizeTelemetryDevice(row, row.backend);
+  return {
+    ...row,
+    ...normalized,
+  };
+}
+
+function normalizeTelemetryRecordRow(row: TelemetryRecordRow): NormalizedTelemetryRecordRow {
+  const normalized = normalizeTelemetryDevice(row, row.backend);
+  return {
+    ...row,
+    ...normalized,
+  };
+}
+
 @Injectable()
 export class TelemetryService {
   private readonly logger = new Logger(TelemetryService.name);
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async ingest(body: TelemetryPerfBody, ip: string | null): Promise<{ accepted: boolean; reason?: string }> {
-    this.logger.log(`📥 收到测评数据: soc=${body?.device?.socName} model=${body?.model?.fileName} backend=${body?.model?.backend} prefill=${body?.perf?.prefillSpeed} decode=${body?.perf?.decodeSpeed} isBatch=${body?.perf?.isBatch} batchCount=${body?.perf?.batchCount} ip=${ip}`);
+  async ingest(
+    body: TelemetryPerfBody,
+    ip: string | null,
+  ): Promise<{ accepted: boolean; reason?: string }> {
+    this.logger.log(
+      `📥 收到测评数据: soc=${body?.device?.socName} model=${body?.model?.fileName} backend=${body?.model?.backend} prefill=${body?.perf?.prefillSpeed} decode=${body?.perf?.decodeSpeed} isBatch=${body?.perf?.isBatch} batchCount=${body?.perf?.batchCount} ip=${ip}`,
+    );
 
     // Validate required fields (sha256 is optional — fileName serves as fallback identifier)
     if (!body?.device?.socName || !body?.model?.backend) {
@@ -171,6 +473,12 @@ export class TelemetryService {
     }
 
     const installIdHash = sha256(body.installId + TELEMETRY_SALT);
+    const normalizedDevice = normalizeTelemetryDevice(
+      {
+        ...body.device,
+      },
+      body.model?.backend,
+    );
 
     // Insert
     try {
@@ -178,13 +486,15 @@ export class TelemetryService {
         data: {
           schemaVersion: body.schemaVersion ?? 1,
           installIdHash,
-          socName: body.device.socName.toLowerCase().trim(),
-          socBrand: body.device.socBrand?.toLowerCase().trim() ?? 'unknown',
-          os: body.device.os?.toLowerCase().trim() ?? 'unknown',
-          osVersion: stripOsVersion(body.device.osVersion),
-          deviceModel: body.device.deviceModel?.trim() || null,
-          totalMemoryMb: body.device.totalMemoryMb ?? null,
-          totalVramMb: body.device.totalVramMb ?? null,
+          socName: normalizedDevice.socNameKey,
+          socBrand: normalizedDevice.socBrand,
+          os: normalizedDevice.os,
+          osVersion: normalizedDevice.osVersion,
+          deviceModel: normalizedDevice.deviceModel,
+          cpuName: normalizedDevice.cpuName,
+          gpuName: normalizedDevice.gpuName,
+          totalMemoryMb: normalizedDevice.totalMemoryMb,
+          totalVramMb: normalizedDevice.totalVramMb,
           appVersion: body.app?.version ?? '',
           appBuild: body.app?.build ?? '',
           modelName: body.model.name ?? '',
@@ -205,7 +515,9 @@ export class TelemetryService {
       return { accepted: false, reason: 'db_error' };
     }
 
-    this.logger.log(`✅ 已入库: soc=${body.device.socName} decode=${body.perf.decodeSpeed} backend=${body.model.backend}`);
+    this.logger.log(
+      `✅ 已入库: soc=${body.device.socName} decode=${body.perf.decodeSpeed} backend=${body.model.backend}`,
+    );
     return { accepted: true };
   }
 
@@ -213,7 +525,6 @@ export class TelemetryService {
     const limit = Math.min(parseInt(query.limit ?? '100', 10) || 100, 5000);
 
     const where: any = {};
-    if (query.socName) where.socName = query.socName.toLowerCase().trim();
     if (query.modelSha256) where.modelSha256 = query.modelSha256.toLowerCase().trim();
     if (query.backend) where.backend = query.backend.toLowerCase().trim();
     if (query.os) where.os = query.os.toLowerCase().trim();
@@ -231,6 +542,12 @@ export class TelemetryService {
         quantization: true,
         socName: true,
         socBrand: true,
+        osVersion: true,
+        deviceModel: true,
+        cpuName: true,
+        gpuName: true,
+        totalMemoryMb: true,
+        totalVramMb: true,
         backend: true,
         isBatch: true,
         batchCount: true,
@@ -239,8 +556,14 @@ export class TelemetryService {
       },
     });
 
+    const querySocNameKey = normalizeLookupKey(query.socName);
     const groups = new Map<string, LeaderboardAccumulator>();
-    for (const row of rows) {
+    for (const rawRow of rows) {
+      const row = normalizeTelemetryLeaderboardRow(rawRow);
+      if (querySocNameKey && row.socNameKey !== querySocNameKey) {
+        continue;
+      }
+
       const key = leaderboardGroupKey(row);
       const existing = groups.get(key);
       if (existing) {
@@ -328,7 +651,6 @@ export class TelemetryService {
     const limit = Math.min(parseInt(query.limit ?? '50', 10) || 50, 200);
 
     const where: any = {
-      socName: query.socName.toLowerCase().trim(),
       modelSha256: query.modelSha256.toLowerCase().trim(),
       backend: query.backend.toLowerCase().trim(),
     };
@@ -339,8 +661,6 @@ export class TelemetryService {
 
     const rows = await this.prisma.telemetryPerf.findMany({
       where,
-      orderBy: { decodeSpeed: 'desc' },
-      take: limit,
       select: {
         id: true,
         socName: true,
@@ -348,6 +668,8 @@ export class TelemetryService {
         os: true,
         osVersion: true,
         deviceModel: true,
+        cpuName: true,
+        gpuName: true,
         totalMemoryMb: true,
         totalVramMb: true,
         appVersion: true,
@@ -367,6 +689,13 @@ export class TelemetryService {
       },
     });
 
-    return rows;
+    const querySocNameKey = normalizeLookupKey(query.socName);
+
+    return rows
+      .map((row) => normalizeTelemetryRecordRow(row))
+      .filter((row) => row.socNameKey === querySocNameKey)
+      .sort((left, right) => right.decodeSpeed - left.decodeSpeed)
+      .slice(0, limit)
+      .map(({ socNameKey, ...row }) => row);
   }
 }
