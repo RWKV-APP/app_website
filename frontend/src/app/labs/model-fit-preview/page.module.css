@@ -204,8 +204,32 @@
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+  align-items: center;
   color: var(--color-secondary);
   font-size: 0.75rem;
+}
+
+.rowExportButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid rgba(20, 184, 166, 0.26);
+  border-radius: 999px;
+  background-color: rgba(20, 184, 166, 0.08);
+  color: var(--color-primary);
+  font-size: 0.625rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+  flex-shrink: 0;
+}
+
+.rowExportButton:hover {
+  border-color: var(--color-primary);
+  background-color: var(--color-primary-tint);
 }
 
 .sectionHeader {
@@ -234,7 +258,7 @@
   --soc-column-width: 260px;
   --metric-column-width: 148px;
   --matrix-header-height: 56px;
-  --matrix-row-min-height: 84px;
+  --matrix-row-min-height: 92px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   position: relative;
@@ -421,7 +445,7 @@
   font-size: 0.8125rem;
   line-height: 1.25;
   font-weight: 600;
-  flex: 1 1 120px;
+  flex: 1 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -479,7 +503,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .metricLine + .metricLine {
@@ -487,16 +511,18 @@
 }
 
 .metricLabel {
+  font-size: 12px;
+  line-height: 1.15;
   color: var(--color-secondary);
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .metricValue {
-  font-size: 0.75rem;
-  line-height: 1.2;
+  font-size: 12px;
+  line-height: 1.15;
   font-weight: 600;
   color: var(--color-foreground);
 }
@@ -504,10 +530,10 @@
 .noteTag {
   margin-top: 4px;
   color: var(--color-secondary);
-  font-size: 0.5625rem;
+  font-size: 10px;
   line-height: 1.3;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .cellStrong {
@@ -531,14 +557,6 @@
 }
 
 /* Hover: highlight row header and column header */
-.rowHighlight {
-  background-color: var(--color-primary-tint) !important;
-}
-
-.colHighlight {
-  background-color: var(--color-primary-tint) !important;
-}
-
 .speedCellClickable {
   cursor: pointer;
   position: relative;

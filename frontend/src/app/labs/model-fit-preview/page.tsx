@@ -24,8 +24,8 @@ interface LeaderboardEntry {
   isBatch: boolean;
   batchCount: number;
   sampleCount: number;
-  decodeSpeed: { avg: number; max: number | null };
-  prefillSpeed: { avg: number; max: number | null };
+  decodeSpeed: { avg: number; max: number | null; top10: number | null };
+  prefillSpeed: { avg: number; max: number | null; top10: number | null };
 }
 
 interface RecordEntry {
@@ -64,9 +64,13 @@ interface WeightColumn {
   sortOrder: number;
 }
 
+type CellMetricBasis = 'top10' | 'decode_div_batch';
+
 interface MatrixCell {
-  prefillMax: number | null;
-  decodeMax: number | null;
+  prefillDisplay: number | null;
+  decodeDisplay: number | null;
+  decodeRawDisplay: number | null;
+  metricBasis: CellMetricBasis;
   sampleCount: number;
   backend: string;
   isBatch: boolean;
@@ -88,6 +92,8 @@ interface PlatformData {
   label: string;
   rows: MatrixRow[];
 }
+
+type DisplayRow = MatrixRow & { osLabel?: string; osId: string };
 
 interface SidebarState {
   open: boolean;
@@ -254,13 +260,439 @@ function buildCellClass(decode: number | null): string {
   if (decode === null) return '';
   if (decode >= 35) return styles.cellStrong;
   if (decode >= 15) return styles.cellGood;
-  if (decode >= 4) return styles.cellTight;
+  if (decode >= 6) return styles.cellTight;
   return styles.cellWeak;
 }
 
 function formatTimestamp(ts: string): string {
   const d = new Date(ts);
   return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function isBatchColumn(input: { isBatch: boolean; batchCount: number }): boolean {
+  return input.isBatch && input.batchCount > 1;
+}
+
+function getMetricBasis(input: { isBatch: boolean; batchCount: number }): CellMetricBasis {
+  return isBatchColumn(input) ? 'decode_div_batch' : 'top10';
+}
+
+function getDisplaySpeeds(entry: LeaderboardEntry): {
+  prefill: number | null;
+  decode: number | null;
+  decodeRaw: number | null;
+  metricBasis: CellMetricBasis;
+} {
+  const metricBasis = getMetricBasis(entry);
+  const prefillBase = entry.prefillSpeed.top10 ?? entry.prefillSpeed.max ?? entry.prefillSpeed.avg;
+  const decodeBase = entry.decodeSpeed.top10 ?? entry.decodeSpeed.max ?? entry.decodeSpeed.avg;
+  if (metricBasis === 'decode_div_batch') {
+    return {
+      prefill: prefillBase,
+      decode: entry.batchCount > 0 ? decodeBase / entry.batchCount : decodeBase,
+      decodeRaw: decodeBase,
+      metricBasis,
+    };
+  }
+  return {
+    prefill: prefillBase,
+    decode: decodeBase,
+    decodeRaw: decodeBase,
+    metricBasis,
+  };
+}
+
+function formatMetricBasisLabel(metricBasis: CellMetricBasis): string {
+  return metricBasis === 'decode_div_batch' ? 'decode / batchCount' : 'top10';
+}
+
+function getCellFooterNote(cell: MatrixCell): string {
+  if (cell.isBatch && cell.batchCount > 1) {
+    return `Batch ×${cell.batchCount} · ${cell.sampleCount}次测评`;
+  }
+  return `${cell.sampleCount}次测评`;
+}
+
+function filterLeaderboardData(
+  data: LeaderboardEntry[],
+  filters: {
+    selectedBatch: string;
+    selectedSize: string;
+    selectedModelTag: string;
+    selectedBrand: string;
+    selectedSoc: string;
+  },
+): LeaderboardEntry[] {
+  let filtered = data;
+  if (filters.selectedBatch !== 'all') {
+    const batchCount = parseInt(filters.selectedBatch, 10);
+    filtered = filtered.filter((entry) => entry.batchCount === batchCount);
+  }
+  if (filters.selectedSize !== 'all') {
+    filtered = filtered.filter((entry) => deriveWeightLabel(entry) === filters.selectedSize);
+  }
+  if (filters.selectedModelTag !== 'all') {
+    filtered = filtered.filter((entry) => deriveModelTag(entry) === filters.selectedModelTag);
+  }
+  if (filters.selectedBrand !== 'all') {
+    filtered = filtered.filter((entry) => inferBrand(entry.socName, entry.socBrand) === filters.selectedBrand);
+  }
+  if (filters.selectedSoc !== 'all') {
+    filtered = filtered.filter((entry) => entry.socName === filters.selectedSoc);
+  }
+  return filtered;
+}
+
+function getWeightColumnReportLabel(column: WeightColumn): string {
+  const parts = [column.label];
+  if (column.modelTag !== 'Chat') {
+    parts.push(column.modelTag);
+  }
+  if (column.isBatch) {
+    parts.push(`batch×${column.batchCount}`);
+  }
+  parts.push(column.quant);
+  parts.push(column.backend);
+  return parts.join(' | ');
+}
+
+function getEntryReportLabel(entry: LeaderboardEntry): string {
+  return getWeightColumnReportLabel({
+    key: columnKey(entry),
+    label: deriveWeightLabel(entry),
+    quant: deriveQuantLabel(entry),
+    backend: entry.backend,
+    modelTag: deriveModelTag(entry),
+    isBatch: isBatchColumn(entry),
+    batchCount: entry.batchCount,
+    sortOrder: deriveSortOrder(entry),
+  });
+}
+
+function downloadTextFile(filename: string, content: string, mimeType: string): void {
+  const blob = new Blob([content], { type: `${mimeType};charset=utf-8` });
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+function sanitizeFileNamePart(value: string): string {
+  return value
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 40) || 'all';
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function openHtmlReport(filename: string, html: string): void {
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = window.URL.createObjectURL(blob);
+  const opened = window.open(url, '_blank', 'noopener,noreferrer');
+  if (!opened) {
+    downloadTextFile(filename, html, 'text/html');
+  }
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+}
+
+function buildSocReportHtml(input: {
+  filename: string;
+  title: string;
+  generatedAt: string;
+  platform: string;
+  vendor: string;
+  filters: Array<{ label: string; value: string }>;
+  weights: Array<{
+    label: string;
+    prefill: number | null;
+    decodeRaw: number | null;
+    decodePerBatch: number | null;
+    isBatch: boolean;
+    metricNote: string;
+    sampleCount: number;
+  }>;
+  statistics: Array<{
+    reportColumn: string;
+    modelName: string;
+    modelFileName: string;
+    displayPrefill: number | null;
+    displayDecodeRaw: number | null;
+    displayDecodePerBatch: number | null;
+    displayMetricBasis: string;
+    sampleCount: number;
+    backend: string;
+    batchCount: number;
+    isBatch: boolean;
+  }>;
+}): string {
+  const filterHtml = input.filters
+    .map((item) => `<span class="chip"><strong>${escapeHtml(item.label)}:</strong> ${escapeHtml(item.value)}</span>`)
+    .join('');
+
+  const rowsHtml = input.weights
+    .map((item) => `
+      <tr>
+        <td>${escapeHtml(input.title)}</td>
+        <td>${escapeHtml(item.label)}</td>
+        <td>${escapeHtml(formatSpeed(item.prefill))}</td>
+        <td>${escapeHtml(formatSpeed(item.decodeRaw))}</td>
+        <td>${escapeHtml(item.isBatch ? formatSpeed(item.decodePerBatch) : '—')}</td>
+        <td>${escapeHtml(item.metricNote)}</td>
+        <td>${escapeHtml(String(item.sampleCount))}</td>
+      </tr>
+    `)
+    .join('');
+
+  const statisticsRowsHtml = input.statistics
+    .map((item) => `
+      <tr>
+        <td>${escapeHtml(input.title)}</td>
+        <td>${escapeHtml(item.reportColumn)}</td>
+        <td>${escapeHtml(item.modelName || item.modelFileName)}</td>
+        <td>${escapeHtml(formatSpeed(item.displayPrefill))}</td>
+        <td>${escapeHtml(formatSpeed(item.displayDecodeRaw))}</td>
+        <td>${escapeHtml(item.isBatch ? formatSpeed(item.displayDecodePerBatch) : '—')}</td>
+        <td>${escapeHtml(item.displayMetricBasis)}</td>
+        <td>${escapeHtml(item.batchCount > 1 ? `x${item.batchCount}` : 'x1')}</td>
+        <td>${escapeHtml(item.backend)}</td>
+        <td>${escapeHtml(String(item.sampleCount))}</td>
+      </tr>
+    `)
+    .join('');
+
+  const safeTitle = escapeHtml(input.title);
+  const safePlatform = escapeHtml(input.platform);
+  const safeVendor = escapeHtml(input.vendor);
+  const safeGeneratedAt = escapeHtml(new Date(input.generatedAt).toLocaleString('zh-CN'));
+
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${safeTitle} Report</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5f7f6;
+        --panel: #ffffff;
+        --text: #17201c;
+        --muted: #5f6d66;
+        --line: #d9e3de;
+        --accent: #0f9f88;
+        --accent-soft: #e7f6f2;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .page {
+        width: min(1200px, calc(100vw - 32px));
+        margin: 24px auto 56px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+      }
+      .toolbar button {
+        border: 1px solid var(--accent);
+        background: var(--panel);
+        color: var(--accent);
+        border-radius: 999px;
+        padding: 10px 14px;
+        font: inherit;
+        cursor: pointer;
+      }
+      .hero, .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 20px 22px;
+      }
+      .hero {
+        margin-bottom: 16px;
+      }
+      .eyebrow {
+        margin: 0 0 8px;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--accent);
+        font-weight: 700;
+      }
+      h1 {
+        margin: 0;
+        font-size: 32px;
+        line-height: 1.05;
+      }
+      .summary {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 14px;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        padding: 8px 12px;
+        font-size: 13px;
+      }
+      .muted {
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.6;
+      }
+      .panel h2 {
+        margin: 0 0 12px;
+        font-size: 18px;
+      }
+      .panel + .panel {
+        margin-top: 16px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th, td {
+        border-bottom: 1px solid var(--line);
+        padding: 12px 10px;
+        text-align: left;
+        vertical-align: top;
+        font-size: 14px;
+      }
+      th {
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      tr:last-child td {
+        border-bottom: none;
+      }
+      .note {
+        margin-top: 12px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      @media print {
+        body {
+          background: #fff;
+        }
+        .page {
+          width: 100%;
+          margin: 0;
+        }
+        .toolbar {
+          display: none;
+        }
+        .hero, .panel {
+          border-radius: 0;
+          border-left: none;
+          border-right: none;
+          padding-left: 0;
+          padding-right: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="toolbar">
+        <button type="button" onclick="window.print()">打印 / 导出 PDF</button>
+        <button type="button" onclick="downloadHtml()">下载 HTML</button>
+      </div>
+
+      <section class="hero">
+        <p class="eyebrow">RWKV Performance Report</p>
+        <h1>${safeTitle}</h1>
+        <p class="muted">Platform: ${safePlatform} · Vendor: ${safeVendor} · Generated: ${safeGeneratedAt}</p>
+        <div class="summary">${filterHtml}</div>
+      </section>
+
+      <section class="panel">
+        <h2>各权重表现</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Headers</th>
+              <th>Weight</th>
+              <th>Prefill</th>
+              <th>Decode</th>
+              <th>Decode / Batch</th>
+              <th>Rule</th>
+              <th>Samples</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+        <p class="note">batch 单元格会同时列出 Decode 总值和 Decode / Batch，颜色与判断口径按 Decode / Batch，且低于 6 时标红；没有统计到的数据不会出现在这份报表里。</p>
+      </section>
+
+      <section class="panel">
+        <h2>统计明细</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Headers</th>
+              <th>Weight</th>
+              <th>Model</th>
+              <th>Prefill</th>
+              <th>Decode</th>
+              <th>Decode / Batch</th>
+              <th>Rule</th>
+              <th>Batch</th>
+              <th>Backend</th>
+              <th>Samples</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${statisticsRowsHtml}
+          </tbody>
+        </table>
+      </section>
+    </div>
+    <script>
+      function downloadHtml() {
+        var html = '<!DOCTYPE html>\\n' + document.documentElement.outerHTML;
+        var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        var url = URL.createObjectURL(blob);
+        var anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = ${JSON.stringify(input.filename)};
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      }
+    </script>
+  </body>
+</html>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -338,13 +770,14 @@ function buildPlatforms(data: LeaderboardEntry[], filterOs: string | null): {
       const row = bySoc.get(entry.socName)!;
       const ck = columnKey(entry);
       const existing = row.cells[ck];
-      const entryDecodeMax = entry.decodeSpeed.max ?? entry.decodeSpeed.avg;
-      const entryPrefillMax = entry.prefillSpeed.max ?? entry.prefillSpeed.avg;
-      // Keep entry with higher decode max
-      if (!existing || (entryDecodeMax ?? 0) > (existing.decodeMax ?? 0)) {
+      const display = getDisplaySpeeds(entry);
+      // Keep entry with higher displayed decode score for the current metric basis.
+      if (!existing || (display.decode ?? 0) > (existing.decodeDisplay ?? 0)) {
         row.cells[ck] = {
-          prefillMax: entryPrefillMax,
-          decodeMax: entryDecodeMax,
+          prefillDisplay: display.prefill,
+          decodeDisplay: display.decode,
+          decodeRawDisplay: display.decodeRaw,
+          metricBasis: display.metricBasis,
           sampleCount: entry.sampleCount,
           backend: entry.backend,
           isBatch: entry.isBatch,
@@ -357,8 +790,8 @@ function buildPlatforms(data: LeaderboardEntry[], filterOs: string | null): {
     }
 
     const rows = Array.from(bySoc.values()).sort((a, b) => {
-      const maxA = Math.max(...Object.values(a.cells).map((c) => c.decodeMax ?? 0));
-      const maxB = Math.max(...Object.values(b.cells).map((c) => c.decodeMax ?? 0));
+      const maxA = Math.max(...Object.values(a.cells).map((c) => c.decodeDisplay ?? 0));
+      const maxB = Math.max(...Object.values(b.cells).map((c) => c.decodeDisplay ?? 0));
       return maxB - maxA;
     });
 
@@ -390,7 +823,7 @@ const getApiBaseUrl = (): string => {
 
 async function fetchLeaderboard(appVersion?: string): Promise<LeaderboardEntry[]> {
   const base = getApiBaseUrl();
-  const qs = new URLSearchParams({ limit: '500' });
+  const qs = new URLSearchParams({ limit: '5000' });
   if (appVersion && appVersion !== 'all') qs.set('appVersion', appVersion);
   const res = await fetch(`${base}/public-api/telemetry/leaderboard?${qs}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -448,7 +881,6 @@ export default function ModelFitPreviewPage() {
   const [selectedBrand, setSelectedBrand] = useState<string>(() => readLs(LS_KEY_BRAND, 'all'));
   const [selectedSoc, setSelectedSoc] = useState<string>('all');
   const [sidebar, setSidebar] = useState<SidebarState>({ open: false, loading: false, records: [], cellInfo: null });
-  const [hoveredCell, setHoveredCell] = useState<{ rowKey: string; colKey: string } | null>(null);
 
   // Auth guard: redirect to login if not authenticated
   useEffect(() => {
@@ -568,24 +1000,13 @@ export default function ModelFitPreviewPage() {
   // Filter data by batch + size + model tag + brand
   const filteredData = useMemo(() => {
     if (!data) return [];
-    let filtered = data;
-    if (selectedBatch !== 'all') {
-      const bc = parseInt(selectedBatch, 10);
-      filtered = filtered.filter((e) => e.batchCount === bc);
-    }
-    if (selectedSize !== 'all') {
-      filtered = filtered.filter((e) => deriveWeightLabel(e) === selectedSize);
-    }
-    if (selectedModelTag !== 'all') {
-      filtered = filtered.filter((e) => deriveModelTag(e) === selectedModelTag);
-    }
-    if (selectedBrand !== 'all') {
-      filtered = filtered.filter((e) => inferBrand(e.socName, e.socBrand) === selectedBrand);
-    }
-    if (selectedSoc !== 'all') {
-      filtered = filtered.filter((e) => e.socName === selectedSoc);
-    }
-    return filtered;
+    return filterLeaderboardData(data, {
+      selectedBatch,
+      selectedSize,
+      selectedModelTag,
+      selectedBrand,
+      selectedSoc,
+    });
   }, [data, selectedBatch, selectedSize, selectedModelTag, selectedBrand, selectedSoc]);
 
   // Compute available OS tabs from filtered data
@@ -608,17 +1029,102 @@ export default function ModelFitPreviewPage() {
   }, [filteredData, activeTab]);
 
   // Merge all platform rows when viewing single-OS tab, or keep separate for "all"
-  const displayRows = useMemo(() => {
+  const displayRows = useMemo<DisplayRow[]>(() => {
     if (activeTab === ALL_TAB_ID) {
       // Flatten all platforms, prefixed with OS
-      return platforms.flatMap((p) => p.rows.map((r) => ({ ...r, osLabel: p.label })));
+      return platforms.flatMap((p) => p.rows.map((r) => ({ ...r, osLabel: p.label, osId: p.id })));
     }
-    return platforms.flatMap((p) => p.rows.map((r) => ({ ...r, osLabel: undefined })));
+    return platforms.flatMap((p) => p.rows.map((r) => ({ ...r, osLabel: undefined, osId: p.id })));
   }, [platforms, activeTab]);
 
   const matrixGridStyle = useMemo<CSSProperties>(() => ({
     gridTemplateColumns: `var(--soc-column-width) repeat(${Math.max(weightColumns.length, 1)}, var(--metric-column-width))`,
   }), [weightColumns.length]);
+
+  const exportFileBaseName = useMemo(() => {
+    const parts = [
+      'model-fit-preview',
+      activeTab === ALL_TAB_ID ? 'all-platforms' : sanitizeFileNamePart(OS_LABELS[activeTab] ?? activeTab),
+      sanitizeFileNamePart(selectedBatch === 'all' ? 'all-batches' : `batch-${selectedBatch}`),
+      sanitizeFileNamePart(selectedModelTag),
+      sanitizeFileNamePart(selectedSize),
+      sanitizeFileNamePart(selectedBrand),
+      sanitizeFileNamePart(selectedSoc),
+      sanitizeFileNamePart(selectedVersion === 'all' ? 'all-versions' : `v-${selectedVersion}`),
+      new Date().toISOString().replace(/[:.]/g, '-'),
+    ];
+    return parts.join('__');
+  }, [activeTab, selectedBatch, selectedModelTag, selectedSize, selectedBrand, selectedSoc, selectedVersion]);
+
+  const handleExportRow = useCallback((row: DisplayRow) => {
+    const platform = row.osLabel ?? (OS_LABELS[row.osId] ?? row.osId);
+    const vendor = capitalizeBrand(inferBrand(row.socName, row.socBrand)) || '—';
+    const visibleColumns = weightColumns.filter((column) => row.cells[column.key]);
+    const rowEntries = filteredData
+      .filter((entry) => entry.socName === row.socName && entry.os === row.osId)
+      .filter((entry) => visibleColumns.some((column) => column.key === columnKey(entry)));
+    const filename = `${exportFileBaseName}__${sanitizeFileNamePart(row.socName)}.html`;
+    const generatedAt = new Date().toISOString();
+    const filters = [
+      { label: 'Platform', value: platform },
+      { label: 'Batch', value: selectedBatch === 'all' ? '不限制' : `x${selectedBatch}` },
+      { label: 'Type', value: selectedModelTag === 'all' ? '不限制' : selectedModelTag },
+      { label: 'Weight', value: selectedSize === 'all' ? '不限制' : selectedSize },
+      { label: 'Chip', value: row.socName },
+      { label: 'App Version', value: selectedVersion === 'all' ? '不限制' : selectedVersion },
+    ];
+    if (selectedBrand !== 'all') {
+      filters.splice(4, 0, { label: 'Vendor Filter', value: capitalizeBrand(selectedBrand) });
+    }
+
+    const html = buildSocReportHtml({
+      filename,
+      title: row.socName,
+      generatedAt,
+      platform,
+      vendor,
+      filters,
+      weights: visibleColumns.map((column) => {
+        const cell = row.cells[column.key]!;
+        return {
+          label: getWeightColumnReportLabel(column),
+          prefill: cell.prefillDisplay,
+          decodeRaw: cell.decodeRawDisplay,
+          decodePerBatch: cell.metricBasis === 'decode_div_batch' ? cell.decodeDisplay : null,
+          isBatch: cell.metricBasis === 'decode_div_batch',
+          metricNote: formatMetricBasisLabel(cell.metricBasis),
+          sampleCount: cell.sampleCount,
+        };
+      }),
+      statistics: rowEntries.map((entry) => {
+        const display = getDisplaySpeeds(entry);
+        return {
+          reportColumn: getEntryReportLabel(entry),
+          modelName: entry.modelName,
+          modelFileName: entry.modelFileName,
+          displayPrefill: display.prefill,
+          displayDecodeRaw: display.decodeRaw,
+          displayDecodePerBatch: display.metricBasis === 'decode_div_batch' ? display.decode : null,
+          displayMetricBasis: formatMetricBasisLabel(display.metricBasis),
+          sampleCount: entry.sampleCount,
+          backend: entry.backend,
+          batchCount: entry.batchCount,
+          isBatch: display.metricBasis === 'decode_div_batch',
+        };
+      }),
+    });
+
+    openHtmlReport(filename, html);
+  }, [
+    exportFileBaseName,
+    filteredData,
+    selectedBatch,
+    selectedBrand,
+    selectedModelTag,
+    selectedSize,
+    selectedVersion,
+    weightColumns,
+  ]);
 
   const handleCellClick = useCallback(async (cell: MatrixCell, weightLabel: string) => {
     const info = {
@@ -689,7 +1195,7 @@ export default function ModelFitPreviewPage() {
           <p className={styles.eyebrow}>Performance Leaderboard</p>
           <h1 className={styles.title}>RWKV prefill / decode matrix</h1>
           <p className={styles.description}>
-            按平台切换 Tab，纵轴是芯片，横轴是模型权重。数据来源于用户匿名上传的真实推理速度，展示各组合的最佳成绩。点击单元格查看所有上报记录。
+            按平台切换 Tab，纵轴是芯片，横轴是模型权重。非 batch 单元格展示 top 10% 位次成绩；batch 单元格同时展示 Decode 总值和 Decode / Batch，并按 Decode / Batch 着色。每个 SoC 的 header column 可单独导出统计。
           </p>
         </section>
 
@@ -904,7 +1410,7 @@ export default function ModelFitPreviewPage() {
                     {activeTab === ALL_TAB_ID ? '全平台' : (OS_LABELS[activeTab] ?? activeTab)} SoC × Model
                   </h2>
                   <p className={styles.sectionDescription}>
-                    展示所有上报数据的最大 Prefill / Decode 速度 (tokens/s)，按 Decode 速度着色。点击单元格查看明细。
+                    非 batch 单元格展示 top 10% 位次 Prefill / Decode；batch 单元格会同时展示 Decode 和 Decode / Batch，单元格颜色按 Decode / Batch 计算。每个 SoC 的 header column 内可导出该 SoC 在当前筛选下的报表和全部统计。
                   </p>
                 </section>
 
@@ -915,7 +1421,7 @@ export default function ModelFitPreviewPage() {
                       {weightColumns.map((col, colIndex) => (
                         <div
                           key={col.key}
-                          className={`${styles.weightHead} ${hoveredCell?.colKey === col.key ? styles.colHighlight : ''} ${colIndex === weightColumns.length - 1 ? styles.lastCol : ''}`}
+                          className={`${styles.weightHead} ${colIndex === weightColumns.length - 1 ? styles.lastCol : ''}`}
                         >
                           <div className={styles.weightTitle}>{col.label}</div>
                           <div className={styles.weightMeta}>
@@ -928,9 +1434,8 @@ export default function ModelFitPreviewPage() {
 
                       {displayRows.flatMap((row, rowIndex) => {
                         const rowKey = `${row.osLabel ?? ''}-${row.socName}`;
-                        const isRowHighlighted = hoveredCell?.rowKey === rowKey;
                         const isLastRow = rowIndex === displayRows.length - 1;
-                        const rowHeadClass = `${styles.rowCell} ${isRowHighlighted ? styles.rowHighlight : ''} ${isLastRow ? styles.lastRow : ''}`;
+                        const rowHeadClass = `${styles.rowCell} ${isLastRow ? styles.lastRow : ''}`;
 
                         return [
                           <div key={`${rowKey}__head`} className={rowHeadClass}>
@@ -946,6 +1451,14 @@ export default function ModelFitPreviewPage() {
                                 );
                               })()}
                               <strong className={styles.rowName}>{row.socName}</strong>
+                              <button
+                                type="button"
+                                className={styles.rowExportButton}
+                                onClick={() => handleExportRow(row)}
+                                aria-label={`打开 ${row.socName} 报表`}
+                              >
+                                报表
+                              </button>
                             </div>
                             {'osLabel' in row && row.osLabel ? (
                               <div className={styles.rowMeta}>{row.osLabel}</div>
@@ -961,23 +1474,25 @@ export default function ModelFitPreviewPage() {
                                 <div
                                   key={`${rowKey}__${col.key}`}
                                   className={cellBaseClass}
-                                  onMouseEnter={() => setHoveredCell({ rowKey, colKey: col.key })}
-                                  onMouseLeave={() => setHoveredCell(null)}
                                 />
                               );
                             }
 
-                            const prefill = cell.prefillMax;
-                            const decode = cell.decodeMax;
+                            const prefill = cell.prefillDisplay;
+                            const decode = cell.decodeDisplay;
+                            const decodeRaw = cell.decodeRawDisplay;
+                            const isBatchMetric = cell.metricBasis === 'decode_div_batch';
                             return (
                               <button
                                 key={`${rowKey}__${col.key}`}
                                 type="button"
                                 className={`${cellBaseClass} ${buildCellClass(decode)} ${styles.speedCellClickable} ${styles.matrixButtonCell}`}
                                 onClick={() => handleCellClick(cell, col.label)}
-                                onMouseEnter={() => setHoveredCell({ rowKey, colKey: col.key })}
-                                onMouseLeave={() => setHoveredCell(null)}
-                                aria-label={`${row.socName} ${col.label} prefill ${formatSpeed(prefill)} decode ${formatSpeed(decode)}`}
+                                aria-label={
+                                  isBatchMetric
+                                    ? `${row.socName} ${col.label} prefill ${formatSpeed(prefill)} decode ${formatSpeed(decodeRaw)} decode per batch ${formatSpeed(decode)}`
+                                    : `${row.socName} ${col.label} prefill ${formatSpeed(prefill)} decode ${formatSpeed(decode)}`
+                                }
                               >
                                 <div className={styles.metricLine}>
                                   <span className={styles.metricLabel}>Prefill</span>
@@ -988,11 +1503,19 @@ export default function ModelFitPreviewPage() {
                                 <div className={styles.metricLine}>
                                   <span className={styles.metricLabel}>Decode</span>
                                   <strong className={styles.metricValue}>
-                                    {formatSpeed(decode)}
+                                    {formatSpeed(isBatchMetric ? decodeRaw : decode)}
                                   </strong>
                                 </div>
+                                {isBatchMetric ? (
+                                  <div className={styles.metricLine}>
+                                    <span className={styles.metricLabel}>Decode / Batch</span>
+                                    <strong className={styles.metricValue}>
+                                      {formatSpeed(decode)}
+                                    </strong>
+                                  </div>
+                                ) : null}
                                 <div className={styles.noteTag}>
-                                  {cell.sampleCount}次测评
+                                  {getCellFooterNote(cell)}
                                 </div>
                               </button>
                             );
@@ -1009,20 +1532,30 @@ export default function ModelFitPreviewPage() {
             <section className={styles.legend}>
               <div className={styles.legendItem}>
                 <span className={`${styles.legendSwatch} ${styles.cellStrong}`} />
-                <span>Decode ≥ 35</span>
+                <span>着色值 ≥ 35</span>
               </div>
               <div className={styles.legendItem}>
                 <span className={`${styles.legendSwatch} ${styles.cellGood}`} />
-                <span>Decode 15-34.9</span>
+                <span>着色值 15-34.9</span>
               </div>
               <div className={styles.legendItem}>
                 <span className={`${styles.legendSwatch} ${styles.cellTight}`} />
-                <span>Decode 4-14.9</span>
+                <span>着色值 6-14.9</span>
               </div>
               <div className={styles.legendItem}>
                 <span className={`${styles.legendSwatch} ${styles.cellWeak}`} />
-                <span>Decode &lt; 4</span>
+                <span>着色值 &lt; 6</span>
               </div>
+            </section>
+
+            <section className={styles.notes}>
+              <h3 className={styles.notesTitle}>统计与导出说明</h3>
+              <ul className={styles.notesList}>
+                <li>非 batch 单元格显示 top 10% 位次的 Prefill / Decode。</li>
+                <li>batch 单元格同时显示 Decode 总值和 Decode / Batch，颜色按 Decode / Batch 计算。</li>
+                <li>单元格着色值低于 6 时标红，6-14.9 为黄色，15 以上继续按原来的绿色区间显示。</li>
+                <li>每个 SoC header column 都有导出按钮，导出的报表首字段是 Headers，对应这个 SoC；没有统计到的权重不会写进报表。</li>
+              </ul>
             </section>
           </>
         )}

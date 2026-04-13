@@ -62,8 +62,70 @@ interface RecordsQuery {
   limit?: string;
 }
 
+interface LeaderboardAccumulator {
+  os: string;
+  modelSha256: string;
+  modelName: string;
+  modelFileName: string;
+  modelSizeB: number | null;
+  quantization: string | null;
+  socName: string;
+  socBrand: string;
+  backend: string;
+  isBatch: boolean;
+  batchCount: number;
+  sampleCount: number;
+  decodeValues: number[];
+  prefillValues: number[];
+  decodeTotal: number;
+  prefillTotal: number;
+  decodeMax: number | null;
+  prefillMax: number | null;
+}
+
 function sha256(input: string): string {
   return createHash('sha256').update(input).digest('hex');
+}
+
+function leaderboardGroupKey(input: {
+  os: string;
+  modelSha256: string;
+  modelName: string;
+  modelFileName: string;
+  modelSizeB: number | null;
+  quantization: string | null;
+  socName: string;
+  socBrand: string;
+  backend: string;
+  isBatch: boolean;
+  batchCount: number;
+}): string {
+  return [
+    input.os,
+    input.modelSha256,
+    input.modelName,
+    input.modelFileName,
+    input.modelSizeB ?? '',
+    input.quantization ?? '',
+    input.socName,
+    input.socBrand,
+    input.backend,
+    input.isBatch ? '1' : '0',
+    input.batchCount,
+  ].join('\u0001');
+}
+
+function roundSpeed(value: number | null): number | null {
+  if (value === null) return null;
+  return Math.round(value * 100) / 100;
+}
+
+function pickTopDecileValue(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => b - a);
+  // 样本少于 10 条时，这里会自然回到第 1 名，也就是当前可见的最高分。
+  const index = Math.max(0, Math.ceil(sorted.length * 0.1) - 1);
+  return sorted[index] ?? sorted[sorted.length - 1] ?? null;
 }
 
 function stripOsVersion(version: string | undefined): string | null {
@@ -148,7 +210,7 @@ export class TelemetryService {
   }
 
   async leaderboard(query: LeaderboardQuery): Promise<any[]> {
-    const limit = Math.min(parseInt(query.limit ?? '100', 10) || 100, 500);
+    const limit = Math.min(parseInt(query.limit ?? '100', 10) || 100, 5000);
 
     const where: any = {};
     if (query.socName) where.socName = query.socName.toLowerCase().trim();
@@ -158,39 +220,95 @@ export class TelemetryService {
     if (query.isBatch !== undefined) where.isBatch = query.isBatch === 'true';
     if (query.appVersion) where.appVersion = query.appVersion.trim();
 
-    // Group by (os, modelSha256, socName, backend, isBatch) and compute aggregates
-    const groups = await this.prisma.telemetryPerf.groupBy({
-      by: ['os', 'modelSha256', 'modelName', 'modelFileName', 'modelSizeB', 'quantization', 'socName', 'socBrand', 'backend', 'isBatch', 'batchCount'],
+    const rows = await this.prisma.telemetryPerf.findMany({
       where,
-      _count: { id: true },
-      _max: { decodeSpeed: true, prefillSpeed: true },
-      _avg: { decodeSpeed: true, prefillSpeed: true },
-      orderBy: { _avg: { decodeSpeed: 'desc' } },
-      take: limit,
+      select: {
+        os: true,
+        modelSha256: true,
+        modelName: true,
+        modelFileName: true,
+        modelSizeB: true,
+        quantization: true,
+        socName: true,
+        socBrand: true,
+        backend: true,
+        isBatch: true,
+        batchCount: true,
+        decodeSpeed: true,
+        prefillSpeed: true,
+      },
     });
 
-    return groups.map((group) => ({
-      os: group.os,
-      modelSha256: group.modelSha256,
-      modelName: group.modelName,
-      modelFileName: group.modelFileName,
-      modelSizeB: group.modelSizeB,
-      quantization: group.quantization,
-      socName: group.socName,
-      socBrand: group.socBrand,
-      backend: group.backend,
-      isBatch: group.isBatch,
-      batchCount: group.batchCount,
-      sampleCount: group._count.id,
-      decodeSpeed: {
-        avg: Math.round((group._avg.decodeSpeed ?? 0) * 100) / 100,
-        max: group._max.decodeSpeed,
-      },
-      prefillSpeed: {
-        avg: Math.round((group._avg.prefillSpeed ?? 0) * 100) / 100,
-        max: group._max.prefillSpeed,
-      },
-    }));
+    const groups = new Map<string, LeaderboardAccumulator>();
+    for (const row of rows) {
+      const key = leaderboardGroupKey(row);
+      const existing = groups.get(key);
+      if (existing) {
+        existing.sampleCount += 1;
+        existing.decodeValues.push(row.decodeSpeed);
+        existing.prefillValues.push(row.prefillSpeed);
+        existing.decodeTotal += row.decodeSpeed;
+        existing.prefillTotal += row.prefillSpeed;
+        existing.decodeMax = existing.decodeMax === null ? row.decodeSpeed : Math.max(existing.decodeMax, row.decodeSpeed);
+        existing.prefillMax = existing.prefillMax === null ? row.prefillSpeed : Math.max(existing.prefillMax, row.prefillSpeed);
+        continue;
+      }
+
+      groups.set(key, {
+        os: row.os,
+        modelSha256: row.modelSha256,
+        modelName: row.modelName,
+        modelFileName: row.modelFileName,
+        modelSizeB: row.modelSizeB,
+        quantization: row.quantization,
+        socName: row.socName,
+        socBrand: row.socBrand,
+        backend: row.backend,
+        isBatch: row.isBatch,
+        batchCount: row.batchCount,
+        sampleCount: 1,
+        decodeValues: [row.decodeSpeed],
+        prefillValues: [row.prefillSpeed],
+        decodeTotal: row.decodeSpeed,
+        prefillTotal: row.prefillSpeed,
+        decodeMax: row.decodeSpeed,
+        prefillMax: row.prefillSpeed,
+      });
+    }
+
+    return Array.from(groups.values())
+      .map((group) => ({
+        os: group.os,
+        modelSha256: group.modelSha256,
+        modelName: group.modelName,
+        modelFileName: group.modelFileName,
+        modelSizeB: group.modelSizeB,
+        quantization: group.quantization,
+        socName: group.socName,
+        socBrand: group.socBrand,
+        backend: group.backend,
+        isBatch: group.isBatch,
+        batchCount: group.batchCount,
+        sampleCount: group.sampleCount,
+        decodeSpeed: {
+          avg: roundSpeed(group.decodeTotal / group.sampleCount) ?? 0,
+          max: roundSpeed(group.decodeMax),
+          top10: roundSpeed(pickTopDecileValue(group.decodeValues)),
+        },
+        prefillSpeed: {
+          avg: roundSpeed(group.prefillTotal / group.sampleCount) ?? 0,
+          max: roundSpeed(group.prefillMax),
+          top10: roundSpeed(pickTopDecileValue(group.prefillValues)),
+        },
+      }))
+      .sort((a, b) => {
+        const top10Diff = (b.decodeSpeed.top10 ?? b.decodeSpeed.avg) - (a.decodeSpeed.top10 ?? a.decodeSpeed.avg);
+        if (top10Diff !== 0) return top10Diff;
+        const avgDiff = b.decodeSpeed.avg - a.decodeSpeed.avg;
+        if (avgDiff !== 0) return avgDiff;
+        return b.sampleCount - a.sampleCount;
+      })
+      .slice(0, limit);
   }
 
   async filters(): Promise<{ appVersions: string[] }> {
