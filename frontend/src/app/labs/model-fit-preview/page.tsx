@@ -1,5 +1,6 @@
 'use client';
 
+import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ThemeSwitcher } from '@/components';
@@ -615,6 +616,10 @@ export default function ModelFitPreviewPage() {
     return platforms.flatMap((p) => p.rows.map((r) => ({ ...r, osLabel: undefined })));
   }, [platforms, activeTab]);
 
+  const matrixGridStyle = useMemo<CSSProperties>(() => ({
+    gridTemplateColumns: `var(--soc-column-width) repeat(${Math.max(weightColumns.length, 1)}, var(--metric-column-width))`,
+  }), [weightColumns.length]);
+
   const handleCellClick = useCallback(async (cell: MatrixCell, weightLabel: string) => {
     const info = {
       socName: cell.socName,
@@ -853,9 +858,9 @@ export default function ModelFitPreviewPage() {
               ) : null}
 
               {/* APP version */}
-              {appVersions.length > 1 ? (
+              {appVersions.length > 0 ? (
                 <div className={styles.tabRow}>
-                  <span className={styles.filterLabel}>版本</span>
+                  <span className={styles.filterLabel}>APP 版本</span>
                   <button
                     type="button"
                     className={`${styles.tabButtonSmall} ${selectedVersion === 'all' ? styles.tabButtonSelected : ''}`}
@@ -905,96 +910,96 @@ export default function ModelFitPreviewPage() {
 
                 <section className={styles.tableSection}>
                   <div className={styles.tableWrap}>
-                    <table className={styles.table}>
-                      <thead>
-                        <tr>
-                          <th className={styles.rowHead}>SoC</th>
-                          {weightColumns.map((col) => (
-                            <th
-                              key={col.key}
-                              className={`${styles.weightHead} ${hoveredCell?.colKey === col.key ? styles.colHighlight : ''}`}
-                            >
-                              <div className={styles.weightTitle}>{col.label}</div>
-                              <div className={styles.weightMeta}>
-                                {col.modelTag !== 'Chat' ? <span className={styles.modelTag}>{col.modelTag}</span> : null}
-                                {col.isBatch ? <span className={styles.batchTag}>×{col.batchCount}</span> : null}
-                                {col.quant} · {col.backend}
-                              </div>
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
+                    <div className={styles.matrixGrid} style={matrixGridStyle}>
+                      <div className={`${styles.rowHead} ${styles.cornerHead}`}>SoC</div>
+                      {weightColumns.map((col, colIndex) => (
+                        <div
+                          key={col.key}
+                          className={`${styles.weightHead} ${hoveredCell?.colKey === col.key ? styles.colHighlight : ''} ${colIndex === weightColumns.length - 1 ? styles.lastCol : ''}`}
+                        >
+                          <div className={styles.weightTitle}>{col.label}</div>
+                          <div className={styles.weightMeta}>
+                            {col.modelTag !== 'Chat' ? <span className={styles.modelTag}>{col.modelTag}</span> : null}
+                            {col.isBatch ? <span className={styles.batchTag}>×{col.batchCount}</span> : null}
+                            {col.quant} · {col.backend}
+                          </div>
+                        </div>
+                      ))}
 
-                      <tbody>
-                        {displayRows.map((row) => {
-                          const rowKey = `${row.osLabel ?? ''}-${row.socName}`;
-                          const isRowHighlighted = hoveredCell?.rowKey === rowKey;
-                          return (
-                            <tr key={rowKey}>
-                              <th className={`${styles.rowCell} ${isRowHighlighted ? styles.rowHighlight : ''}`}>
-                                <div className={styles.rowTopline}>
-                                  {(() => {
-                                    const brand = inferBrand(row.socName, row.socBrand);
-                                    if (brand === 'unknown') return null;
-                                    return (
-                                      <span className={styles.vendorTag}>
-                                        <BrandIcon brand={brand} className={styles.vendorIcon} />
-                                        {capitalizeBrand(brand)}
-                                      </span>
-                                    );
-                                  })()}
-                                  <strong className={styles.rowName}>{row.socName}</strong>
-                                </div>
-                                {'osLabel' in row && row.osLabel ? (
-                                  <div className={styles.rowMeta}>{row.osLabel}</div>
-                                ) : null}
-                              </th>
+                      {displayRows.flatMap((row, rowIndex) => {
+                        const rowKey = `${row.osLabel ?? ''}-${row.socName}`;
+                        const isRowHighlighted = hoveredCell?.rowKey === rowKey;
+                        const isLastRow = rowIndex === displayRows.length - 1;
+                        const rowHeadClass = `${styles.rowCell} ${isRowHighlighted ? styles.rowHighlight : ''} ${isLastRow ? styles.lastRow : ''}`;
 
-                              {weightColumns.map((col) => {
-                                const cell = row.cells[col.key];
-                                if (!cell) {
-                                  return (
-                                    <td
-                                      key={col.key}
-                                      className={styles.speedCell}
-                                      onMouseEnter={() => setHoveredCell({ rowKey, colKey: col.key })}
-                                      onMouseLeave={() => setHoveredCell(null)}
-                                    />
-                                  );
-                                }
-                                const prefill = cell.prefillMax;
-                                const decode = cell.decodeMax;
+                        return [
+                          <div key={`${rowKey}__head`} className={rowHeadClass}>
+                            <div className={styles.rowTopline}>
+                              {(() => {
+                                const brand = inferBrand(row.socName, row.socBrand);
+                                if (brand === 'unknown') return null;
                                 return (
-                                  <td
-                                    key={col.key}
-                                    className={`${styles.speedCell} ${buildCellClass(decode)} ${styles.speedCellClickable}`}
-                                    onClick={() => handleCellClick(cell, col.label)}
-                                    onMouseEnter={() => setHoveredCell({ rowKey, colKey: col.key })}
-                                    onMouseLeave={() => setHoveredCell(null)}
-                                  >
-                                    <div className={styles.metricLine}>
-                                      <span className={styles.metricLabel}>Prefill</span>
-                                      <strong className={styles.metricValue}>
-                                        {formatSpeed(prefill)}
-                                      </strong>
-                                    </div>
-                                    <div className={styles.metricLine}>
-                                      <span className={styles.metricLabel}>Decode</span>
-                                      <strong className={styles.metricValue}>
-                                        {formatSpeed(decode)}
-                                      </strong>
-                                    </div>
-                                    <div className={styles.noteTag}>
-                                      {cell.sampleCount}次测评
-                                    </div>
-                                  </td>
+                                  <span className={styles.vendorTag}>
+                                    <BrandIcon brand={brand} className={styles.vendorIcon} />
+                                    {capitalizeBrand(brand)}
+                                  </span>
                                 );
-                              })}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                              })()}
+                              <strong className={styles.rowName}>{row.socName}</strong>
+                            </div>
+                            {'osLabel' in row && row.osLabel ? (
+                              <div className={styles.rowMeta}>{row.osLabel}</div>
+                            ) : null}
+                          </div>,
+                          ...weightColumns.map((col, colIndex) => {
+                            const cell = row.cells[col.key];
+                            const isLastCol = colIndex === weightColumns.length - 1;
+                            const cellBaseClass = `${styles.speedCell} ${isLastCol ? styles.lastCol : ''} ${isLastRow ? styles.lastRow : ''}`;
+
+                            if (!cell) {
+                              return (
+                                <div
+                                  key={`${rowKey}__${col.key}`}
+                                  className={cellBaseClass}
+                                  onMouseEnter={() => setHoveredCell({ rowKey, colKey: col.key })}
+                                  onMouseLeave={() => setHoveredCell(null)}
+                                />
+                              );
+                            }
+
+                            const prefill = cell.prefillMax;
+                            const decode = cell.decodeMax;
+                            return (
+                              <button
+                                key={`${rowKey}__${col.key}`}
+                                type="button"
+                                className={`${cellBaseClass} ${buildCellClass(decode)} ${styles.speedCellClickable} ${styles.matrixButtonCell}`}
+                                onClick={() => handleCellClick(cell, col.label)}
+                                onMouseEnter={() => setHoveredCell({ rowKey, colKey: col.key })}
+                                onMouseLeave={() => setHoveredCell(null)}
+                                aria-label={`${row.socName} ${col.label} prefill ${formatSpeed(prefill)} decode ${formatSpeed(decode)}`}
+                              >
+                                <div className={styles.metricLine}>
+                                  <span className={styles.metricLabel}>Prefill</span>
+                                  <strong className={styles.metricValue}>
+                                    {formatSpeed(prefill)}
+                                  </strong>
+                                </div>
+                                <div className={styles.metricLine}>
+                                  <span className={styles.metricLabel}>Decode</span>
+                                  <strong className={styles.metricValue}>
+                                    {formatSpeed(decode)}
+                                  </strong>
+                                </div>
+                                <div className={styles.noteTag}>
+                                  {cell.sampleCount}次测评
+                                </div>
+                              </button>
+                            );
+                          }),
+                        ];
+                      })}
+                    </div>
                   </div>
                 </section>
               </>
