@@ -779,6 +779,21 @@
   word-break: break-word;
 }
 
+.recordPrimary {
+  display: block;
+  color: var(--color-foreground);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.recordSecondary {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-secondary);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+}
+
 @media (max-width: 920px) {
   .container {
     padding: 16px 10px 28px;

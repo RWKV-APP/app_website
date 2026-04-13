@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
+    "@naverpay/device-info": "^1.1.0",
     "jotai": "^2.0.0",
     "monaco-editor": "^0.55.1",
     "next": "^14.0.0",

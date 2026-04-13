@@ -129,6 +129,9 @@ importers:
       '@monaco-editor/react':
         specifier: ^4.7.0
         version: 4.7.0(monaco-editor@0.55.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@naverpay/device-info':
+        specifier: ^1.1.0
+        version: 1.1.0
       jotai:
         specifier: ^2.0.0
         version: 2.16.1(@babel/core@7.28.5)(@babel/template@7.27.2)(@types/react@18.3.27)(react@18.3.1)
@@ -532,6 +535,9 @@ packages:
 
   '@napi-rs/wasm-runtime@0.2.12':
     resolution: {integrity: sha512-ZVWUcfwY4E/yPitQJl481FjFo3K22D6qF0DuFH6Y/nbnE11GY5uguDxZMGXPQ8WQ0128MXQD7TnfHyK4oWoIJQ==}
+
+  '@naverpay/device-info@1.1.0':
+    resolution: {integrity: sha512-EmU+qeX04uX+ZCCL6DaaNXrt99cV2ukJQIvxJPqFtxO9+HfP1LRo5qfj/k3S+C7IIPPiUmfzK6+XcnToTimNLw==}
 
   '@nestjs/cli@10.4.9':
     resolution: {integrity: sha512-s8qYd97bggqeK7Op3iD49X2MpFtW4LVNLAwXFkfbRxKME6IYT7X0muNTJ2+QfI8hpbNx9isWkrLWIp+g5FOhiA==}
@@ -4986,6 +4992,8 @@ snapshots:
       '@emnapi/runtime': 1.7.1
       '@tybys/wasm-util': 0.10.1
     optional: true
+
+  '@naverpay/device-info@1.1.0': {}
 
   '@nestjs/cli@10.4.9':
     dependencies:

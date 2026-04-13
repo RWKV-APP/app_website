@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ThemeSwitcher } from '@/components';
 import { fetchAdminSession } from '@/utils/api';
+import { resolveAndroidSocName, resolveAppleDevicePresentation } from '@/utils/appleDeviceInfo';
 import styles from './page.module.css';
 
 // ---------------------------------------------------------------------------
@@ -20,6 +21,7 @@ interface LeaderboardEntry {
   quantization: string | null;
   socName: string;
   socBrand: string;
+  deviceModels: string[];
   backend: string;
   isBatch: boolean;
   batchCount: number;
@@ -86,6 +88,7 @@ interface MatrixCell {
 interface MatrixRow {
   socName: string;
   socBrand: string;
+  deviceModels: string[];
   cells: Record<string, MatrixCell>; // key = modelSha256
 }
 
@@ -109,6 +112,18 @@ interface SidebarState {
     os: string;
     label: string;
   } | null;
+}
+
+interface SocDisplayInfo {
+  brand: string;
+  primaryLabel: string;
+  secondaryLabel: string | null;
+  metaLabel: string | null;
+}
+
+interface StackedCellLabel {
+  primary: string;
+  secondary: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -199,6 +214,10 @@ function inferBrand(socName: string, socBrand: string): string {
   if (lower.includes('intel') || lower.includes('arc ')) return 'intel';
   if (
     lower.includes('apple') ||
+    lower.includes('iphone') ||
+    lower.includes('ipad') ||
+    lower.includes('ipod') ||
+    /^a\d+(?:\s+(?:pro|max|bionic))?$/.test(lower.trim()) ||
     lower.includes(' m1') ||
     lower.includes(' m2') ||
     lower.includes(' m3') ||
@@ -257,6 +276,125 @@ function capitalizeBrand(brand: string): string {
     unknown: '',
   };
   return map[brand.toLowerCase()] ?? brand.charAt(0).toUpperCase() + brand.slice(1);
+}
+
+function getSocDisplayInfo(input: {
+  socName: string;
+  socBrand?: string | null;
+  deviceModel?: string | null;
+  deviceModels?: string[] | null;
+}): SocDisplayInfo {
+  const applePresentation = resolveAppleDevicePresentation({
+    socName: input.socName,
+    deviceModel: input.deviceModel,
+  });
+
+  if (applePresentation) {
+    const primaryLabel =
+      applePresentation.socName ?? applePresentation.modelName ?? applePresentation.identifier ?? input.socName;
+    const secondaryLabel =
+      applePresentation.socName && applePresentation.modelName && applePresentation.modelName !== primaryLabel
+        ? applePresentation.modelName
+        : null;
+    const metaLabel =
+      applePresentation.identifier &&
+      applePresentation.identifier !== primaryLabel &&
+      applePresentation.identifier !== secondaryLabel
+        ? applePresentation.identifier
+        : null;
+
+    return {
+      brand: 'apple',
+      primaryLabel,
+      secondaryLabel,
+      metaLabel,
+    };
+  }
+
+  const androidSocName = resolveAndroidSocName(input.socName);
+  if (androidSocName) {
+    return {
+      brand: inferBrand(input.socName, input.socBrand ?? 'unknown'),
+      primaryLabel: androidSocName,
+      secondaryLabel: null,
+      metaLabel: null,
+    };
+  }
+
+  return {
+    brand: inferBrand(input.socName, input.socBrand ?? 'unknown'),
+    primaryLabel: input.socName,
+    secondaryLabel: null,
+    metaLabel: null,
+  };
+}
+
+function formatSocFilterLabel(input: {
+  socName: string;
+  socBrand?: string | null;
+  deviceModel?: string | null;
+  deviceModels?: string[] | null;
+}): string {
+  const display = getSocDisplayInfo(input);
+  return [display.primaryLabel, display.secondaryLabel].filter(Boolean).join(' · ') || display.primaryLabel;
+}
+
+function getRecordDeviceLabel(record: RecordEntry): StackedCellLabel {
+  const applePresentation = resolveAppleDevicePresentation({
+    socName: record.socName,
+    deviceModel: record.deviceModel,
+  });
+
+  if (applePresentation) {
+    const primary =
+      applePresentation.modelName ?? record.deviceModel ?? applePresentation.identifier ?? '—';
+    const secondary =
+      applePresentation.identifier && applePresentation.identifier !== primary
+        ? applePresentation.identifier
+        : null;
+
+    return { primary, secondary };
+  }
+
+  return {
+    primary: record.deviceModel || '—',
+    secondary: null,
+  };
+}
+
+function getRecordHardwareLabel(record: RecordEntry): StackedCellLabel {
+  const applePresentation = resolveAppleDevicePresentation({
+    socName: record.socName,
+    deviceModel: record.deviceModel,
+  });
+  const rawHardwareSummary = formatHardwareSummary(record.cpuName, record.gpuName);
+
+  if (applePresentation?.socName) {
+    return {
+      primary: applePresentation.socName,
+      secondary:
+        rawHardwareSummary !== '—' && rawHardwareSummary !== applePresentation.socName
+          ? rawHardwareSummary
+          : null,
+    };
+  }
+
+  const androidSocName = resolveAndroidSocName(record.socName);
+  if (androidSocName) {
+    const rawSocName = record.socName.trim().toUpperCase();
+    const fallbackSecondary =
+      rawHardwareSummary !== '—' && rawHardwareSummary !== androidSocName ? rawHardwareSummary : null;
+
+    return {
+      primary: androidSocName,
+      secondary: rawSocName !== androidSocName ? rawSocName : fallbackSecondary,
+    };
+  }
+
+  return {
+    primary: rawHardwareSummary,
+    secondary: null,
+  };
 }
 
 function formatSpeed(value: number | null): string {
@@ -803,10 +941,16 @@ function buildPlatforms(
         bySoc.set(entry.socName, {
           socName: entry.socName,
           socBrand: entry.socBrand,
+          deviceModels: [],
           cells: {},
         });
       }
       const row = bySoc.get(entry.socName)!;
+      for (const deviceModel of entry.deviceModels ?? []) {
+        if (deviceModel && !row.deviceModels.includes(deviceModel)) {
+          row.deviceModels.push(deviceModel);
+        }
+      }
       const ck = columnKey(entry);
       const existing = row.cells[ck];
       const display = getDisplaySpeeds(entry);
@@ -1099,7 +1243,9 @@ export default function ModelFitPreviewPage() {
       sanitizeFileNamePart(selectedModelTag),
       sanitizeFileNamePart(selectedSize),
       sanitizeFileNamePart(selectedBrand),
-      sanitizeFileNamePart(selectedSoc),
+      sanitizeFileNamePart(
+        selectedSoc === 'all' ? selectedSoc : formatSocFilterLabel({ socName: selectedSoc }),
+      ),
       sanitizeFileNamePart(selectedVersion === 'all' ? 'all-versions' : `v-${selectedVersion}`),
       new Date().toISOString().replace(/[:.]/g, '-'),
     ];
@@ -1107,29 +1253,40 @@ export default function ModelFitPreviewPage() {
   }, [activeTab, selectedBatch, selectedModelTag, selectedSize, selectedBrand, selectedSoc, selectedVersion]);
 
   const handleExportRow = useCallback((row: DisplayRow) => {
+    const socDisplay = getSocDisplayInfo({
+      socName: row.socName,
+      socBrand: row.socBrand,
+      deviceModels: row.deviceModels,
+    });
     const platform = row.osLabel ?? (OS_LABELS[row.osId] ?? row.osId);
-    const vendor = capitalizeBrand(inferBrand(row.socName, row.socBrand)) || '—';
+    const vendor = capitalizeBrand(socDisplay.brand) || '—';
     const visibleColumns = weightColumns.filter((column) => row.cells[column.key]);
     const rowEntries = filteredData
       .filter((entry) => entry.socName === row.socName && entry.os === row.osId)
       .filter((entry) => visibleColumns.some((column) => column.key === columnKey(entry)));
-    const filename = `${exportFileBaseName}__${sanitizeFileNamePart(row.socName)}.html`;
+    const filename = `${exportFileBaseName}__${sanitizeFileNamePart(socDisplay.primaryLabel)}.html`;
     const generatedAt = new Date().toISOString();
-    const filters = [
+    const filters: Array<{ label: string; value: string }> = [
       { label: 'Platform', value: platform },
       { label: 'Batch', value: selectedBatch === 'all' ? '不限制' : `x${selectedBatch}` },
       { label: 'Type', value: selectedModelTag === 'all' ? '不限制' : selectedModelTag },
       { label: 'Weight', value: selectedSize === 'all' ? '不限制' : selectedSize },
-      { label: 'Chip', value: row.socName },
+      { label: 'Chip', value: socDisplay.primaryLabel },
       { label: 'App Version', value: selectedVersion === 'all' ? '不限制' : selectedVersion },
     ];
+    if (socDisplay.secondaryLabel) {
+      filters.splice(5, 0, { label: 'Device', value: socDisplay.secondaryLabel });
+    }
+    if (socDisplay.metaLabel) {
+      filters.splice(6, 0, { label: 'Apple ID', value: socDisplay.metaLabel });
+    }
     if (selectedBrand !== 'all') {
       filters.splice(4, 0, { label: 'Vendor Filter', value: capitalizeBrand(selectedBrand) });
     }
 
     const html = buildSocReportHtml({
       filename,
-      title: row.socName,
+      title: socDisplay.primaryLabel,
       generatedAt,
       platform,
       vendor,
@@ -1178,13 +1335,14 @@ export default function ModelFitPreviewPage() {
 
   const handleCellClick = useCallback(
     async (cell: MatrixCell, weightLabel: string) => {
+      const socLabel = formatSocFilterLabel({ socName: cell.socName });
       const info = {
         socName: cell.socName,
         modelSha256: cell.modelSha256,
         backend: cell.backend,
         isBatch: cell.isBatch,
         os: cell.os,
-        label: `${cell.socName} × ${weightLabel}`,
+        label: `${socLabel} × ${weightLabel}`,
       };
       setSidebar({ open: true, loading: true, records: [], cellInfo: info });
 
@@ -1412,8 +1570,9 @@ export default function ModelFitPreviewPage() {
                       type="button"
                       className={`${styles.tabButtonSmall} ${selectedSoc === soc ? styles.tabButtonSelected : ''}`}
                       onClick={() => setSelectedSoc(soc)}
+                      title={soc}
                     >
-                      {soc}
+                      {formatSocFilterLabel({ socName: soc })}
                     </button>
                   ))}
                 </div>
@@ -1499,33 +1658,41 @@ export default function ModelFitPreviewPage() {
                         const rowKey = `${row.osLabel ?? ''}-${row.socName}`;
                         const isLastRow = rowIndex === displayRows.length - 1;
                         const rowHeadClass = `${styles.rowCell} ${isLastRow ? styles.lastRow : ''}`;
+                        const socDisplay = getSocDisplayInfo({
+                          socName: row.socName,
+                          socBrand: row.socBrand,
+                          deviceModels: row.deviceModels,
+                        });
+                        const rowMeta = [row.osLabel, socDisplay.metaLabel].filter(Boolean).join(' · ');
+                        const ariaSocLabel = formatSocFilterLabel({
+                          socName: row.socName,
+                          socBrand: row.socBrand,
+                          deviceModels: row.deviceModels,
+                        });
 
                         return [
                           <div key={`${rowKey}__head`} className={rowHeadClass}>
                             <div className={styles.rowTopline}>
-                              {(() => {
-                                const brand = inferBrand(row.socName, row.socBrand);
-                                if (brand === 'unknown') return null;
-                                return (
-                                  <span className={styles.vendorTag}>
-                                    <BrandIcon brand={brand} className={styles.vendorIcon} />
-                                    {capitalizeBrand(brand)}
-                                  </span>
-                                );
-                              })()}
-                              <strong className={styles.rowName}>{row.socName}</strong>
+                              {socDisplay.brand !== 'unknown' ? (
+                                <span className={styles.vendorTag}>
+                                  <BrandIcon brand={socDisplay.brand} className={styles.vendorIcon} />
+                                  {capitalizeBrand(socDisplay.brand)}
+                                </span>
+                              ) : null}
+                              <strong className={styles.rowName}>{socDisplay.primaryLabel}</strong>
                               <button
                                 type="button"
                                 className={styles.rowExportButton}
                                 onClick={() => handleExportRow(row)}
-                                aria-label={`打开 ${row.socName} 报表`}
+                                aria-label={`打开 ${ariaSocLabel} 报表`}
                               >
                                 报表
                               </button>
                             </div>
-                            {'osLabel' in row && row.osLabel ? (
-                              <div className={styles.rowMeta}>{row.osLabel}</div>
+                            {socDisplay.secondaryLabel ? (
+                              <div className={styles.rowSubtitle}>{socDisplay.secondaryLabel}</div>
                             ) : null}
+                            {rowMeta ? <div className={styles.rowMeta}>{rowMeta}</div> : null}
                           </div>,
                           ...weightColumns.map((col, colIndex) => {
                             const cell = row.cells[col.key];
@@ -1553,8 +1720,8 @@ export default function ModelFitPreviewPage() {
                                 onClick={() => handleCellClick(cell, col.label)}
                                 aria-label={
                                   isBatchMetric
-                                    ? `${row.socName} ${col.label} prefill ${formatSpeed(prefill)} decode ${formatSpeed(decodeRaw)} decode per batch ${formatSpeed(decode)}`
-                                    : `${row.socName} ${col.label} prefill ${formatSpeed(prefill)} decode ${formatSpeed(decode)}`
+                                    ? `${ariaSocLabel} ${col.label} prefill ${formatSpeed(prefill)} decode ${formatSpeed(decodeRaw)} decode per batch ${formatSpeed(decode)}`
+                                    : `${ariaSocLabel} ${col.label} prefill ${formatSpeed(prefill)} decode ${formatSpeed(decode)}`
                                 }
                               >
                                 <div className={styles.metricLine}>
@@ -1659,6 +1826,8 @@ export default function ModelFitPreviewPage() {
                     : r.totalMemoryMb
                       ? `${(r.totalMemoryMb / 1024).toFixed(0)} GB`
                       : '—';
+                  const deviceLabel = getRecordDeviceLabel(r);
+                  const hardwareLabel = getRecordHardwareLabel(r);
                   return (
                     <div key={r.id} className={styles.recordRow}>
                       <span className={styles.recordColSpeed}>
@@ -1671,9 +1840,17 @@ export default function ModelFitPreviewPage() {
                         {r.backend}
                         {r.isBatch ? ` batch×${r.batchCount}` : ''}
                       </span>
-                      <span className={styles.recordColInfo}>{r.deviceModel || '—'}</span>
                       <span className={styles.recordColInfo}>
-                        {formatHardwareSummary(r.cpuName, r.gpuName)}
+                        <span className={styles.recordPrimary}>{deviceLabel.primary}</span>
+                        {deviceLabel.secondary ? (
+                          <span className={styles.recordSecondary}>{deviceLabel.secondary}</span>
+                        ) : null}
+                      </span>
+                      <span className={styles.recordColInfo}>
+                        <span className={styles.recordPrimary}>{hardwareLabel.primary}</span>
+                        {hardwareLabel.secondary ? (
+                          <span className={styles.recordSecondary}>{hardwareLabel.secondary}</span>
+                        ) : null}
                       </span>
                       <span className={styles.recordColInfo}>{memoryLabel}</span>
                       <span className={styles.recordColInfo}>{r.appVersion || '—'}</span>

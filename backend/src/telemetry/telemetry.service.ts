@@ -76,6 +76,7 @@ interface LeaderboardAccumulator {
   backend: string;
   isBatch: boolean;
   batchCount: number;
+  deviceModelCounts: Map<string, number>;
   sampleCount: number;
   decodeValues: number[];
   prefillValues: number[];
@@ -568,6 +569,12 @@ export class TelemetryService {
       const existing = groups.get(key);
       if (existing) {
         existing.sampleCount += 1;
+        if (row.deviceModel) {
+          existing.deviceModelCounts.set(
+            row.deviceModel,
+            (existing.deviceModelCounts.get(row.deviceModel) ?? 0) + 1,
+          );
+        }
         existing.decodeValues.push(row.decodeSpeed);
         existing.prefillValues.push(row.prefillSpeed);
         existing.decodeTotal += row.decodeSpeed;
@@ -589,6 +596,7 @@ export class TelemetryService {
         backend: row.backend,
         isBatch: row.isBatch,
         batchCount: row.batchCount,
+        deviceModelCounts: row.deviceModel ? new Map([[row.deviceModel, 1]]) : new Map(),
         sampleCount: 1,
         decodeValues: [row.decodeSpeed],
         prefillValues: [row.prefillSpeed],
@@ -609,6 +617,9 @@ export class TelemetryService {
         quantization: group.quantization,
         socName: group.socName,
         socBrand: group.socBrand,
+        deviceModels: Array.from(group.deviceModelCounts.entries())
+          .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+          .map(([deviceModel]) => deviceModel),
         backend: group.backend,
         isBatch: group.isBatch,
         batchCount: group.batchCount,
