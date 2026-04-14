@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { aos as aosDevices, isAndroidDeviceString } from '@naverpay/device-info';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -139,6 +140,8 @@ function stripOsVersion(version: string | undefined): string | null {
 
 interface TelemetryDeviceAlias {
   socBrand: string;
+  socName?: string;
+  deviceName?: string;
   cpuName?: string;
   gpuName?: string;
 }
@@ -219,6 +222,12 @@ interface NormalizedTelemetryRecordRow extends TelemetryRecordRow {
 }
 
 const TELEMETRY_DEVICE_ALIASES: Record<string, TelemetryDeviceAlias> = {
+  'sm-s942b': {
+    socBrand: 'samsung',
+    socName: 'Exynos 2600',
+    deviceName: 'Galaxy S26',
+    cpuName: 'Exynos 2600',
+  },
   'windows 11 home china': {
     socBrand: 'intel',
     cpuName: 'Intel(R) Core(TM) Ultra X7 358H',
@@ -248,6 +257,39 @@ function cleanOptionalString(value: string | null | undefined): string | null {
     .replace(/\s+/g, ' ')
     .trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeAndroidDeviceIdentifier(value: string | null | undefined): string | null {
+  const normalized = cleanOptionalString(value);
+  if (!normalized) return null;
+  return normalized.toUpperCase();
+}
+
+function resolveAndroidDatasetDeviceName(value: string | null | undefined): string | null {
+  const normalized = cleanOptionalString(value);
+  if (!normalized) return null;
+  if (isAndroidDeviceString(normalized)) {
+    return aosDevices[normalized];
+  }
+
+  const uppercase = normalizeAndroidDeviceIdentifier(normalized);
+  if (uppercase && isAndroidDeviceString(uppercase)) {
+    return aosDevices[uppercase];
+  }
+
+  return null;
+}
+
+function resolveDeviceDisplayName(
+  os: string | null | undefined,
+  deviceModel: string | null | undefined,
+): string | null {
+  const normalizedDeviceModel = cleanOptionalString(deviceModel);
+  if (!normalizedDeviceModel) return null;
+  const alias = TELEMETRY_DEVICE_ALIASES[normalizeLookupKey(normalizedDeviceModel)];
+  if (alias?.deviceName) return alias.deviceName;
+  if ((os ?? '').toLowerCase() !== 'android') return null;
+  return resolveAndroidDatasetDeviceName(normalizedDeviceModel);
 }
 
 function normalizeLookupKey(value: string | null | undefined): string {
@@ -316,6 +358,8 @@ function isGenericSocName(value: string | null | undefined, os: string): boolean
   const key = normalizeLookupKey(value);
   if (!key || key === 'unknown') return true;
   if (key === os) return true;
+  if (key.endsWith('_soc')) return true;
+  if (key === 'soc') return true;
   if (key.startsWith('windows ')) return true;
   if (key === 'windows') return true;
   if (key.startsWith('linux')) return true;
@@ -363,9 +407,10 @@ function normalizeTelemetryDevice(
   const gpuName = cleanOptionalString(device.gpuName) ?? alias?.gpuName ?? null;
   const deviceModel = cleanOptionalString(device.deviceModel);
   const normalizedBrandFromInput = normalizeBrand(device.socBrand);
+  const hasGenericSocName = isGenericSocName(rawSocName, os);
 
   let socBrand = normalizedBrandFromInput;
-  if (socBrand === 'unknown' && alias) {
+  if (alias && (socBrand === 'unknown' || hasGenericSocName)) {
     socBrand = alias.socBrand;
   }
   if (socBrand === 'unknown') {
@@ -373,6 +418,9 @@ function normalizeTelemetryDevice(
   }
 
   let canonicalSocName = rawSocName;
+  if (alias?.socName && hasGenericSocName) {
+    canonicalSocName = alias.socName;
+  } else
   if (shouldPreferGpuAsSocName(backend) && gpuName) {
     canonicalSocName = gpuName;
   } else if (isGenericSocName(canonicalSocName, os)) {
@@ -608,33 +656,46 @@ export class TelemetryService {
     }
 
     return Array.from(groups.values())
-      .map((group) => ({
-        os: group.os,
-        modelSha256: group.modelSha256,
-        modelName: group.modelName,
-        modelFileName: group.modelFileName,
-        modelSizeB: group.modelSizeB,
-        quantization: group.quantization,
-        socName: group.socName,
-        socBrand: group.socBrand,
-        deviceModels: Array.from(group.deviceModelCounts.entries())
+      .map((group) => {
+        const sortedDeviceModels = Array.from(group.deviceModelCounts.entries())
           .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
-          .map(([deviceModel]) => deviceModel),
-        backend: group.backend,
-        isBatch: group.isBatch,
-        batchCount: group.batchCount,
-        sampleCount: group.sampleCount,
-        decodeSpeed: {
-          avg: roundSpeed(group.decodeTotal / group.sampleCount) ?? 0,
-          max: roundSpeed(group.decodeMax),
-          top10: roundSpeed(pickTopDecileValue(group.decodeValues)),
-        },
-        prefillSpeed: {
-          avg: roundSpeed(group.prefillTotal / group.sampleCount) ?? 0,
-          max: roundSpeed(group.prefillMax),
-          top10: roundSpeed(pickTopDecileValue(group.prefillValues)),
-        },
-      }))
+          .map(([deviceModel]) => deviceModel);
+
+        const deviceDisplayNames = Array.from(
+          new Set(
+            sortedDeviceModels
+              .map((deviceModel) => resolveDeviceDisplayName(group.os, deviceModel))
+              .filter((value): value is string => Boolean(value)),
+          ),
+        );
+
+        return {
+          os: group.os,
+          modelSha256: group.modelSha256,
+          modelName: group.modelName,
+          modelFileName: group.modelFileName,
+          modelSizeB: group.modelSizeB,
+          quantization: group.quantization,
+          socName: group.socName,
+          socBrand: group.socBrand,
+          deviceModels: sortedDeviceModels,
+          deviceDisplayNames,
+          backend: group.backend,
+          isBatch: group.isBatch,
+          batchCount: group.batchCount,
+          sampleCount: group.sampleCount,
+          decodeSpeed: {
+            avg: roundSpeed(group.decodeTotal / group.sampleCount) ?? 0,
+            max: roundSpeed(group.decodeMax),
+            top10: roundSpeed(pickTopDecileValue(group.decodeValues)),
+          },
+          prefillSpeed: {
+            avg: roundSpeed(group.prefillTotal / group.sampleCount) ?? 0,
+            max: roundSpeed(group.prefillMax),
+            top10: roundSpeed(pickTopDecileValue(group.prefillValues)),
+          },
+        };
+      })
       .sort((a, b) => {
         const top10Diff = (b.decodeSpeed.top10 ?? b.decodeSpeed.avg) - (a.decodeSpeed.top10 ?? a.decodeSpeed.avg);
         if (top10Diff !== 0) return top10Diff;
@@ -707,6 +768,9 @@ export class TelemetryService {
       .filter((row) => row.socNameKey === querySocNameKey)
       .sort((left, right) => right.decodeSpeed - left.decodeSpeed)
       .slice(0, limit)
-      .map(({ socNameKey, ...row }) => row);
+      .map(({ socNameKey, ...row }) => ({
+        ...row,
+        deviceDisplayName: resolveDeviceDisplayName(row.os, row.deviceModel),
+      }));
   }
 }

@@ -104,15 +104,17 @@
 }
 
 .tabScroller {
-  overflow-x: auto;
+  overflow: visible;
   padding-bottom: 2px;
 }
 
 .tabRow {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  width: max-content;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  column-gap: 8px;
+  row-gap: 8px;
+  width: 100%;
 }
 
 .filterLabel {
@@ -128,14 +130,19 @@
   align-items: center;
   justify-content: center;
   min-height: 28px;
-  padding: 0 10px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 4px 10px;
   border: 1px solid var(--color-border);
   border-radius: 999px;
   background-color: var(--color-background);
   color: var(--color-secondary);
   font-size: 0.6875rem;
   font-weight: 500;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+  line-height: 1.35;
   cursor: pointer;
   transition:
     border-color 0.2s ease,
@@ -154,14 +161,19 @@
   align-items: center;
   justify-content: center;
   min-height: 34px;
-  padding: 0 12px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 6px 12px;
   border: 1px solid var(--color-border);
   border-radius: 999px;
   background-color: var(--color-background);
   color: var(--color-secondary);
   font-size: 0.8125rem;
   font-weight: 500;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+  line-height: 1.35;
   transition:
     border-color 0.2s ease,
     background-color 0.2s ease,
@@ -184,14 +196,19 @@
   align-items: center;
   justify-content: center;
   min-height: 28px;
-  padding: 0 10px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 4px 10px;
   border: 1px solid var(--color-border);
   border-radius: 999px;
   background-color: var(--color-background);
   color: var(--color-secondary);
   font-size: 0.6875rem;
   font-weight: 500;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+  line-height: 1.35;
   transition:
     border-color 0.2s ease,
     background-color 0.2s ease,
@@ -422,14 +439,19 @@
   align-items: center;
   gap: 4px;
   min-height: 28px;
-  padding: 0 10px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 4px 10px;
   border: 1px solid var(--color-border);
   border-radius: 999px;
   background-color: var(--color-background);
   color: var(--color-secondary);
   font-size: 0.6875rem;
   font-weight: 500;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+  line-height: 1.35;
   transition:
     border-color 0.2s ease,
     background-color 0.2s ease,

@@ -5,7 +5,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ThemeSwitcher } from '@/components';
 import { fetchAdminSession } from '@/utils/api';
-import { resolveAndroidSocName, resolveAppleDevicePresentation } from '@/utils/appleDeviceInfo';
+import {
+  resolveAndroidSocName,
+  resolveAppleDevicePresentation,
+  summarizeHeaderDeviceModels,
+} from '@/utils/appleDeviceInfo';
 import styles from './page.module.css';
 
 // ---------------------------------------------------------------------------
@@ -22,6 +26,7 @@ interface LeaderboardEntry {
   socName: string;
   socBrand: string;
   deviceModels: string[];
+  deviceDisplayNames: string[];
   backend: string;
   isBatch: boolean;
   batchCount: number;
@@ -37,6 +42,7 @@ interface RecordEntry {
   os: string;
   osVersion: string | null;
   deviceModel: string | null;
+  deviceDisplayName: string | null;
   cpuName: string | null;
   gpuName: string | null;
   totalMemoryMb: number | null;
@@ -89,6 +95,7 @@ interface MatrixRow {
   socName: string;
   socBrand: string;
   deviceModels: string[];
+  deviceDisplayNames: string[];
   cells: Record<string, MatrixCell>; // key = modelSha256
 }
 
@@ -356,6 +363,14 @@ function getRecordDeviceLabel(record: RecordEntry): StackedCellLabel {
     return { primary, secondary };
   }
 
+  if (record.deviceDisplayName) {
+    return {
+      primary: record.deviceDisplayName,
+      secondary:
+        record.deviceModel && record.deviceModel !== record.deviceDisplayName ? record.deviceModel : null,
+    };
+  }
+
   return {
     primary: record.deviceModel || '—',
     secondary: null,
@@ -381,13 +396,10 @@ function getRecordHardwareLabel(record: RecordEntry): StackedCellLabel {
 
   const androidSocName = resolveAndroidSocName(record.socName);
   if (androidSocName) {
-    const rawSocName = record.socName.trim().toUpperCase();
-    const fallbackSecondary =
-      rawHardwareSummary !== '—' && rawHardwareSummary !== androidSocName ? rawHardwareSummary : null;
-
     return {
       primary: androidSocName,
-      secondary: rawSocName !== androidSocName ? rawSocName : fallbackSecondary,
+      secondary:
+        rawHardwareSummary !== '—' && rawHardwareSummary !== androidSocName ? rawHardwareSummary : null,
     };
   }
 
@@ -942,6 +954,7 @@ function buildPlatforms(
           socName: entry.socName,
           socBrand: entry.socBrand,
           deviceModels: [],
+          deviceDisplayNames: [],
           cells: {},
         });
       }
@@ -949,6 +962,11 @@ function buildPlatforms(
       for (const deviceModel of entry.deviceModels ?? []) {
         if (deviceModel && !row.deviceModels.includes(deviceModel)) {
           row.deviceModels.push(deviceModel);
+        }
+      }
+      for (const deviceDisplayName of entry.deviceDisplayNames ?? []) {
+        if (deviceDisplayName && !row.deviceDisplayNames.includes(deviceDisplayName)) {
+          row.deviceDisplayNames.push(deviceDisplayName);
         }
       }
       const ck = columnKey(entry);
@@ -1663,7 +1681,22 @@ export default function ModelFitPreviewPage() {
                           socBrand: row.socBrand,
                           deviceModels: row.deviceModels,
                         });
-                        const rowMeta = [row.osLabel, socDisplay.metaLabel].filter(Boolean).join(' · ');
+                        const rowPlatformLabel = row.osLabel ?? (OS_LABELS[row.osId] ?? row.osId);
+                        const rowDeviceSummary = summarizeHeaderDeviceModels({
+                          deviceLabels: row.deviceDisplayNames,
+                          fallbackDeviceModels: row.deviceModels,
+                        });
+                        const rowMeta = [
+                          rowPlatformLabel,
+                          rowDeviceSummary &&
+                          rowDeviceSummary !== socDisplay.secondaryLabel &&
+                          rowDeviceSummary !== socDisplay.metaLabel
+                            ? rowDeviceSummary
+                            : null,
+                          socDisplay.metaLabel,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ');
                         const ariaSocLabel = formatSocFilterLabel({
                           socName: row.socName,
                           socBrand: row.socBrand,

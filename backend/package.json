@@ -26,6 +26,7 @@
     "prisma:studio": "prisma studio --port 5556 --hostname 0.0.0.0 --browser none"
   },
   "dependencies": {
+    "@naverpay/device-info": "^1.1.0",
     "@nestjs/common": "^10.0.0",
     "@nestjs/core": "^10.0.0",
     "@nestjs/platform-express": "^10.0.0",
