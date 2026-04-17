@@ -42,6 +42,19 @@
 
 ### 标准流程（每次发布一个新文件时）
 
+#### 0) 先确认本次要同步的最新 zh-Hans 文件
+
+- 路径：`backend/data/release-notes/zh-Hans/`
+- 默认以 `zh-Hans` 目录中 build/version 最新的 `.md` 文件作为本次同步源文件
+- 推荐先执行以下命令定位目标文件：
+
+```bash
+ls backend/data/release-notes/zh-Hans/*.md | xargs -n1 basename | sort -V | tail -n1
+```
+
+- 其余 5 个语言目录都应新增同名文件
+- 除非用户明确要求，否则不要删除、覆盖、改名上一个 patch 文件
+
 #### 1) 编写 / 校对 zh-Hans 源文件
 
 - 路径：`backend/data/release-notes/zh-Hans/<build>-<version>.md`
@@ -69,9 +82,35 @@
   - 条目数量是否一致
   - 关键名词/版本/平台限制等信息是否遗漏
 
+#### 4) Git 提交与推送
+
+- 默认先执行 `git status --short`，确认工作区中是否存在与本次发布无关的改动
+- 如果工作区只包含本次 release notes 与 workflow 相关改动，则按以下顺序执行：
+
+```bash
+git add .
+git commit -m "chore: sync latest release notes and update workflow"
+git push
+```
+
+- 如果工作区存在无关改动，不要直接提交无关内容，应改为按路径添加，例如：
+
+```bash
+git add backend/data/release-notes docs/release-notes-workflow-log.md
+git commit -m "chore: sync latest release notes and update workflow"
+git push
+```
+
+#### 5) 推送后复核
+
+- 确认远端分支已包含本次 commit
+- 若当前环境是 Linux 服务器，推送前后都应再次确认没有误带服务器上的其他本地改动
+
 ---
 
 ### 典型示例（4.3.2 / 703）
+
+该示例仅用于说明同步方式，不作为判断当前最新版本的依据；实际操作时始终以 `zh-Hans` 目录中的最新文件为准。
 
 本次 `703-4.3.2.md` 的同步要点：
 
