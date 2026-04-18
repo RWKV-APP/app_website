@@ -1212,15 +1212,11 @@ export class DistributionService implements OnModuleInit {
       }
 
       this.logger.warn(
-        `Could not map exact build for store version ${version}, falling back to latest release notes metadata`,
+        `Could not map exact build for store version ${version}; leaving store build unset to avoid advertising an outdated destination as the latest build`,
       );
-    }
-
-    const latestReleaseNote = await this.releaseNotesService.getLatestReleaseNoteMetadata();
-    if (latestReleaseNote) {
       return {
-        version: 'latest',
-        build: latestReleaseNote.build,
+        version,
+        build: null,
       };
     }
 
