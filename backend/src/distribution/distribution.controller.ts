@@ -2,6 +2,9 @@ import { Controller, Get, Post, Logger, Req } from '@nestjs/common';
 import { Request } from 'express';
 import { DistributionService } from './distribution.service';
 
+type DistributionMap = Record<string, DistributionRecord | null>;
+const APP_DOWNLOAD_LANDING_URL = 'https://rwkv.halowang.cloud/';
+
 interface DistributionRecord {
   id: number;
   type: string;
@@ -82,15 +85,70 @@ export class DistributionController {
     return rawQueryKeys.length > normalizedParsedKeys.length ? rawQueryKeys : normalizedParsedKeys;
   }
 
+  private getFirstString(value: unknown): string | null {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (typeof item === 'string' && item.trim()) {
+          return item.trim();
+        }
+      }
+      return null;
+    }
+
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+  }
+
+  private getHeaderValue(request: Request, name: string): string | null {
+    return this.getFirstString(request.headers[name.toLowerCase()]);
+  }
+
+  private hasAppRequestContext(request: Request): boolean {
+    return Boolean(
+      this.getHeaderValue(request, 'application-build-number') ||
+        this.getHeaderValue(request, 'application-version') ||
+        this.getHeaderValue(request, 'application-language') ||
+        this.getHeaderValue(request, 'operating-system') ||
+        this.getHeaderValue(request, 'operating-system-version'),
+    );
+  }
+
+  private applyAppDownloadLandingUrl(result: DistributionMap, shouldRewrite: boolean): DistributionMap {
+    if (!shouldRewrite) {
+      return result;
+    }
+
+    const adaptedResult: DistributionMap = {};
+
+    for (const [key, value] of Object.entries(result)) {
+      adaptedResult[key] = value
+        ? {
+            ...value,
+            url: APP_DOWNLOAD_LANDING_URL,
+          }
+        : null;
+    }
+
+    return adaptedResult;
+  }
+
   @Get('latest')
   async getLatestDistributions(@Req() request: Request) {
     // Older clients accidentally percent-encode the whole repeated key query string,
     // so we need to support both the standard format and the malformed encoded one.
     const keyArray = this.extractRequestedKeys(request);
+    const isAppRequest = this.hasAppRequestContext(request);
 
     // getLatestDistributions handles all errors internally and never throws
     // It always returns an object (may be empty if database is unavailable)
-    const result = await this.distributionService.getLatestDistributions();
+    const latestDistributions = await this.distributionService.getLatestDistributions();
+    const result = this.applyAppDownloadLandingUrl(
+      latestDistributions as DistributionMap,
+      isAppRequest,
+    );
+
+    if (isAppRequest) {
+      this.logger.debug('Rewrote /distributions/latest URLs to app download landing page');
+    }
 
     // Filter result if keys are provided
     let filteredResult = result;
