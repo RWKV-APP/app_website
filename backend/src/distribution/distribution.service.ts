@@ -9,6 +9,9 @@ import { ReleaseNotesService } from './release-notes.service';
 @Injectable()
 export class DistributionService implements OnModuleInit {
   private readonly logger = new Logger(DistributionService.name);
+  private readonly datasetTreePageSize = 100;
+  private readonly recentDatasetFileLimit = 10;
+  private readonly maxDatasetTreePages = 50;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -184,111 +187,120 @@ export class DistributionService implements OnModuleInit {
       return;
     }
 
+    const authorizationHeader = Config.huggingface.token
+      ? `Bearer ${Config.huggingface.token}`
+      : undefined;
+
+    await this.checkDatasetTreeDistribution({
+      type,
+      folderPath,
+      fileExtension,
+      repoId,
+      baseEndpoint,
+      authorizationHeader,
+    });
+  }
+
+  private async checkDatasetTreeDistribution(options: {
+    type: DistributionType;
+    folderPath: string;
+    fileExtension: string;
+    repoId: string;
+    baseEndpoint: string;
+    authorizationHeader?: string;
+    appendDownloadQuery?: boolean;
+  }) {
+    const {
+      type,
+      folderPath,
+      fileExtension,
+      repoId,
+      baseEndpoint,
+      authorizationHeader,
+      appendDownloadQuery = false,
+    } = options;
+
     try {
-      // Use HuggingFace API to list files in the folder
-      const apiUrl = `${baseEndpoint}/api/datasets/${repoId}/tree/main/${folderPath}`;
-      const response = await axios.get(apiUrl, {
-        headers: {
-          Authorization: Config.huggingface.token
-            ? `Bearer ${Config.huggingface.token}`
-            : undefined,
-        },
-        timeout: 30000,
+      const treeEntries = await this.fetchDatasetTreeEntries({
+        repoId,
+        folderPath,
+        baseEndpoint,
+        authorizationHeader,
       });
 
-      if (!response.data || !Array.isArray(response.data)) {
+      if (treeEntries.length === 0) {
         this.logger.warn(`No files found in ${folderPath} for ${type}`);
         return;
       }
 
-      // Filter files by extension and find the latest one
-      const files = response.data.filter(
-        (file: any) => file.path && file.path.endsWith(fileExtension),
-      );
+      const recentFiles = treeEntries
+        .filter((file: any) => file.path && file.path.endsWith(fileExtension))
+        .map((file: any) => {
+          const fileName = file.path.split('/').pop() || '';
+          const metadata = this.parseDistributionFileMetadata(fileName);
 
-      if (files.length === 0) {
+          if (!metadata) {
+            this.logger.warn(`Could not parse version from filename: ${fileName}`);
+            return null;
+          }
+
+          return {
+            fileName,
+            filePath: file.path,
+            version: metadata.version,
+            build: metadata.build,
+          };
+        })
+        .filter(
+          (
+            file,
+          ): file is {
+            fileName: string;
+            filePath: string;
+            version: string;
+            build: number | null;
+          } => file !== null,
+        )
+        .sort((left, right) => {
+          const versionCompare = this.compareVersions(right.version, left.version);
+          if (versionCompare !== 0) {
+            return versionCompare;
+          }
+
+          const leftBuild = left.build ?? -1;
+          const rightBuild = right.build ?? -1;
+          if (rightBuild !== leftBuild) {
+            return rightBuild - leftBuild;
+          }
+
+          return right.fileName.localeCompare(left.fileName);
+        })
+        .slice(0, this.recentDatasetFileLimit);
+
+      if (recentFiles.length === 0) {
         this.logger.warn(`No ${fileExtension} files found in ${folderPath} for ${type}`);
         return;
       }
 
-      // Sort by lastModified (most recent first) or by filename
-      const sortedFiles = files.sort((a: any, b: any) => {
-        if (a.lastModified && b.lastModified) {
-          return new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime();
-        }
-        // Fallback to filename comparison
-        return b.path.localeCompare(a.path);
-      });
-
-      // Process all files, not just the latest one
       let savedCount = 0;
-      for (const file of sortedFiles) {
-        const fileName = file.path.split('/').pop() || '';
-        const filePath = `${folderPath}/${fileName}`;
+      for (const file of recentFiles) {
+        const downloadUrl = `${baseEndpoint}/datasets/${repoId}/resolve/main/${file.filePath}${appendDownloadQuery ? '?download=true' : ''}`;
 
-        // Parse version and build from filename
-        // Supported formats:
-        // 1. rwkv_chat_3.4.0_609.apk (Android APK: rwkv_chat_{version}_{build}.apk)
-        // 2. rwkv_chat_3.4.0_609_linux-x64.tar.gz (Linux: rwkv_chat_{version}_{build}_{platform}.{ext})
-        // 3. rwkv_chat_3.4.0_609_windows-x64.zip (Windows zip)
-        // 4. rwkv_chat_3.4.0_609_windows-x64-setup.exe (Windows installer)
-        // 5. rwkv_chat_3.4.0_609_macos-universal.dmg (macOS DMG)
-        // 6. 3.4.0+609 (format: {version}+{build})
-        // 7. app-3.4.0+609.dmg (format: {prefix}-{version}+{build}.{ext})
-
-        let version = '';
-        let build: number | null = null;
-
-        // Try format: rwkv_chat_{version}_{build} (with optional platform suffix)
-        // This matches:
-        // - rwkv_chat_3.4.0_609.apk
-        // - rwkv_chat_3.4.0_609_linux-x64.tar.gz
-        // - rwkv_chat_3.4.0_609_windows-x64.zip
-        // - rwkv_chat_3.4.0_609_windows-x64-setup.exe
-        // - rwkv_chat_3.4.0_609_macos-universal.dmg
-        const rwkvChatMatch = fileName.match(/rwkv_chat_(\d+\.\d+\.\d+)_(\d+)(?:_|\.)/);
-        if (rwkvChatMatch) {
-          version = rwkvChatMatch[1];
-          build = parseInt(rwkvChatMatch[2], 10);
-        } else {
-          // Try format: {version}+{build} or {prefix}-{version}+{build}.{ext}
-          const versionMatch = fileName.match(/(\d+\.\d+\.\d+)(?:\+(\d+)|_(\d+))?/);
-          if (versionMatch) {
-            version = versionMatch[1];
-            build = versionMatch[2]
-              ? parseInt(versionMatch[2], 10)
-              : versionMatch[3]
-                ? parseInt(versionMatch[3], 10)
-                : null;
-          }
-        }
-
-        // Skip if we couldn't parse version and build
-        if (!version) {
-          this.logger.warn(`Could not parse version from filename: ${fileName}`);
-          continue;
-        }
-
-        // version should only contain semantic version (e.g., "3.4.0"), not "3.4.0+609"
-        // build number is stored separately in the build field
-
-        // Build download URL
-        const downloadUrl = `${baseEndpoint}/datasets/${repoId}/resolve/main/${filePath}`;
-
-        // Save or update in database
         await this.saveDistribution({
           type,
           url: downloadUrl,
-          version, // Only semantic version, e.g., "3.4.0"
-          build, // Build number separately, e.g., 609
+          version: file.version,
+          build: file.build,
         });
 
         savedCount++;
-        const displayVersion = version ? (build ? `${version}+${build}` : version) : 'unknown';
-        this.logger.log(`✅ Saved ${type}: ${fileName} (${displayVersion})`);
+        const displayVersion = file.build ? `${file.version}+${file.build}` : file.version;
+        this.logger.log(`✅ Saved ${type}: ${file.fileName} (${displayVersion})`);
       }
 
-      this.logger.log(`✅ Processed ${savedCount} file(s) for ${type}`);
+      this.logger.log(
+        `✅ Processed ${savedCount} latest file(s) for ${type} from ${treeEntries.length} tree entr${treeEntries.length === 1 ? 'y' : 'ies'}`,
+      );
     } catch (error: any) {
       if (error.response?.status === 404) {
         this.logger.warn(`Folder ${folderPath} not found for ${type}`);
@@ -296,6 +308,109 @@ export class DistributionService implements OnModuleInit {
         this.logger.error(`Error checking ${type}: ${error.message}`);
       }
     }
+  }
+
+  private async fetchDatasetTreeEntries(options: {
+    repoId: string;
+    folderPath: string;
+    baseEndpoint: string;
+    authorizationHeader?: string;
+  }): Promise<any[]> {
+    const { repoId, folderPath, baseEndpoint, authorizationHeader } = options;
+    const entries: any[] = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | null = null;
+
+    for (let page = 0; page < this.maxDatasetTreePages; page++) {
+      const params = new URLSearchParams({
+        limit: this.datasetTreePageSize.toString(),
+        expand: 'false',
+      });
+
+      if (cursor) {
+        params.set('cursor', cursor);
+      }
+
+      const apiUrl = `${baseEndpoint}/api/datasets/${repoId}/tree/main/${folderPath}?${params.toString()}`;
+      const response = await axios.get(apiUrl, {
+        headers: {
+          Authorization: authorizationHeader,
+        },
+        timeout: 30000,
+      });
+
+      if (!Array.isArray(response.data)) {
+        break;
+      }
+
+      entries.push(...response.data);
+
+      const nextCursor = this.extractDatasetTreeNextCursor(response.headers?.link);
+      if (!nextCursor) {
+        return entries;
+      }
+
+      if (seenCursors.has(nextCursor)) {
+        this.logger.warn(
+          `Detected repeated tree cursor while syncing ${folderPath} from ${baseEndpoint}, stopping pagination early`,
+        );
+        return entries;
+      }
+
+      seenCursors.add(nextCursor);
+      cursor = nextCursor;
+    }
+
+    this.logger.warn(
+      `Stopped dataset tree pagination after ${this.maxDatasetTreePages} pages for ${folderPath} from ${baseEndpoint}`,
+    );
+    return entries;
+  }
+
+  private extractDatasetTreeNextCursor(linkHeader: string | string[] | undefined): string | null {
+    const normalizedLinkHeader = Array.isArray(linkHeader) ? linkHeader.join(',') : linkHeader;
+    if (!normalizedLinkHeader) {
+      return null;
+    }
+
+    const nextLinkMatch = normalizedLinkHeader.match(/<([^>]+)>;\s*rel="next"/i);
+    if (!nextLinkMatch) {
+      return null;
+    }
+
+    try {
+      const nextUrl = new URL(nextLinkMatch[1]);
+      return nextUrl.searchParams.get('cursor');
+    } catch {
+      return null;
+    }
+  }
+
+  private parseDistributionFileMetadata(fileName: string): {
+    version: string;
+    build: number | null;
+  } | null {
+    const rwkvChatMatch = fileName.match(/rwkv_chat_(\d+\.\d+\.\d+)_(\d+)(?:_|\.)/);
+    if (rwkvChatMatch) {
+      return {
+        version: rwkvChatMatch[1],
+        build: parseInt(rwkvChatMatch[2], 10),
+      };
+    }
+
+    const versionMatch = fileName.match(/(\d+\.\d+\.\d+)(?:\+(\d+)|_(\d+))?/);
+    if (!versionMatch) {
+      return null;
+    }
+
+    return {
+      version: versionMatch[1],
+      build: versionMatch[2]
+        ? parseInt(versionMatch[2], 10)
+        : versionMatch[3]
+          ? parseInt(versionMatch[3], 10)
+          : null,
+    };
   }
 
   // Helper method to check Aifasthub distribution (mirror of HuggingFace)
@@ -313,95 +428,19 @@ export class DistributionService implements OnModuleInit {
       return;
     }
 
-    try {
-      // Use Aifasthub API to list files in the folder (similar to HuggingFace)
-      const apiUrl = `${baseEndpoint}/api/datasets/${repoId}/tree/main/${folderPath}`;
-      const response = await axios.get(apiUrl, {
-        headers: {
-          Authorization: Config.huggingface.token
-            ? `Bearer ${Config.huggingface.token}`
-            : undefined,
-        },
-        timeout: 30000,
-      });
+    const authorizationHeader = Config.huggingface.token
+      ? `Bearer ${Config.huggingface.token}`
+      : undefined;
 
-      if (!response.data || !Array.isArray(response.data)) {
-        this.logger.warn(`No files found in ${folderPath} for ${type}`);
-        return;
-      }
-
-      // Filter files by extension
-      const files = response.data.filter(
-        (file: any) => file.path && file.path.endsWith(fileExtension),
-      );
-
-      if (files.length === 0) {
-        this.logger.warn(`No ${fileExtension} files found in ${folderPath} for ${type}`);
-        return;
-      }
-
-      // Sort by lastModified (most recent first) or by filename
-      const sortedFiles = files.sort((a: any, b: any) => {
-        if (a.lastModified && b.lastModified) {
-          return new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime();
-        }
-        return b.path.localeCompare(a.path);
-      });
-
-      // Process all files
-      let savedCount = 0;
-      for (const file of sortedFiles) {
-        const fileName = file.path.split('/').pop() || '';
-        const filePath = `${folderPath}/${fileName}`;
-
-        // Parse version and build from filename (same logic as HuggingFace)
-        let version = '';
-        let build: number | null = null;
-
-        const rwkvChatMatch = fileName.match(/rwkv_chat_(\d+\.\d+\.\d+)_(\d+)(?:_|\.)/);
-        if (rwkvChatMatch) {
-          version = rwkvChatMatch[1];
-          build = parseInt(rwkvChatMatch[2], 10);
-        } else {
-          const versionMatch = fileName.match(/(\d+\.\d+\.\d+)(?:\+(\d+)|_(\d+))?/);
-          if (versionMatch) {
-            version = versionMatch[1];
-            build = versionMatch[2]
-              ? parseInt(versionMatch[2], 10)
-              : versionMatch[3]
-                ? parseInt(versionMatch[3], 10)
-                : null;
-          }
-        }
-
-        if (!version) {
-          this.logger.warn(`Could not parse version from filename: ${fileName}`);
-          continue;
-        }
-
-        // Build download URL with ?download=true suffix (as per aifasthub format)
-        const downloadUrl = `${baseEndpoint}/datasets/${repoId}/resolve/main/${filePath}?download=true`;
-
-        await this.saveDistribution({
-          type,
-          url: downloadUrl,
-          version,
-          build,
-        });
-
-        savedCount++;
-        const displayVersion = version ? (build ? `${version}+${build}` : version) : 'unknown';
-        this.logger.log(`✅ Saved ${type}: ${fileName} (${displayVersion})`);
-      }
-
-      this.logger.log(`✅ Processed ${savedCount} file(s) for ${type}`);
-    } catch (error: any) {
-      if (error.response?.status === 404) {
-        this.logger.warn(`Folder ${folderPath} not found for ${type}`);
-      } else {
-        this.logger.error(`Error checking ${type}: ${error.message}`);
-      }
-    }
+    await this.checkDatasetTreeDistribution({
+      type,
+      folderPath,
+      fileExtension,
+      repoId,
+      baseEndpoint,
+      authorizationHeader,
+      appendDownloadQuery: true,
+    });
   }
 
   // Helper method to check GitHub Release distribution
