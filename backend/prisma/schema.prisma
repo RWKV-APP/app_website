@@ -188,6 +188,7 @@ model TelemetryPerf {
 
   appVersion     String
   appBuild       String
+  buildMode      String   @default("unknown")
 
   modelName      String
   modelFileName  String

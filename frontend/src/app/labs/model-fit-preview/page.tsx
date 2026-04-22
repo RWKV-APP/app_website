@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ThemeSwitcher } from '@/components';
 import { fetchAdminSession } from '@/utils/api';
@@ -49,6 +50,7 @@ interface RecordEntry {
   totalVramMb: number | null;
   appVersion: string;
   appBuild: string;
+  buildMode: string;
   modelName: string;
   modelFileName: string;
   modelSha256: string;
@@ -141,13 +143,30 @@ const LS_KEY_MODEL_TAG = 'rwkv-perf-filter-model-tag';
 const LS_KEY_SIZE = 'rwkv-perf-filter-size';
 const LS_KEY_BRAND = 'rwkv-perf-filter-brand';
 
-function readLs(key: string, fallback: string): string {
-  if (typeof window === 'undefined') return fallback;
-  return localStorage.getItem(key) ?? fallback;
+function parseFilterList(value: string | null | undefined): string[] {
+  if (!value) return [];
+  const seen = new Set<string>();
+  const values: string[] = [];
+  for (const part of value.split(',')) {
+    const item = part.trim();
+    if (!item || item === 'all') continue;
+    const dedupeKey = item.toLowerCase();
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    values.push(item);
+  }
+  return values;
 }
-function writeLs(key: string, value: string): void {
+
+function readLs(key: string, fallback: string[]): string[] {
+  if (typeof window === 'undefined') return fallback;
+  const value = localStorage.getItem(key);
+  return value === null ? fallback : parseFilterList(value);
+}
+
+function writeLs(key: string, value: string[]): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(key, value);
+  localStorage.setItem(key, value.length > 0 ? value.join(',') : 'all');
 }
 
 // ---------------------------------------------------------------------------
@@ -164,6 +183,8 @@ const BRAND_ICON_SLUGS: Record<string, string> = {
   intel: 'intel',
   mediatek: 'mediatek',
   samsung: 'samsung',
+  google: 'google',
+  huawei: 'huawei',
 };
 
 function brandIconUrl(brand: string): string | null {
@@ -193,8 +214,6 @@ const OS_LABELS: Record<string, string> = {
 
 const OS_ORDER = ['macos', 'android', 'ios', 'windows', 'linux'];
 
-const ALL_TAB_ID = '__all__';
-
 const BRAND_LABELS: Record<string, string> = {
   apple: 'Apple',
   qualcomm: 'Qualcomm',
@@ -204,9 +223,28 @@ const BRAND_LABELS: Record<string, string> = {
   intel: 'Intel',
   mediatek: 'MediaTek',
   samsung: 'Samsung',
+  google: 'Google',
+  huawei: 'Huawei',
 };
 
-const BRAND_ORDER = ['apple', 'qualcomm', 'nvidia', 'amd', 'intel', 'mediatek', 'samsung'];
+const BUILD_MODE_LABELS: Record<string, string> = {
+  debug: 'debug',
+  profile: 'profile',
+  release: 'release',
+  unknown: '未知',
+};
+
+const BRAND_ORDER = [
+  'apple',
+  'qualcomm',
+  'google',
+  'huawei',
+  'nvidia',
+  'amd',
+  'intel',
+  'mediatek',
+  'samsung',
+];
 
 /** 从 socName 推断 brand（当 socBrand 为 unknown 时） */
 function inferBrand(socName: string, socBrand: string): string {
@@ -233,6 +271,14 @@ function inferBrand(socName: string, socBrand: string): string {
     return 'apple';
   if (lower.includes('mediatek') || lower.includes('dimensity') || lower.includes('helio'))
     return 'mediatek';
+  if (lower.includes('kirin')) return 'huawei';
+  if (
+    lower.includes('google tensor') ||
+    lower.includes('tensor_soc') ||
+    /\btensor\s*g\d+\b/.test(lower) ||
+    /\bpixel\s*7(?:\s*pro|\s*a)?\b/.test(lower)
+  )
+    return 'google';
   if (lower.includes('exynos') || lower.includes('samsung')) return 'samsung';
   return 'unknown';
 }
@@ -281,6 +327,8 @@ function capitalizeBrand(brand: string): string {
     amd: 'AMD',
     intel: 'Intel',
     unknown: '',
+    google: 'Google',
+    huawei: 'Huawei',
   };
   return map[brand.toLowerCase()] ?? brand.charAt(0).toUpperCase() + brand.slice(1);
 }
@@ -298,9 +346,14 @@ function getSocDisplayInfo(input: {
 
   if (applePresentation) {
     const primaryLabel =
-      applePresentation.socName ?? applePresentation.modelName ?? applePresentation.identifier ?? input.socName;
+      applePresentation.socName ??
+      applePresentation.modelName ??
+      applePresentation.identifier ??
+      input.socName;
     const secondaryLabel =
-      applePresentation.socName && applePresentation.modelName && applePresentation.modelName !== primaryLabel
+      applePresentation.socName &&
+      applePresentation.modelName &&
+      applePresentation.modelName !== primaryLabel
         ? applePresentation.modelName
         : null;
     const metaLabel =
@@ -343,7 +396,10 @@ function formatSocFilterLabel(input: {
   deviceModels?: string[] | null;
 }): string {
   const display = getSocDisplayInfo(input);
-  return [display.primaryLabel, display.secondaryLabel].filter(Boolean).join(' · ') || display.primaryLabel;
+  return (
+    [display.primaryLabel, display.secondaryLabel].filter(Boolean).join(' · ') ||
+    display.primaryLabel
+  );
 }
 
 function getRecordDeviceLabel(record: RecordEntry): StackedCellLabel {
@@ -367,7 +423,9 @@ function getRecordDeviceLabel(record: RecordEntry): StackedCellLabel {
     return {
       primary: record.deviceDisplayName,
       secondary:
-        record.deviceModel && record.deviceModel !== record.deviceDisplayName ? record.deviceModel : null,
+        record.deviceModel && record.deviceModel !== record.deviceDisplayName
+          ? record.deviceModel
+          : null,
     };
   }
 
@@ -399,7 +457,9 @@ function getRecordHardwareLabel(record: RecordEntry): StackedCellLabel {
     return {
       primary: androidSocName,
       secondary:
-        rawHardwareSummary !== '—' && rawHardwareSummary !== androidSocName ? rawHardwareSummary : null,
+        rawHardwareSummary !== '—' && rawHardwareSummary !== androidSocName
+          ? rawHardwareSummary
+          : null,
     };
   }
 
@@ -419,6 +479,21 @@ function formatHardwareSummary(cpuName: string | null, gpuName: string | null): 
   if (cpuName) return cpuName;
   if (gpuName) return gpuName;
   return '—';
+}
+
+function toggleFilterValue(values: string[], value: string): string[] {
+  if (values.includes(value)) {
+    return values.filter((item) => item !== value);
+  }
+  return [...values, value];
+}
+
+function formatFilterSelection(
+  values: string[],
+  allLabel: string,
+  formatValue: (value: string) => string = (value) => value,
+): string {
+  return values.length === 0 ? allLabel : values.map(formatValue).join('+');
 }
 
 function deriveModelTag(entry: LeaderboardEntry): string {
@@ -502,29 +577,35 @@ function getCellFooterNote(cell: MatrixCell): string {
 function filterLeaderboardData(
   data: LeaderboardEntry[],
   filters: {
-    selectedBatch: string;
-    selectedSize: string;
-    selectedModelTag: string;
-    selectedBrand: string;
-    selectedSoc: string;
+    selectedPlatforms: string[];
+    selectedBatch: string[];
+    selectedSize: string[];
+    selectedModelTag: string[];
+    selectedBrand: string[];
+    selectedSoc: string[];
   },
 ): LeaderboardEntry[] {
   let filtered = data;
-  if (filters.selectedBatch !== 'all') {
-    const batchCount = parseInt(filters.selectedBatch, 10);
-    filtered = filtered.filter((entry) => entry.batchCount === batchCount);
+  if (filters.selectedPlatforms.length > 0) {
+    filtered = filtered.filter((entry) => filters.selectedPlatforms.includes(entry.os));
   }
-  if (filters.selectedSize !== 'all') {
-    filtered = filtered.filter((entry) => deriveWeightLabel(entry) === filters.selectedSize);
+  if (filters.selectedBatch.length > 0) {
+    const batchCounts = new Set(filters.selectedBatch.map((value) => parseInt(value, 10)));
+    filtered = filtered.filter((entry) => batchCounts.has(entry.batchCount));
   }
-  if (filters.selectedModelTag !== 'all') {
-    filtered = filtered.filter((entry) => deriveModelTag(entry) === filters.selectedModelTag);
+  if (filters.selectedSize.length > 0) {
+    filtered = filtered.filter((entry) => filters.selectedSize.includes(deriveWeightLabel(entry)));
   }
-  if (filters.selectedBrand !== 'all') {
-    filtered = filtered.filter((entry) => inferBrand(entry.socName, entry.socBrand) === filters.selectedBrand);
+  if (filters.selectedModelTag.length > 0) {
+    filtered = filtered.filter((entry) => filters.selectedModelTag.includes(deriveModelTag(entry)));
   }
-  if (filters.selectedSoc !== 'all') {
-    filtered = filtered.filter((entry) => entry.socName === filters.selectedSoc);
+  if (filters.selectedBrand.length > 0) {
+    filtered = filtered.filter((entry) =>
+      filters.selectedBrand.includes(inferBrand(entry.socName, entry.socBrand)),
+    );
+  }
+  if (filters.selectedSoc.length > 0) {
+    filtered = filtered.filter((entry) => filters.selectedSoc.includes(entry.socName));
   }
   return filtered;
 }
@@ -568,12 +649,14 @@ function downloadTextFile(filename: string, content: string, mimeType: string): 
 }
 
 function sanitizeFileNamePart(value: string): string {
-  return value
-    .trim()
-    .replace(/[^a-zA-Z0-9._-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 40) || 'all';
+  return (
+    value
+      .trim()
+      .replace(/[^a-zA-Z0-9._-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 40) || 'all'
+  );
 }
 
 function escapeHtml(value: string): string {
@@ -626,11 +709,15 @@ function buildSocReportHtml(input: {
   }>;
 }): string {
   const filterHtml = input.filters
-    .map((item) => `<span class="chip"><strong>${escapeHtml(item.label)}:</strong> ${escapeHtml(item.value)}</span>`)
+    .map(
+      (item) =>
+        `<span class="chip"><strong>${escapeHtml(item.label)}:</strong> ${escapeHtml(item.value)}</span>`,
+    )
     .join('');
 
   const rowsHtml = input.weights
-    .map((item) => `
+    .map(
+      (item) => `
       <tr>
         <td>${escapeHtml(input.title)}</td>
         <td>${escapeHtml(item.label)}</td>
@@ -640,11 +727,13 @@ function buildSocReportHtml(input: {
         <td>${escapeHtml(item.metricNote)}</td>
         <td>${escapeHtml(String(item.sampleCount))}</td>
       </tr>
-    `)
+    `,
+    )
     .join('');
 
   const statisticsRowsHtml = input.statistics
-    .map((item) => `
+    .map(
+      (item) => `
       <tr>
         <td>${escapeHtml(input.title)}</td>
         <td>${escapeHtml(item.reportColumn)}</td>
@@ -657,7 +746,8 @@ function buildSocReportHtml(input: {
         <td>${escapeHtml(item.backend)}</td>
         <td>${escapeHtml(String(item.sampleCount))}</td>
       </tr>
-    `)
+    `,
+    )
     .join('');
 
   const safeTitle = escapeHtml(input.title);
@@ -1022,16 +1112,20 @@ const getApiBaseUrl = (): string => {
   return '';
 };
 
-async function fetchLeaderboard(appVersion?: string): Promise<LeaderboardEntry[]> {
+async function fetchLeaderboard(
+  appVersions?: string[],
+  buildModes?: string[],
+): Promise<LeaderboardEntry[]> {
   const base = getApiBaseUrl();
   const qs = new URLSearchParams({ limit: '5000' });
-  if (appVersion && appVersion !== 'all') qs.set('appVersion', appVersion);
+  if (appVersions && appVersions.length > 0) qs.set('appVersion', appVersions.join(','));
+  if (buildModes && buildModes.length > 0) qs.set('buildMode', buildModes.join(','));
   const res = await fetch(`${base}/public-api/telemetry/leaderboard?${qs}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
-async function fetchFilters(): Promise<{ appVersions: string[] }> {
+async function fetchFilters(): Promise<{ appVersions: string[]; buildModes: string[] }> {
   const base = getApiBaseUrl();
   const res = await fetch(`${base}/public-api/telemetry/filters`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1045,7 +1139,8 @@ async function fetchRecords(params: {
   isBatch: boolean;
   batchCount: number;
   os?: string;
-  appVersion?: string;
+  appVersions?: string[];
+  buildModes?: string[];
 }): Promise<RecordEntry[]> {
   const base = getApiBaseUrl();
   const qs = new URLSearchParams({
@@ -1057,7 +1152,12 @@ async function fetchRecords(params: {
     limit: '100',
   });
   if (params.os) qs.set('os', params.os);
-  if (params.appVersion && params.appVersion !== 'all') qs.set('appVersion', params.appVersion);
+  if (params.appVersions && params.appVersions.length > 0) {
+    qs.set('appVersion', params.appVersions.join(','));
+  }
+  if (params.buildModes && params.buildModes.length > 0) {
+    qs.set('buildMode', params.buildModes.join(','));
+  }
   const res = await fetch(`${base}/public-api/telemetry/records?${qs}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
@@ -1074,15 +1174,17 @@ export default function ModelFitPreviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [appVersions, setAppVersions] = useState<string[]>([]);
-  const [selectedTab, setSelectedTab] = useState<string>('');
-  const [selectedBatch, setSelectedBatch] = useState<string>('all');
-  const [selectedVersion, setSelectedVersion] = useState<string>('all');
-  const [selectedSize, setSelectedSize] = useState<string>(() => readLs(LS_KEY_SIZE, 'all'));
-  const [selectedModelTag, setSelectedModelTag] = useState<string>(() =>
-    readLs(LS_KEY_MODEL_TAG, 'Chat'),
+  const [buildModes, setBuildModes] = useState<string[]>([]);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+  const [selectedBatch, setSelectedBatch] = useState<string[]>([]);
+  const [selectedVersion, setSelectedVersion] = useState<string[]>([]);
+  const [selectedBuildMode, setSelectedBuildMode] = useState<string[]>([]);
+  const [selectedSize, setSelectedSize] = useState<string[]>(() => readLs(LS_KEY_SIZE, []));
+  const [selectedModelTag, setSelectedModelTag] = useState<string[]>(() =>
+    readLs(LS_KEY_MODEL_TAG, ['Chat']),
   );
-  const [selectedBrand, setSelectedBrand] = useState<string>(() => readLs(LS_KEY_BRAND, 'all'));
-  const [selectedSoc, setSelectedSoc] = useState<string>('all');
+  const [selectedBrand, setSelectedBrand] = useState<string[]>(() => readLs(LS_KEY_BRAND, []));
+  const [selectedSoc, setSelectedSoc] = useState<string[]>([]);
   const [sidebar, setSidebar] = useState<SidebarState>({
     open: false,
     loading: false,
@@ -1109,7 +1211,10 @@ export default function ModelFitPreviewPage() {
   useEffect(() => {
     if (!authed) return;
     fetchFilters()
-      .then((f) => setAppVersions(f.appVersions))
+      .then((f) => {
+        setAppVersions(f.appVersions);
+        setBuildModes(f.buildModes);
+      })
       .catch(() => {});
   }, [authed]);
 
@@ -1117,7 +1222,7 @@ export default function ModelFitPreviewPage() {
   useEffect(() => {
     if (!authed) return;
     setLoading(true);
-    fetchLeaderboard(selectedVersion)
+    fetchLeaderboard(selectedVersion, selectedBuildMode)
       .then((entries) => {
         setData(entries);
         setLoading(false);
@@ -1126,7 +1231,7 @@ export default function ModelFitPreviewPage() {
         setError(e.message);
         setLoading(false);
       });
-  }, [authed, selectedVersion]);
+  }, [authed, selectedBuildMode, selectedVersion]);
 
   // Available batch counts from data
   const availableBatchCounts = useMemo(() => {
@@ -1178,37 +1283,63 @@ export default function ModelFitPreviewPage() {
 
   // Persist filter selections to localStorage
   const handleModelTagChange = useCallback((tag: string) => {
-    setSelectedModelTag(tag);
-    writeLs(LS_KEY_MODEL_TAG, tag);
+    setSelectedModelTag((current) => {
+      const next = toggleFilterValue(current, tag);
+      writeLs(LS_KEY_MODEL_TAG, next);
+      return next;
+    });
   }, []);
 
   const handleSizeChange = useCallback((size: string) => {
-    setSelectedSize(size);
-    writeLs(LS_KEY_SIZE, size);
+    setSelectedSize((current) => {
+      const next = toggleFilterValue(current, size);
+      writeLs(LS_KEY_SIZE, next);
+      return next;
+    });
   }, []);
 
   const handleBrandChange = useCallback((brand: string) => {
-    setSelectedBrand(brand);
-    writeLs(LS_KEY_BRAND, brand);
+    setSelectedBrand((current) => {
+      const next = toggleFilterValue(current, brand);
+      writeLs(LS_KEY_BRAND, next);
+      return next;
+    });
+  }, []);
+
+  const clearModelTagFilter = useCallback(() => {
+    setSelectedModelTag([]);
+    writeLs(LS_KEY_MODEL_TAG, []);
+  }, []);
+
+  const clearSizeFilter = useCallback(() => {
+    setSelectedSize([]);
+    writeLs(LS_KEY_SIZE, []);
+  }, []);
+
+  const clearBrandFilter = useCallback(() => {
+    setSelectedBrand([]);
+    writeLs(LS_KEY_BRAND, []);
   }, []);
 
   const handleResetFilters = useCallback(() => {
-    setSelectedTab('');
-    setSelectedBatch('all');
-    setSelectedModelTag('all');
-    setSelectedSize('all');
-    setSelectedBrand('all');
-    setSelectedSoc('all');
-    setSelectedVersion('all');
-    writeLs(LS_KEY_MODEL_TAG, 'all');
-    writeLs(LS_KEY_SIZE, 'all');
-    writeLs(LS_KEY_BRAND, 'all');
+    setSelectedPlatforms([]);
+    setSelectedBatch([]);
+    setSelectedModelTag([]);
+    setSelectedSize([]);
+    setSelectedBrand([]);
+    setSelectedSoc([]);
+    setSelectedVersion([]);
+    setSelectedBuildMode([]);
+    writeLs(LS_KEY_MODEL_TAG, []);
+    writeLs(LS_KEY_SIZE, []);
+    writeLs(LS_KEY_BRAND, []);
   }, []);
 
-  // Filter data by batch + size + model tag + brand
-  const filteredData = useMemo(() => {
+  // Filter data by batch + size + model tag + brand first, then apply platform selection.
+  const baseFilteredData = useMemo(() => {
     if (!data) return [];
     return filterLeaderboardData(data, {
+      selectedPlatforms: [],
       selectedBatch,
       selectedSize,
       selectedModelTag,
@@ -1217,34 +1348,27 @@ export default function ModelFitPreviewPage() {
     });
   }, [data, selectedBatch, selectedSize, selectedModelTag, selectedBrand, selectedSoc]);
 
-  // Compute available OS tabs from filtered data
+  // Compute available OS filters from data after non-platform filters.
   const availableOsTabs = useMemo(() => {
-    const osSet = new Set(filteredData.map((e) => e.os));
+    const osSet = new Set(baseFilteredData.map((e) => e.os));
     return OS_ORDER.filter((os) => osSet.has(os));
-  }, [filteredData]);
+  }, [baseFilteredData]);
 
-  // Auto-select tab: default to "全部"
-  const activeTab = useMemo(() => {
-    if (selectedTab && (availableOsTabs.includes(selectedTab) || selectedTab === ALL_TAB_ID))
-      return selectedTab;
-    return ALL_TAB_ID;
-  }, [selectedTab, availableOsTabs]);
+  const filteredData = useMemo(() => {
+    if (selectedPlatforms.length === 0) return baseFilteredData;
+    return baseFilteredData.filter((entry) => selectedPlatforms.includes(entry.os));
+  }, [baseFilteredData, selectedPlatforms]);
 
-  // Build matrix for current tab
+  // Build matrix for current platform selection.
   const { platforms, weightColumns } = useMemo(() => {
     if (filteredData.length === 0) return { platforms: [], weightColumns: [] };
-    const filterOs = activeTab === ALL_TAB_ID ? null : activeTab;
-    return buildPlatforms(filteredData, filterOs);
-  }, [filteredData, activeTab]);
+    return buildPlatforms(filteredData, null);
+  }, [filteredData]);
 
-  // Merge all platform rows when viewing single-OS tab, or keep separate for "all"
+  // Merge all selected platform rows, keeping the platform label visible in the SoC header.
   const displayRows = useMemo<DisplayRow[]>(() => {
-    if (activeTab === ALL_TAB_ID) {
-      // Flatten all platforms, prefixed with OS
-      return platforms.flatMap((p) => p.rows.map((r) => ({ ...r, osLabel: p.label, osId: p.id })));
-    }
-    return platforms.flatMap((p) => p.rows.map((r) => ({ ...r, osLabel: undefined, osId: p.id })));
-  }, [platforms, activeTab]);
+    return platforms.flatMap((p) => p.rows.map((r) => ({ ...r, osLabel: p.label, osId: p.id })));
+  }, [platforms]);
 
   const matrixGridStyle = useMemo<CSSProperties>(
     () => ({
@@ -1256,100 +1380,146 @@ export default function ModelFitPreviewPage() {
   const exportFileBaseName = useMemo(() => {
     const parts = [
       'model-fit-preview',
-      activeTab === ALL_TAB_ID ? 'all-platforms' : sanitizeFileNamePart(OS_LABELS[activeTab] ?? activeTab),
-      sanitizeFileNamePart(selectedBatch === 'all' ? 'all-batches' : `batch-${selectedBatch}`),
-      sanitizeFileNamePart(selectedModelTag),
-      sanitizeFileNamePart(selectedSize),
-      sanitizeFileNamePart(selectedBrand),
       sanitizeFileNamePart(
-        selectedSoc === 'all' ? selectedSoc : formatSocFilterLabel({ socName: selectedSoc }),
+        formatFilterSelection(selectedPlatforms, 'all-platforms', (os) => OS_LABELS[os] ?? os),
       ),
-      sanitizeFileNamePart(selectedVersion === 'all' ? 'all-versions' : `v-${selectedVersion}`),
+      sanitizeFileNamePart(
+        formatFilterSelection(selectedBatch, 'all-batches', (batchCount) => `batch-${batchCount}`),
+      ),
+      sanitizeFileNamePart(formatFilterSelection(selectedModelTag, 'all-types')),
+      sanitizeFileNamePart(formatFilterSelection(selectedSize, 'all-weights')),
+      sanitizeFileNamePart(formatFilterSelection(selectedBrand, 'all-brands', capitalizeBrand)),
+      sanitizeFileNamePart(
+        formatFilterSelection(selectedSoc, 'all-socs', (socName) =>
+          formatSocFilterLabel({ socName }),
+        ),
+      ),
+      sanitizeFileNamePart(
+        formatFilterSelection(selectedVersion, 'all-versions', (version) => `v-${version}`),
+      ),
+      sanitizeFileNamePart(
+        formatFilterSelection(
+          selectedBuildMode,
+          'all-build-modes',
+          (buildMode) => BUILD_MODE_LABELS[buildMode] ?? buildMode,
+        ),
+      ),
       new Date().toISOString().replace(/[:.]/g, '-'),
     ];
     return parts.join('__');
-  }, [activeTab, selectedBatch, selectedModelTag, selectedSize, selectedBrand, selectedSoc, selectedVersion]);
-
-  const handleExportRow = useCallback((row: DisplayRow) => {
-    const socDisplay = getSocDisplayInfo({
-      socName: row.socName,
-      socBrand: row.socBrand,
-      deviceModels: row.deviceModels,
-    });
-    const platform = row.osLabel ?? (OS_LABELS[row.osId] ?? row.osId);
-    const vendor = capitalizeBrand(socDisplay.brand) || '—';
-    const visibleColumns = weightColumns.filter((column) => row.cells[column.key]);
-    const rowEntries = filteredData
-      .filter((entry) => entry.socName === row.socName && entry.os === row.osId)
-      .filter((entry) => visibleColumns.some((column) => column.key === columnKey(entry)));
-    const filename = `${exportFileBaseName}__${sanitizeFileNamePart(socDisplay.primaryLabel)}.html`;
-    const generatedAt = new Date().toISOString();
-    const filters: Array<{ label: string; value: string }> = [
-      { label: 'Platform', value: platform },
-      { label: 'Batch', value: selectedBatch === 'all' ? '不限制' : `x${selectedBatch}` },
-      { label: 'Type', value: selectedModelTag === 'all' ? '不限制' : selectedModelTag },
-      { label: 'Weight', value: selectedSize === 'all' ? '不限制' : selectedSize },
-      { label: 'Chip', value: socDisplay.primaryLabel },
-      { label: 'App Version', value: selectedVersion === 'all' ? '不限制' : selectedVersion },
-    ];
-    if (socDisplay.secondaryLabel) {
-      filters.splice(5, 0, { label: 'Device', value: socDisplay.secondaryLabel });
-    }
-    if (socDisplay.metaLabel) {
-      filters.splice(6, 0, { label: 'Apple ID', value: socDisplay.metaLabel });
-    }
-    if (selectedBrand !== 'all') {
-      filters.splice(4, 0, { label: 'Vendor Filter', value: capitalizeBrand(selectedBrand) });
-    }
-
-    const html = buildSocReportHtml({
-      filename,
-      title: socDisplay.primaryLabel,
-      generatedAt,
-      platform,
-      vendor,
-      filters,
-      weights: visibleColumns.map((column) => {
-        const cell = row.cells[column.key]!;
-        return {
-          label: getWeightColumnReportLabel(column),
-          prefill: cell.prefillDisplay,
-          decodeRaw: cell.decodeRawDisplay,
-          decodePerBatch: cell.metricBasis === 'decode_div_batch' ? cell.decodeDisplay : null,
-          isBatch: cell.metricBasis === 'decode_div_batch',
-          metricNote: formatMetricBasisLabel(cell.metricBasis),
-          sampleCount: cell.sampleCount,
-        };
-      }),
-      statistics: rowEntries.map((entry) => {
-        const display = getDisplaySpeeds(entry);
-        return {
-          reportColumn: getEntryReportLabel(entry),
-          modelName: entry.modelName,
-          modelFileName: entry.modelFileName,
-          displayPrefill: display.prefill,
-          displayDecodeRaw: display.decodeRaw,
-          displayDecodePerBatch: display.metricBasis === 'decode_div_batch' ? display.decode : null,
-          displayMetricBasis: formatMetricBasisLabel(display.metricBasis),
-          sampleCount: entry.sampleCount,
-          backend: entry.backend,
-          batchCount: entry.batchCount,
-          isBatch: display.metricBasis === 'decode_div_batch',
-        };
-      }),
-    });
-
-    openHtmlReport(filename, html);
   }, [
-    exportFileBaseName,
-    filteredData,
     selectedBatch,
     selectedBrand,
+    selectedBuildMode,
     selectedModelTag,
+    selectedPlatforms,
     selectedSize,
+    selectedSoc,
     selectedVersion,
-    weightColumns,
   ]);
+
+  const handleExportRow = useCallback(
+    (row: DisplayRow) => {
+      const socDisplay = getSocDisplayInfo({
+        socName: row.socName,
+        socBrand: row.socBrand,
+        deviceModels: row.deviceModels,
+      });
+      const platform = row.osLabel ?? OS_LABELS[row.osId] ?? row.osId;
+      const vendor = capitalizeBrand(socDisplay.brand) || '—';
+      const visibleColumns = weightColumns.filter((column) => row.cells[column.key]);
+      const rowEntries = filteredData
+        .filter((entry) => entry.socName === row.socName && entry.os === row.osId)
+        .filter((entry) => visibleColumns.some((column) => column.key === columnKey(entry)));
+      const filename = `${exportFileBaseName}__${sanitizeFileNamePart(socDisplay.primaryLabel)}.html`;
+      const generatedAt = new Date().toISOString();
+      const filters: Array<{ label: string; value: string }> = [
+        { label: 'Platform', value: platform },
+        {
+          label: 'Batch',
+          value: formatFilterSelection(selectedBatch, '不限制', (value) => `x${value}`),
+        },
+        { label: 'Type', value: formatFilterSelection(selectedModelTag, '不限制') },
+        { label: 'Weight', value: formatFilterSelection(selectedSize, '不限制') },
+        { label: 'Chip', value: socDisplay.primaryLabel },
+        {
+          label: 'App Version',
+          value: formatFilterSelection(selectedVersion, '不限制', (value) => `v${value}`),
+        },
+        {
+          label: 'Build Mode',
+          value: formatFilterSelection(
+            selectedBuildMode,
+            '不限制',
+            (value) => BUILD_MODE_LABELS[value] ?? value,
+          ),
+        },
+      ];
+      if (socDisplay.secondaryLabel) {
+        filters.splice(5, 0, { label: 'Device', value: socDisplay.secondaryLabel });
+      }
+      if (socDisplay.metaLabel) {
+        filters.splice(6, 0, { label: 'Apple ID', value: socDisplay.metaLabel });
+      }
+      if (selectedBrand.length > 0) {
+        filters.splice(4, 0, {
+          label: 'Vendor Filter',
+          value: selectedBrand.map((brand) => capitalizeBrand(brand)).join(' / '),
+        });
+      }
+
+      const html = buildSocReportHtml({
+        filename,
+        title: socDisplay.primaryLabel,
+        generatedAt,
+        platform,
+        vendor,
+        filters,
+        weights: visibleColumns.map((column) => {
+          const cell = row.cells[column.key]!;
+          return {
+            label: getWeightColumnReportLabel(column),
+            prefill: cell.prefillDisplay,
+            decodeRaw: cell.decodeRawDisplay,
+            decodePerBatch: cell.metricBasis === 'decode_div_batch' ? cell.decodeDisplay : null,
+            isBatch: cell.metricBasis === 'decode_div_batch',
+            metricNote: formatMetricBasisLabel(cell.metricBasis),
+            sampleCount: cell.sampleCount,
+          };
+        }),
+        statistics: rowEntries.map((entry) => {
+          const display = getDisplaySpeeds(entry);
+          return {
+            reportColumn: getEntryReportLabel(entry),
+            modelName: entry.modelName,
+            modelFileName: entry.modelFileName,
+            displayPrefill: display.prefill,
+            displayDecodeRaw: display.decodeRaw,
+            displayDecodePerBatch:
+              display.metricBasis === 'decode_div_batch' ? display.decode : null,
+            displayMetricBasis: formatMetricBasisLabel(display.metricBasis),
+            sampleCount: entry.sampleCount,
+            backend: entry.backend,
+            batchCount: entry.batchCount,
+            isBatch: display.metricBasis === 'decode_div_batch',
+          };
+        }),
+      });
+
+      openHtmlReport(filename, html);
+    },
+    [
+      exportFileBaseName,
+      filteredData,
+      selectedBatch,
+      selectedBrand,
+      selectedBuildMode,
+      selectedModelTag,
+      selectedSize,
+      selectedVersion,
+      weightColumns,
+    ],
+  );
 
   const handleCellClick = useCallback(
     async (cell: MatrixCell, weightLabel: string) => {
@@ -1372,14 +1542,15 @@ export default function ModelFitPreviewPage() {
           isBatch: cell.isBatch,
           batchCount: cell.batchCount,
           os: cell.os,
-          appVersion: selectedVersion,
+          appVersions: selectedVersion,
+          buildModes: selectedBuildMode,
         });
         setSidebar((prev) => ({ ...prev, loading: false, records }));
       } catch {
         setSidebar((prev) => ({ ...prev, loading: false }));
       }
     },
-    [selectedVersion],
+    [selectedBuildMode, selectedVersion],
   );
 
   const closeSidebar = useCallback(() => {
@@ -1421,12 +1592,18 @@ export default function ModelFitPreviewPage() {
 
       <div className={styles.container}>
         <section className={styles.hero}>
-          <p className={styles.eyebrow}>Performance Leaderboard</p>
+          <div className={styles.heroHeader}>
+            <p className={styles.eyebrow}>Performance Leaderboard</p>
+            <Link href="/labs/model-fit-preview/records" className={styles.heroActionLink}>
+              <span aria-hidden="true">↗</span>
+              全部上报数据
+            </Link>
+          </div>
           <h1 className={styles.title}>RWKV prefill / decode matrix</h1>
           <p className={styles.description}>
-            按平台切换 Tab，纵轴是芯片，横轴是模型权重。非 batch 单元格展示
-            top 10% 位次成绩；batch 单元格同时展示 Decode 总值和 Decode / Batch，并按
-            Decode / Batch 着色。每个 SoC 的 header column 可单独导出统计，点击单元格可查看上报记录。
+            按平台切换 Tab，纵轴是芯片，横轴是模型权重。非 batch 单元格展示 top 10% 位次成绩；batch
+            单元格同时展示 Decode 总值和 Decode / Batch，并按 Decode / Batch 着色。每个 SoC 的
+            header column 可单独导出统计，点击单元格可查看上报记录。
           </p>
         </section>
 
@@ -1457,8 +1634,8 @@ export default function ModelFitPreviewPage() {
                 <span className={styles.filterLabel}>平台</span>
                 <button
                   type="button"
-                  className={`${styles.tabButtonSmall} ${activeTab === ALL_TAB_ID ? styles.tabButtonSelected : ''}`}
-                  onClick={() => setSelectedTab(ALL_TAB_ID)}
+                  className={`${styles.tabButtonSmall} ${selectedPlatforms.length === 0 ? styles.tabButtonSelected : ''}`}
+                  onClick={() => setSelectedPlatforms([])}
                 >
                   不限制
                 </button>
@@ -1466,8 +1643,10 @@ export default function ModelFitPreviewPage() {
                   <button
                     key={os}
                     type="button"
-                    className={`${styles.tabButtonSmall} ${activeTab === os ? styles.tabButtonSelected : ''}`}
-                    onClick={() => setSelectedTab(os)}
+                    className={`${styles.tabButtonSmall} ${selectedPlatforms.includes(os) ? styles.tabButtonSelected : ''}`}
+                    onClick={() =>
+                      setSelectedPlatforms((current) => toggleFilterValue(current, os))
+                    }
                   >
                     {OS_LABELS[os] ?? os}
                   </button>
@@ -1480,8 +1659,8 @@ export default function ModelFitPreviewPage() {
                   <span className={styles.filterLabel}>并发</span>
                   <button
                     type="button"
-                    className={`${styles.tabButtonSmall} ${selectedBatch === 'all' ? styles.tabButtonSelected : ''}`}
-                    onClick={() => setSelectedBatch('all')}
+                    className={`${styles.tabButtonSmall} ${selectedBatch.length === 0 ? styles.tabButtonSelected : ''}`}
+                    onClick={() => setSelectedBatch([])}
                   >
                     不限制
                   </button>
@@ -1489,8 +1668,10 @@ export default function ModelFitPreviewPage() {
                     <button
                       key={bc}
                       type="button"
-                      className={`${styles.tabButtonSmall} ${selectedBatch === String(bc) ? styles.tabButtonSelected : ''}`}
-                      onClick={() => setSelectedBatch(String(bc))}
+                      className={`${styles.tabButtonSmall} ${selectedBatch.includes(String(bc)) ? styles.tabButtonSelected : ''}`}
+                      onClick={() =>
+                        setSelectedBatch((current) => toggleFilterValue(current, String(bc)))
+                      }
                     >
                       {bc === 1 ? '单条' : `batch×${bc}`}
                     </button>
@@ -1504,8 +1685,8 @@ export default function ModelFitPreviewPage() {
                   <span className={styles.filterLabel}>类型</span>
                   <button
                     type="button"
-                    className={`${styles.tabButtonSmall} ${selectedModelTag === 'all' ? styles.tabButtonSelected : ''}`}
-                    onClick={() => handleModelTagChange('all')}
+                    className={`${styles.tabButtonSmall} ${selectedModelTag.length === 0 ? styles.tabButtonSelected : ''}`}
+                    onClick={clearModelTagFilter}
                   >
                     不限制
                   </button>
@@ -1513,7 +1694,7 @@ export default function ModelFitPreviewPage() {
                     <button
                       key={tag}
                       type="button"
-                      className={`${styles.tabButtonSmall} ${selectedModelTag === tag ? styles.tabButtonSelected : ''}`}
+                      className={`${styles.tabButtonSmall} ${selectedModelTag.includes(tag) ? styles.tabButtonSelected : ''}`}
                       onClick={() => handleModelTagChange(tag)}
                     >
                       {MODEL_TAG_LABELS[tag] ?? tag}
@@ -1528,8 +1709,8 @@ export default function ModelFitPreviewPage() {
                   <span className={styles.filterLabel}>权重</span>
                   <button
                     type="button"
-                    className={`${styles.tabButtonSmall} ${selectedSize === 'all' ? styles.tabButtonSelected : ''}`}
-                    onClick={() => handleSizeChange('all')}
+                    className={`${styles.tabButtonSmall} ${selectedSize.length === 0 ? styles.tabButtonSelected : ''}`}
+                    onClick={clearSizeFilter}
                   >
                     不限制
                   </button>
@@ -1537,7 +1718,7 @@ export default function ModelFitPreviewPage() {
                     <button
                       key={size}
                       type="button"
-                      className={`${styles.tabButtonSmall} ${selectedSize === size ? styles.tabButtonSelected : ''}`}
+                      className={`${styles.tabButtonSmall} ${selectedSize.includes(size) ? styles.tabButtonSelected : ''}`}
                       onClick={() => handleSizeChange(size)}
                     >
                       {size}
@@ -1552,8 +1733,8 @@ export default function ModelFitPreviewPage() {
                   <span className={styles.filterLabel}>芯片</span>
                   <button
                     type="button"
-                    className={`${styles.brandFilterTag} ${selectedBrand === 'all' ? styles.tabButtonSelected : ''}`}
-                    onClick={() => handleBrandChange('all')}
+                    className={`${styles.brandFilterTag} ${selectedBrand.length === 0 ? styles.tabButtonSelected : ''}`}
+                    onClick={clearBrandFilter}
                   >
                     不限制
                   </button>
@@ -1561,7 +1742,7 @@ export default function ModelFitPreviewPage() {
                     <button
                       key={brand}
                       type="button"
-                      className={`${styles.brandFilterTag} ${selectedBrand === brand ? styles.tabButtonSelected : ''}`}
+                      className={`${styles.brandFilterTag} ${selectedBrand.includes(brand) ? styles.tabButtonSelected : ''}`}
                       onClick={() => handleBrandChange(brand)}
                     >
                       <BrandIcon brand={brand} className={styles.brandFilterIcon} />
@@ -1577,8 +1758,8 @@ export default function ModelFitPreviewPage() {
                   <span className={styles.filterLabel}>SoC</span>
                   <button
                     type="button"
-                    className={`${styles.tabButtonSmall} ${selectedSoc === 'all' ? styles.tabButtonSelected : ''}`}
-                    onClick={() => setSelectedSoc('all')}
+                    className={`${styles.tabButtonSmall} ${selectedSoc.length === 0 ? styles.tabButtonSelected : ''}`}
+                    onClick={() => setSelectedSoc([])}
                   >
                     不限制
                   </button>
@@ -1586,8 +1767,8 @@ export default function ModelFitPreviewPage() {
                     <button
                       key={soc}
                       type="button"
-                      className={`${styles.tabButtonSmall} ${selectedSoc === soc ? styles.tabButtonSelected : ''}`}
-                      onClick={() => setSelectedSoc(soc)}
+                      className={`${styles.tabButtonSmall} ${selectedSoc.includes(soc) ? styles.tabButtonSelected : ''}`}
+                      onClick={() => setSelectedSoc((current) => toggleFilterValue(current, soc))}
                       title={soc}
                     >
                       {formatSocFilterLabel({ socName: soc })}
@@ -1602,8 +1783,8 @@ export default function ModelFitPreviewPage() {
                   <span className={styles.filterLabel}>APP 版本</span>
                   <button
                     type="button"
-                    className={`${styles.tabButtonSmall} ${selectedVersion === 'all' ? styles.tabButtonSelected : ''}`}
-                    onClick={() => setSelectedVersion('all')}
+                    className={`${styles.tabButtonSmall} ${selectedVersion.length === 0 ? styles.tabButtonSelected : ''}`}
+                    onClick={() => setSelectedVersion([])}
                   >
                     不限制
                   </button>
@@ -1611,10 +1792,35 @@ export default function ModelFitPreviewPage() {
                     <button
                       key={v}
                       type="button"
-                      className={`${styles.tabButtonSmall} ${selectedVersion === v ? styles.tabButtonSelected : ''}`}
-                      onClick={() => setSelectedVersion(v)}
+                      className={`${styles.tabButtonSmall} ${selectedVersion.includes(v) ? styles.tabButtonSelected : ''}`}
+                      onClick={() => setSelectedVersion((current) => toggleFilterValue(current, v))}
                     >
                       v{v}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {buildModes.length > 0 ? (
+                <div className={styles.tabRow}>
+                  <span className={styles.filterLabel}>构建模式</span>
+                  <button
+                    type="button"
+                    className={`${styles.tabButtonSmall} ${selectedBuildMode.length === 0 ? styles.tabButtonSelected : ''}`}
+                    onClick={() => setSelectedBuildMode([])}
+                  >
+                    不限制
+                  </button>
+                  {buildModes.map((buildMode) => (
+                    <button
+                      key={buildMode}
+                      type="button"
+                      className={`${styles.tabButtonSmall} ${selectedBuildMode.includes(buildMode) ? styles.tabButtonSelected : ''}`}
+                      onClick={() =>
+                        setSelectedBuildMode((current) => toggleFilterValue(current, buildMode))
+                      }
+                    >
+                      {BUILD_MODE_LABELS[buildMode] ?? buildMode}
                     </button>
                   ))}
                 </div>
@@ -1640,13 +1846,17 @@ export default function ModelFitPreviewPage() {
               <>
                 <section className={styles.sectionHeader}>
                   <h2 className={styles.sectionTitle}>
-                    {activeTab === ALL_TAB_ID ? '全平台' : (OS_LABELS[activeTab] ?? activeTab)} SoC
-                    × Model
+                    {formatFilterSelection(
+                      selectedPlatforms,
+                      '全平台',
+                      (os) => OS_LABELS[os] ?? os,
+                    )}{' '}
+                    SoC × Model
                   </h2>
                   <p className={styles.sectionDescription}>
-                    非 batch 单元格展示 top 10% 位次 Prefill / Decode；batch 单元格会同时展示
-                    Decode 和 Decode / Batch，单元格颜色按 Decode / Batch 计算。每个 SoC 的
-                    header column 内可导出该 SoC 在当前筛选下的报表和全部统计。
+                    非 batch 单元格展示 top 10% 位次 Prefill / Decode；batch 单元格会同时展示 Decode
+                    和 Decode / Batch，单元格颜色按 Decode / Batch 计算。每个 SoC 的 header column
+                    内可导出该 SoC 在当前筛选下的报表和全部统计。
                   </p>
                 </section>
 
@@ -1681,7 +1891,7 @@ export default function ModelFitPreviewPage() {
                           socBrand: row.socBrand,
                           deviceModels: row.deviceModels,
                         });
-                        const rowPlatformLabel = row.osLabel ?? (OS_LABELS[row.osId] ?? row.osId);
+                        const rowPlatformLabel = row.osLabel ?? OS_LABELS[row.osId] ?? row.osId;
                         const rowDeviceSummary = summarizeHeaderDeviceModels({
                           deviceLabels: row.deviceDisplayNames,
                           fallbackDeviceModels: row.deviceModels,
@@ -1708,7 +1918,10 @@ export default function ModelFitPreviewPage() {
                             <div className={styles.rowTopline}>
                               {socDisplay.brand !== 'unknown' ? (
                                 <span className={styles.vendorTag}>
-                                  <BrandIcon brand={socDisplay.brand} className={styles.vendorIcon} />
+                                  <BrandIcon
+                                    brand={socDisplay.brand}
+                                    className={styles.vendorIcon}
+                                  />
                                   {capitalizeBrand(socDisplay.brand)}
                                 </span>
                               ) : null}
@@ -1734,10 +1947,7 @@ export default function ModelFitPreviewPage() {
 
                             if (!cell) {
                               return (
-                                <div
-                                  key={`${rowKey}__${col.key}`}
-                                  className={cellBaseClass}
-                                />
+                                <div key={`${rowKey}__${col.key}`} className={cellBaseClass} />
                               );
                             }
 
@@ -1777,9 +1987,7 @@ export default function ModelFitPreviewPage() {
                                     </strong>
                                   </div>
                                 ) : null}
-                                <div className={styles.noteTag}>
-                                  {getCellFooterNote(cell)}
-                                </div>
+                                <div className={styles.noteTag}>{getCellFooterNote(cell)}</div>
                               </button>
                             );
                           }),
@@ -1815,9 +2023,14 @@ export default function ModelFitPreviewPage() {
               <h3 className={styles.notesTitle}>统计与导出说明</h3>
               <ul className={styles.notesList}>
                 <li>非 batch 单元格显示 top 10% 位次的 Prefill / Decode。</li>
-                <li>batch 单元格同时显示 Decode 总值和 Decode / Batch，颜色按 Decode / Batch 计算。</li>
+                <li>
+                  batch 单元格同时显示 Decode 总值和 Decode / Batch，颜色按 Decode / Batch 计算。
+                </li>
                 <li>单元格着色值低于 6 时标红，6-14.9 为黄色，15 以上继续按原来的绿色区间显示。</li>
-                <li>每个 SoC header column 都有导出按钮，导出的报表首字段是 Headers，对应这个 SoC；没有统计到的权重不会写进报表。</li>
+                <li>
+                  每个 SoC header column 都有导出按钮，导出的报表首字段是 Headers，对应这个
+                  SoC；没有统计到的权重不会写进报表。
+                </li>
               </ul>
             </section>
           </>
@@ -1851,6 +2064,7 @@ export default function ModelFitPreviewPage() {
                   <span className={styles.recordColInfo}>Memory</span>
                   <span className={styles.recordColInfo}>Version</span>
                   <span className={styles.recordColInfo}>Time</span>
+                  <span className={styles.recordColAction}>Details</span>
                 </div>
                 {sidebar.records.map((r) => {
                   // Memory: VRAM 优先（Windows/Linux），否则总内存
@@ -1888,6 +2102,12 @@ export default function ModelFitPreviewPage() {
                       <span className={styles.recordColInfo}>{memoryLabel}</span>
                       <span className={styles.recordColInfo}>{r.appVersion || '—'}</span>
                       <span className={styles.recordColInfo}>{formatTimestamp(r.createdAt)}</span>
+                      <Link
+                        href={`/labs/model-fit-preview/records?recordId=${r.id}`}
+                        className={styles.recordDetailLink}
+                      >
+                        详情
+                      </Link>
                     </div>
                   );
                 })}

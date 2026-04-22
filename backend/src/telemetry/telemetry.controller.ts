@@ -20,9 +20,19 @@ export class TelemetryController {
     @Query('os') os?: string,
     @Query('isBatch') isBatch?: string,
     @Query('appVersion') appVersion?: string,
+    @Query('buildMode') buildMode?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.telemetryService.leaderboard({ socName, modelSha256, backend, os, isBatch, appVersion, limit });
+    return this.telemetryService.leaderboard({
+      socName,
+      modelSha256,
+      backend,
+      os,
+      isBatch,
+      appVersion,
+      buildMode,
+      limit,
+    });
   }
 
   @Get('filters')
@@ -39,11 +49,22 @@ export class TelemetryController {
     @Query('batchCount') batchCount?: string,
     @Query('os') os?: string,
     @Query('appVersion') appVersion?: string,
+    @Query('buildMode') buildMode?: string,
     @Query('limit') limit?: string,
   ) {
     if (!socName || !modelSha256 || !backend) {
       return { error: 'socName, modelSha256, and backend are required' };
     }
-    return this.telemetryService.records({ socName, modelSha256, backend, isBatch, batchCount, os, appVersion, limit });
+    return this.telemetryService.records({
+      socName,
+      modelSha256,
+      backend,
+      isBatch,
+      batchCount,
+      os,
+      appVersion,
+      buildMode,
+      limit,
+    });
   }
 }

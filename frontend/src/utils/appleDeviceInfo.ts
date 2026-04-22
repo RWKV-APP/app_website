@@ -22,10 +22,25 @@ const APPLE_SOC_BY_MODEL_NAME: Record<string, string> = {
   'iPhone Air': 'A19 Pro',
 };
 
-const QUALCOMM_SOC_BY_PART_NUMBER: Record<string, string> = {
+const ANDROID_SOC_BY_PART_NUMBER: Record<string, string> = {
+  MT6765: 'MediaTek Helio P35',
+  '888': 'Snapdragon 888',
+  MT6853: 'MediaTek Dimensity 720',
+  MT6879: 'MediaTek Dimensity 1050',
+  MT6878: 'MediaTek Dimensity 7300',
   SM7125: 'Snapdragon 720G',
   SM7635: 'Snapdragon 7s Gen 3',
   SM7750: 'Snapdragon 7 Gen 4',
+  SM8150: 'Snapdragon 855',
+  KIRIN985: 'Kirin 985',
+  KIRIN990: 'Kirin 990',
+  KIRIN9905G: 'Kirin 990 5G',
+  SM8250: 'Snapdragon 865',
+  TENSOR_SOC: 'Google Tensor',
+  TENSORSOC: 'Google Tensor',
+  PIXEL7: 'Google Tensor G2',
+  PIXEL7A: 'Google Tensor G2',
+  PIXEL7PRO: 'Google Tensor G2',
 };
 
 function cleanOptionalString(value: string | null | undefined): string | null {
@@ -92,8 +107,11 @@ export function summarizeHeaderDeviceModels(input: {
 export function resolveAndroidSocName(value: string | null | undefined): string | null {
   const normalizedIdentifier = normalizeAndroidSocIdentifier(value);
   if (!normalizedIdentifier) return null;
-  const mappedPartNumber = QUALCOMM_SOC_BY_PART_NUMBER[normalizedIdentifier];
+  const mappedPartNumber = ANDROID_SOC_BY_PART_NUMBER[normalizedIdentifier];
   if (mappedPartNumber) return mappedPartNumber;
+
+  const snapdragonXName = simplifySnapdragonXEliteCpuName(value);
+  if (snapdragonXName) return snapdragonXName;
 
   const compact = normalizedIdentifier.toLowerCase();
   const plusGenMatch = compact.match(/^(\d+)\+gen(\d+)$/);
@@ -120,6 +138,13 @@ export function resolveAndroidSocName(value: string | null | undefined): string 
 
   if (compact === 'xelite') return 'Snapdragon X Elite';
   return null;
+}
+
+export function simplifySnapdragonXEliteCpuName(value: string | null | undefined): string | null {
+  const normalized = cleanOptionalString(value);
+  if (!normalized) return null;
+  const match = normalized.match(/^(Snapdragon\(R\)\s+X\s*-\s*[^-]+)(?:\s*-.*)?$/i);
+  return match?.[1]?.trim() ?? null;
 }
 
 function normalizeSocLabel(value: string): string {

@@ -19,6 +19,8 @@ export {
   fetchAdminRemoteConfigActivities,
   fetchAdminRemoteConfigFiles,
   fetchAdminSession,
+  fetchAdminTelemetryFilters,
+  fetchAdminTelemetryRecords,
   fetchPublicEvalRunDetail,
   fetchPublicEvalSampleDetail,
   fetchPublicEvalSamples,

@@ -18,6 +18,7 @@ import { EvalService } from './eval/eval.service';
 import { EvalAdminController } from './eval/eval.admin.controller';
 import { EvalPublicController } from './eval/eval.public.controller';
 import { TelemetryController } from './telemetry/telemetry.controller';
+import { TelemetryAdminController } from './telemetry/telemetry.admin.controller';
 import { TelemetryService } from './telemetry/telemetry.service';
 
 @Module({
@@ -33,6 +34,7 @@ import { TelemetryService } from './telemetry/telemetry.service';
     EvalAdminController,
     EvalPublicController,
     TelemetryController,
+    TelemetryAdminController,
   ],
   providers: [
     AppService,

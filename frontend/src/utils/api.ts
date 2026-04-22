@@ -49,6 +49,52 @@ const getApiBaseUrl = (): string => {
 const API_BASE_URL = getApiBaseUrl();
 const ADMIN_TOKEN_STORAGE_KEY = 'rwkv-admin-token';
 
+export interface AdminTelemetryPerfRecord {
+  id: number;
+  socName: string;
+  socBrand: string;
+  os: string;
+  osVersion: string | null;
+  deviceModel: string | null;
+  deviceDisplayName: string | null;
+  cpuName: string | null;
+  gpuName: string | null;
+  totalMemoryMb: number | null;
+  totalVramMb: number | null;
+  appVersion: string;
+  appBuild: string;
+  buildMode: string;
+  modelName: string;
+  modelFileName: string;
+  modelSha256: string;
+  modelSizeB: number | null;
+  quantization: string | null;
+  backend: string;
+  isBatch: boolean;
+  batchCount: number;
+  prefillSpeed: number;
+  decodeSpeed: number;
+}
+
+export interface AdminTelemetryPerfRecordsPage {
+  items: AdminTelemetryPerfRecord[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface AdminTelemetryPerfFilters {
+  os: string[];
+  appVersions: string[];
+  buildModes: string[];
+  batchCounts: number[];
+  modelTags: string[];
+  modelSizes: string[];
+  socBrands: string[];
+  socs: string[];
+}
+
 function getAdminToken(): string | null {
   if (typeof window === 'undefined') {
     return null;
@@ -249,6 +295,63 @@ export async function fetchAdminEvalRuns(): Promise<EvalRunSummaryRecord[]> {
   return (await response.json()) as EvalRunSummaryRecord[];
 }
 
+export async function fetchAdminTelemetryRecords(options?: {
+  page?: number;
+  limit?: number;
+  recordId?: number;
+  os?: string | string[];
+  appVersion?: string | string[];
+  buildMode?: string | string[];
+  batchCount?: number | number[];
+  modelTag?: string | string[];
+  modelSize?: string | string[];
+  socBrand?: string | string[];
+  socName?: string | string[];
+}): Promise<AdminTelemetryPerfRecordsPage> {
+  const params = new URLSearchParams();
+  const setFilterParam = (key: string, value?: string | string[] | number | number[]) => {
+    if (value === undefined) return;
+    const values = (Array.isArray(value) ? value : [value])
+      .map((item) => String(item).trim())
+      .filter((item) => item.length > 0 && item !== 'all');
+    if (values.length > 0) {
+      params.set(key, values.join(','));
+    }
+  };
+
+  if (typeof options?.page === 'number') {
+    params.set('page', String(options.page));
+  }
+  if (typeof options?.limit === 'number') {
+    params.set('limit', String(options.limit));
+  }
+  if (typeof options?.recordId === 'number') {
+    params.set('recordId', String(options.recordId));
+  }
+  setFilterParam('os', options?.os);
+  setFilterParam('appVersion', options?.appVersion);
+  setFilterParam('buildMode', options?.buildMode);
+  setFilterParam('batchCount', options?.batchCount);
+  setFilterParam('modelTag', options?.modelTag);
+  setFilterParam('modelSize', options?.modelSize);
+  setFilterParam('socBrand', options?.socBrand);
+  setFilterParam('socName', options?.socName);
+  const query = params.toString();
+  const response = await adminFetch(`/admin-api/telemetry/records${query ? `?${query}` : ''}`);
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+  return (await response.json()) as AdminTelemetryPerfRecordsPage;
+}
+
+export async function fetchAdminTelemetryFilters(): Promise<AdminTelemetryPerfFilters> {
+  const response = await adminFetch('/admin-api/telemetry/filters');
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+  return (await response.json()) as AdminTelemetryPerfFilters;
+}
+
 export async function fetchPublicEvalRuns(): Promise<EvalRunSummaryRecord[]> {
   const response = await fetch(`${API_BASE_URL}/public-api/evals/runs`);
   if (!response.ok) {
@@ -258,7 +361,9 @@ export async function fetchPublicEvalRuns(): Promise<EvalRunSummaryRecord[]> {
 }
 
 export async function fetchPublicEvalRunDetail(runId: string): Promise<EvalRunDetailRecord> {
-  const response = await fetch(`${API_BASE_URL}/public-api/evals/runs/${encodeURIComponent(runId)}`);
+  const response = await fetch(
+    `${API_BASE_URL}/public-api/evals/runs/${encodeURIComponent(runId)}`,
+  );
   if (!response.ok) {
     throw new Error(await parseErrorResponse(response));
   }
