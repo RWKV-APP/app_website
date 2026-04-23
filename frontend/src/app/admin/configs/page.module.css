@@ -194,6 +194,21 @@
   transform: translateY(-1px);
 }
 
+.dropZoneBadge {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.12);
+  border: 1px solid rgba(20, 184, 166, 0.28);
+  color: #0f766e;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .dropZoneTitle {
   font-size: 1.1rem;
   font-weight: 600;
@@ -215,6 +230,12 @@
   margin-bottom: 0.85rem;
 }
 
+.selectionStats {
+  margin: 0.35rem 0 0;
+  color: var(--color-secondary);
+  font-size: 0.92rem;
+}
+
 .fileList {
   list-style: none;
   display: grid;
@@ -232,6 +253,15 @@
   border-radius: 0.9rem;
   background: var(--color-background);
   border: 1px solid var(--color-border);
+}
+
+.fileListName {
+  font-weight: 600;
+}
+
+.fileListMeta {
+  color: var(--color-secondary);
+  white-space: nowrap;
 }
 
 .linkButton,
@@ -295,6 +325,91 @@
 .error {
   margin-top: 0.9rem;
   white-space: pre-wrap;
+}
+
+.uploadButton {
+  width: min(100%, 28rem);
+  display: grid;
+  gap: 0.15rem;
+  justify-items: flex-start;
+  padding: 0.95rem 1.1rem;
+  border: 0;
+  border-radius: 1rem;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-primary) 86%, #ffffff 14%),
+    #0f766e
+  );
+  color: #f8fafc;
+  box-shadow: 0 20px 30px rgba(15, 118, 110, 0.22);
+}
+
+.uploadButton:hover {
+  transform: translateY(-1px);
+  filter: saturate(1.04);
+}
+
+.uploadButtonLabel {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.uploadButtonMeta {
+  font-size: 0.88rem;
+  color: rgba(248, 250, 252, 0.8);
+}
+
+.uploadHint {
+  margin: 0.85rem 0 0;
+  color: var(--color-secondary);
+}
+
+.successCard,
+.errorCard {
+  margin-top: 1rem;
+  padding: 1rem 1.1rem;
+  border-radius: 1rem;
+  border: 1px solid transparent;
+}
+
+.successCard {
+  background: rgba(20, 184, 166, 0.1);
+  border-color: rgba(20, 184, 166, 0.24);
+}
+
+.errorCard {
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.24);
+  box-shadow: 0 14px 28px rgba(220, 38, 38, 0.08);
+}
+
+.successTitle,
+.errorTitle,
+.successBody,
+.errorBody {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.successTitle,
+.errorTitle {
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.successTitle {
+  color: #0f766e;
+}
+
+.errorTitle {
+  color: #b91c1c;
+}
+
+.successBody,
+.errorBody {
+  margin-top: 0.35rem;
 }
 
 .success {
@@ -535,6 +650,10 @@
   .actionRow > button,
   .fileCardActions > button,
   .editorActions > button {
+    width: 100%;
+  }
+
+  .uploadButton {
     width: 100%;
   }
 

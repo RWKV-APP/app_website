@@ -49,8 +49,22 @@ const INLINE_STRING_ARRAY_KEYS = new Set([
   'unsupportedSocBrand',
 ]);
 const APP_CONFIG_SECTIONS = ['chat', 'albatross', 'roleplay', 'world', 'tts', 'othello', 'sudoku'];
+const REMOTE_CONFIG_EDITOR_PATH_PREFIX = '/remote-config/';
+const SHANGHAI_TIME_ZONE = 'Asia/Shanghai';
+const JSON_DATE_VALUE_PATTERN = /"date"\s*:\s*(-?\d{8,13})\b/g;
 
 let monacoConfigured = false;
+
+const shanghaiDateFormatter = new Intl.DateTimeFormat('zh-CN', {
+  timeZone: SHANGHAI_TIME_ZONE,
+  hour12: false,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+});
 
 const appSectionSchema = {
   type: 'object',
@@ -211,6 +225,62 @@ function normalizeError(error: unknown) {
   return error instanceof Error ? error.message : 'Operation failed';
 }
 
+function isRemoteConfigEditorModel(model: Monaco.editor.ITextModel) {
+  return model.uri.path.startsWith(REMOTE_CONFIG_EDITOR_PATH_PREFIX);
+}
+
+function toUnixTimestampMs(rawValue: number) {
+  const absolute = Math.abs(rawValue);
+  if (absolute >= 100_000_000 && absolute < 1_000_000_000_000) {
+    return rawValue * 1000;
+  }
+  if (absolute >= 1_000_000_000_000 && absolute < 10_000_000_000_000) {
+    return rawValue;
+  }
+  return null;
+}
+
+function formatShanghaiDateTime(rawValue: number) {
+  const timestampMs = toUnixTimestampMs(rawValue);
+  if (timestampMs === null) {
+    return null;
+  }
+
+  const date = new Date(timestampMs);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  const parts = shanghaiDateFormatter
+    .formatToParts(date)
+    .reduce<Record<string, string>>((result, part) => {
+      if (part.type !== 'literal') {
+        result[part.type] = part.value;
+      }
+      return result;
+    }, {});
+
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
+function getDatePreviewMatches(lineContent: string) {
+  const matches: Array<{ rawValue: string; startColumn: number; endColumn: number }> = [];
+
+  const matcher = new RegExp(JSON_DATE_VALUE_PATTERN.source, JSON_DATE_VALUE_PATTERN.flags);
+  let match = matcher.exec(lineContent);
+  while (match) {
+    const rawValue = match[1];
+    const valueOffset = match[0].lastIndexOf(rawValue);
+    const startColumn = match.index + valueOffset + 1;
+    const endColumn = startColumn + rawValue.length;
+    matches.push({ rawValue, startColumn, endColumn });
+
+    match = matcher.exec(lineContent);
+  }
+
+  return matches;
+}
+
 function configureMonaco(monaco: typeof Monaco) {
   if (monacoConfigured) {
     return;
@@ -248,6 +318,79 @@ function configureMonaco(monaco: typeof Monaco) {
         schema: suggestionsSchema,
       },
     ],
+  });
+
+  monaco.languages.registerInlayHintsProvider('json', {
+    provideInlayHints(model, range) {
+      if (!isRemoteConfigEditorModel(model)) {
+        return { hints: [], dispose: () => {} };
+      }
+
+      const hints: Monaco.languages.InlayHint[] = [];
+      for (
+        let lineNumber = range.startLineNumber;
+        lineNumber <= range.endLineNumber;
+        lineNumber += 1
+      ) {
+        const lineContent = model.getLineContent(lineNumber);
+        for (const match of getDatePreviewMatches(lineContent)) {
+          const preview = formatShanghaiDateTime(Number.parseInt(match.rawValue, 10));
+          if (!preview) {
+            continue;
+          }
+
+          hints.push({
+            position: {
+              lineNumber,
+              column: match.endColumn + 1,
+            },
+            label: ` UTC+8 ${preview}`,
+            paddingLeft: true,
+          });
+        }
+      }
+
+      return { hints, dispose: () => {} };
+    },
+  });
+
+  monaco.languages.registerHoverProvider('json', {
+    provideHover(model, position) {
+      if (!isRemoteConfigEditorModel(model)) {
+        return null;
+      }
+
+      const lineContent = model.getLineContent(position.lineNumber);
+      for (const match of getDatePreviewMatches(lineContent)) {
+        if (position.column < match.startColumn || position.column > match.endColumn + 1) {
+          continue;
+        }
+
+        const preview = formatShanghaiDateTime(Number.parseInt(match.rawValue, 10));
+        if (!preview) {
+          return null;
+        }
+
+        return {
+          range: new monaco.Range(
+            position.lineNumber,
+            match.startColumn,
+            position.lineNumber,
+            match.endColumn + 1,
+          ),
+          contents: [
+            {
+              value: `**东八区时间** ${preview} (${SHANGHAI_TIME_ZONE})`,
+            },
+            {
+              value: `点击后仍然编辑原始 Unix 时间戳: \`${match.rawValue}\``,
+            },
+          ],
+        };
+      }
+
+      return null;
+    },
   });
 }
 
@@ -524,7 +667,7 @@ export default function RemoteConfigAdminPage() {
 
       setStatus(
         warnings.length > 0
-          ? `Uploaded ${completed.length} file(s). Warnings: ${warnings.join(' | ')}`
+          ? `Validated and uploaded ${completed.length} file(s). Notes: ${warnings.join(' | ')}`
           : `Uploaded ${completed.length} file(s): ${completed.join(', ')}`,
       );
       clearSelection();
@@ -754,7 +897,7 @@ export default function RemoteConfigAdminPage() {
 
       setStatus(
         response.warnings.length > 0
-          ? `${publishAfterSave ? 'Saved and published' : 'Saved'} ${editorTarget.file.fileName}. Warnings: ${response.warnings.join(' | ')}`
+          ? `${publishAfterSave ? 'Saved and published' : 'Saved'} ${editorTarget.file.fileName}. Notes: ${response.warnings.join(' | ')}`
           : `${publishAfterSave ? 'Saved and published' : 'Saved'} ${editorTarget.file.fileName}.`,
       );
       await refreshDashboard();
@@ -772,6 +915,7 @@ export default function RemoteConfigAdminPage() {
   }
 
   const orderedFiles = [...files].sort(sortFiles);
+  const selectedFileTotalBytes = selectedFiles.reduce((total, file) => total + file.size, 0);
   const editorSyntaxError =
     editorInitialContent !== null && !editorLoading ? getJsonSyntaxError(editorContent) : null;
   const editorHasSyntaxError = editorSyntaxError !== null;
@@ -781,6 +925,7 @@ export default function RemoteConfigAdminPage() {
   const editorCanSave =
     !editorLoading && !editorSaving && !editorHasSyntaxError && editorHasChanges;
   const editorCanReset = !editorLoading && !editorSaving && editorHasChanges;
+  const pageErrorTitle = error.includes('Upload blocked') ? 'Upload blocked' : 'Action failed';
 
   if (checkingSession) {
     return (
@@ -846,8 +991,9 @@ export default function RemoteConfigAdminPage() {
           <div>
             <h2 className={styles.panelTitle}>Upload JSON</h2>
             <p className={styles.panelDescription}>
-              Supported names: {SUPPORTED_FILE_NAMES.join(', ')}. Multiple files can be uploaded in
-              one batch.
+              Supported names: {SUPPORTED_FILE_NAMES.join(', ')}. Every app config upload now
+              validates each model URL against Hugging Face and syncs `fileSize` and `date`
+              automatically.
             </p>
           </div>
           <label className={styles.checkboxRow}>
@@ -874,16 +1020,23 @@ export default function RemoteConfigAdminPage() {
             onChange={(event) => handleSelectedFiles(event.target.files)}
             className={styles.fileInput}
           />
+          <span className={styles.dropZoneBadge}>Hugging Face Checked</span>
           <span className={styles.dropZoneTitle}>Drag JSON files here or click to browse</span>
           <span className={styles.dropZoneText}>
-            Upload `latest.json`, `suggestions.json`, and any build-specific `{`build`}.json`.
+            Invalid Hugging Face file names are rejected before upload. `fileSize` and `date` are
+            rewritten from the source file metadata.
           </span>
         </label>
 
         {selectedFiles.length > 0 ? (
           <div className={styles.selectionPanel}>
             <div className={styles.selectionHeader}>
-              <h3 className={styles.selectionTitle}>Ready to upload</h3>
+              <div>
+                <h3 className={styles.selectionTitle}>Ready to upload</h3>
+                <p className={styles.selectionStats}>
+                  {selectedFiles.length} file(s) selected · {formatBytes(selectedFileTotalBytes)}
+                </p>
+              </div>
               <button
                 type="button"
                 className={styles.linkButton}
@@ -896,8 +1049,8 @@ export default function RemoteConfigAdminPage() {
             <ul className={styles.fileList}>
               {selectedFiles.map((file) => (
                 <li key={`${file.name}-${file.lastModified}`} className={styles.fileListItem}>
-                  <span>{file.name}</span>
-                  <span>{formatBytes(file.size)}</span>
+                  <span className={styles.fileListName}>{file.name}</span>
+                  <span className={styles.fileListMeta}>{formatBytes(file.size)}</span>
                 </li>
               ))}
             </ul>
@@ -909,15 +1062,37 @@ export default function RemoteConfigAdminPage() {
         <div className={styles.actionRow}>
           <button
             type="button"
+            className={styles.uploadButton}
             onClick={() => void handleUpload()}
             disabled={uploading || selectedFiles.length === 0}
           >
-            {uploading ? 'Uploading...' : 'Upload Selected Files'}
+            <span className={styles.uploadButtonLabel}>
+              {uploading ? 'Validating on Hugging Face...' : 'Validate on Hugging Face and Upload'}
+            </span>
+            <span className={styles.uploadButtonMeta}>
+              {selectedFiles.length > 0
+                ? `${selectedFiles.length} file(s) · ${formatBytes(selectedFileTotalBytes)}`
+                : 'Choose JSON files to begin'}
+            </span>
           </button>
         </div>
 
-        {status && <p className={styles.success}>{status}</p>}
-        {error && <p className={styles.error}>{error}</p>}
+        <p className={styles.uploadHint}>
+          Upload is blocked when any model URL does not resolve to an exact Hugging Face file.
+        </p>
+
+        {status && (
+          <div className={styles.successCard} role="status">
+            <p className={styles.successTitle}>Upload status</p>
+            <p className={styles.successBody}>{status}</p>
+          </div>
+        )}
+        {error && (
+          <div className={styles.errorCard} role="alert">
+            <p className={styles.errorTitle}>{pageErrorTitle}</p>
+            <p className={styles.errorBody}>{error}</p>
+          </div>
+        )}
       </section>
 
       <section className={styles.panel}>
@@ -1268,6 +1443,7 @@ export default function RemoteConfigAdminPage() {
                     detectIndentation: false,
                     formatOnPaste: true,
                     formatOnType: true,
+                    inlayHints: { enabled: 'on' },
                     insertSpaces: JSON_FORMAT_OPTIONS.insertSpaces,
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,
@@ -1283,6 +1459,10 @@ export default function RemoteConfigAdminPage() {
               <p className={styles.editorNote}>
                 Save creates a draft version. Save & Publish creates a new version and immediately
                 makes it active for clients. Reset restores the loaded version content.
+              </p>
+              <p className={styles.editorNote}>
+                `date` fields show an inline UTC+8 preview. Clicking still edits the raw Unix
+                timestamp.
               </p>
               {editorSyntaxError && <p className={styles.error}>{editorSyntaxError}</p>}
               {!editorSyntaxError && editorError && <p className={styles.error}>{editorError}</p>}

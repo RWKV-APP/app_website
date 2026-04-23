@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import axios from 'axios';
 import { RemoteConfig, RemoteConfigActivity } from '@prisma/client';
 import JSZip = require('jszip');
+import { Config } from '../config';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   ParsedRemoteConfigUpload,
@@ -13,6 +15,30 @@ import {
 } from '../types/remote-config';
 
 const APP_CONFIG_SECTIONS = ['chat', 'albatross', 'roleplay', 'world', 'tts', 'othello', 'sudoku'];
+const HUGGING_FACE_HOSTS = new Set(['huggingface.co', 'www.huggingface.co']);
+const HUGGING_FACE_USER_AGENT = 'RWKV-App-Website/1.0';
+const HUGGING_FACE_TREE_PAGE_SIZE = 100;
+const HUGGING_FACE_MAX_TREE_PAGES = 20;
+
+interface HuggingFaceResolveTarget {
+  repoId: string;
+  revision: string;
+  filePath: string;
+}
+
+interface HuggingFaceTreeEntry {
+  path?: string;
+  type?: string;
+  size?: number;
+  lastCommit?: {
+    date?: string;
+  };
+}
+
+interface HuggingFaceFileMetadata {
+  size: number;
+  timestamp: number;
+}
 
 @Injectable()
 export class RemoteConfigService {
@@ -90,7 +116,7 @@ export class RemoteConfigService {
     createdBy: string;
     publishNow?: boolean;
   }) {
-    const parsedUpload = this.parseUpload({
+    const parsedUpload = await this.parseUpload({
       fileName: input.fileName,
       content: input.content,
     });
@@ -382,17 +408,21 @@ export class RemoteConfigService {
     });
   }
 
-  private parseUpload(input: { fileName: string; content: string }): ParsedRemoteConfigUpload {
+  private async parseUpload(input: {
+    fileName: string;
+    content: string;
+  }): Promise<ParsedRemoteConfigUpload> {
     const fileName = input.fileName.trim();
     if (!fileName) {
       throw new BadRequestException('File name is required');
     }
 
     const parsed = this.parseContent(input.content);
-    const normalizedContent = `${JSON.stringify(parsed, null, 2)}\n`;
 
     if (fileName === 'latest.json') {
       const warnings = this.validateAppConfig(parsed, fileName);
+      warnings.push(...(await this.syncAppConfigHuggingFaceMetadata(parsed, fileName)));
+      const normalizedContent = `${JSON.stringify(parsed, null, 2)}\n`;
       return {
         type: REMOTE_CONFIG_TYPES.appConfig,
         fileName,
@@ -405,6 +435,7 @@ export class RemoteConfigService {
 
     if (fileName === 'suggestions.json') {
       const warnings = this.validateSuggestions(parsed);
+      const normalizedContent = `${JSON.stringify(parsed, null, 2)}\n`;
       return {
         type: REMOTE_CONFIG_TYPES.suggestions,
         fileName,
@@ -423,6 +454,8 @@ export class RemoteConfigService {
     }
 
     const warnings = this.validateAppConfig(parsed, fileName);
+    warnings.push(...(await this.syncAppConfigHuggingFaceMetadata(parsed, fileName)));
+    const normalizedContent = `${JSON.stringify(parsed, null, 2)}\n`;
     return {
       type: REMOTE_CONFIG_TYPES.appConfig,
       fileName,
@@ -431,6 +464,372 @@ export class RemoteConfigService {
       normalizedContent,
       warnings,
     };
+  }
+
+  private async syncAppConfigHuggingFaceMetadata(
+    parsed: Record<string, unknown>,
+    fileName: string,
+  ): Promise<string[]> {
+    const treeCache = new Map<string, Promise<HuggingFaceTreeEntry[]>>();
+    const metadataCache = new Map<string, Promise<HuggingFaceFileMetadata>>();
+    let synchronizedModelCount = 0;
+
+    for (const sectionName of APP_CONFIG_SECTIONS.filter((section) => section in parsed)) {
+      const sectionValue = parsed[sectionName];
+      if (!sectionValue || Array.isArray(sectionValue) || typeof sectionValue !== 'object') {
+        continue;
+      }
+
+      const section = sectionValue as Record<string, unknown>;
+      const modelConfig = section.model_config;
+      if (!Array.isArray(modelConfig)) {
+        continue;
+      }
+
+      for (let index = 0; index < modelConfig.length; index++) {
+        const modelValue = modelConfig[index];
+        if (!modelValue || Array.isArray(modelValue) || typeof modelValue !== 'object') {
+          throw new BadRequestException(
+            `Invalid ${fileName}: section "${sectionName}" model_config[${index}] must be an object`,
+          );
+        }
+
+        const model = modelValue as Record<string, unknown>;
+        const rawUrl = model.url;
+        if (typeof rawUrl !== 'string' || rawUrl.trim().length === 0) {
+          throw new BadRequestException(
+            `Upload blocked: ${fileName} section "${sectionName}" model_config[${index}] is missing a Hugging Face resolve URL.`,
+          );
+        }
+
+        const metadata = await this.getHuggingFaceFileMetadata(rawUrl.trim(), {
+          fileName,
+          sectionName,
+          modelIndex: index,
+          treeCache,
+          metadataCache,
+        });
+
+        let updated = false;
+        if (model.fileSize !== metadata.size) {
+          model.fileSize = metadata.size;
+          updated = true;
+        }
+
+        if (model.date !== metadata.timestamp) {
+          model.date = metadata.timestamp;
+          updated = true;
+        }
+
+        if (updated) {
+          synchronizedModelCount++;
+        }
+      }
+    }
+
+    if (synchronizedModelCount === 0) {
+      return [];
+    }
+
+    return [
+      `Synced Hugging Face fileSize/date for ${synchronizedModelCount} model entr${
+        synchronizedModelCount === 1 ? 'y' : 'ies'
+      }.`,
+    ];
+  }
+
+  private async getHuggingFaceFileMetadata(
+    rawUrl: string,
+    input: {
+      fileName: string;
+      sectionName: string;
+      modelIndex: number;
+      treeCache: Map<string, Promise<HuggingFaceTreeEntry[]>>;
+      metadataCache: Map<string, Promise<HuggingFaceFileMetadata>>;
+    },
+  ): Promise<HuggingFaceFileMetadata> {
+    const cacheKey = rawUrl;
+    let cachedMetadata = input.metadataCache.get(cacheKey);
+    if (!cachedMetadata) {
+      cachedMetadata = this.resolveHuggingFaceFileMetadata(rawUrl, input);
+      input.metadataCache.set(cacheKey, cachedMetadata);
+    }
+
+    return cachedMetadata;
+  }
+
+  private async resolveHuggingFaceFileMetadata(
+    rawUrl: string,
+    input: {
+      fileName: string;
+      sectionName: string;
+      modelIndex: number;
+      treeCache: Map<string, Promise<HuggingFaceTreeEntry[]>>;
+    },
+  ): Promise<HuggingFaceFileMetadata> {
+    const target = this.parseHuggingFaceResolveUrl(rawUrl);
+    if (!target) {
+      throw new BadRequestException(
+        `Upload blocked: ${input.fileName} section "${input.sectionName}" model_config[${input.modelIndex}] must use a Hugging Face resolve URL. Received: ${rawUrl}`,
+      );
+    }
+
+    const treeEntries = await this.getOrFetchHuggingFaceTreeEntries(target, input.treeCache);
+    const exactMatch = treeEntries.find(
+      (entry) => entry.type === 'file' && entry.path === target.filePath,
+    );
+
+    if (!exactMatch) {
+      throw new BadRequestException(
+        `Upload blocked: ${input.fileName} section "${input.sectionName}" model_config[${input.modelIndex}] points to a non-existent Hugging Face file. Fix the file name/path and upload again: ${rawUrl}`,
+      );
+    }
+
+    let size = typeof exactMatch.size === 'number' ? exactMatch.size : 0;
+    let timestamp = this.parseDateToUnixTimestamp(exactMatch.lastCommit?.date);
+
+    if (size <= 0 || timestamp <= 0) {
+      const fallbackMetadata = await this.fetchHuggingFaceHeadMetadata(target);
+      if (size <= 0) {
+        size = fallbackMetadata.size;
+      }
+      if (timestamp <= 0) {
+        timestamp = fallbackMetadata.timestamp;
+      }
+    }
+
+    if (size <= 0) {
+      throw new BadRequestException(
+        `Upload blocked: Hugging Face did not return a usable file size for ${rawUrl}.`,
+      );
+    }
+
+    if (timestamp <= 0) {
+      throw new BadRequestException(
+        `Upload blocked: Hugging Face did not return a usable last-updated time for ${rawUrl}.`,
+      );
+    }
+
+    return { size, timestamp };
+  }
+
+  private async getOrFetchHuggingFaceTreeEntries(
+    target: HuggingFaceResolveTarget,
+    treeCache: Map<string, Promise<HuggingFaceTreeEntry[]>>,
+  ): Promise<HuggingFaceTreeEntry[]> {
+    const directoryPath = target.filePath.includes('/')
+      ? target.filePath.slice(0, target.filePath.lastIndexOf('/'))
+      : '';
+    const cacheKey = `${target.repoId}@${target.revision}:${directoryPath}`;
+
+    let cachedEntries = treeCache.get(cacheKey);
+    if (!cachedEntries) {
+      cachedEntries = this.fetchHuggingFaceTreeEntries(
+        target.repoId,
+        target.revision,
+        directoryPath,
+      );
+      treeCache.set(cacheKey, cachedEntries);
+    }
+
+    return cachedEntries;
+  }
+
+  private async fetchHuggingFaceTreeEntries(
+    repoId: string,
+    revision: string,
+    directoryPath: string,
+  ): Promise<HuggingFaceTreeEntry[]> {
+    const entries: HuggingFaceTreeEntry[] = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | null = null;
+
+    for (let page = 0; page < HUGGING_FACE_MAX_TREE_PAGES; page++) {
+      const params = new URLSearchParams({
+        recursive: 'false',
+        expand: 'true',
+        limit: HUGGING_FACE_TREE_PAGE_SIZE.toString(),
+      });
+      if (cursor) {
+        params.set('cursor', cursor);
+      }
+
+      const directorySuffix = directoryPath
+        ? `/${directoryPath
+            .split('/')
+            .map((segment) => encodeURIComponent(segment))
+            .join('/')}`
+        : '';
+      const apiUrl = `${this.getHuggingFaceBaseEndpoint()}/api/models/${repoId}/tree/${encodeURIComponent(revision)}${directorySuffix}?${params.toString()}`;
+      const response = await axios.get(apiUrl, {
+        headers: this.buildHuggingFaceHeaders(),
+        timeout: 30000,
+        validateStatus: () => true,
+      });
+
+      if (response.status === 404) {
+        return [];
+      }
+
+      if (response.status !== 200) {
+        throw new BadRequestException(
+          `Upload blocked: Hugging Face validation failed with status ${response.status} while checking ${repoId}@${revision}.`,
+        );
+      }
+
+      if (!Array.isArray(response.data)) {
+        throw new BadRequestException(
+          `Upload blocked: Hugging Face returned an unexpected response while checking ${repoId}@${revision}.`,
+        );
+      }
+
+      entries.push(...(response.data as HuggingFaceTreeEntry[]));
+
+      const nextCursor = this.extractHuggingFaceTreeNextCursor(response.headers?.link);
+      if (!nextCursor) {
+        return entries;
+      }
+
+      if (seenCursors.has(nextCursor)) {
+        return entries;
+      }
+
+      seenCursors.add(nextCursor);
+      cursor = nextCursor;
+    }
+
+    return entries;
+  }
+
+  private extractHuggingFaceTreeNextCursor(
+    linkHeader: string | string[] | undefined,
+  ): string | null {
+    const normalizedLinkHeader = Array.isArray(linkHeader) ? linkHeader.join(',') : linkHeader;
+    if (!normalizedLinkHeader) {
+      return null;
+    }
+
+    const nextLinkMatch = normalizedLinkHeader.match(/<([^>]+)>;\s*rel="next"/i);
+    if (!nextLinkMatch) {
+      return null;
+    }
+
+    try {
+      const nextUrl = new URL(nextLinkMatch[1]);
+      return nextUrl.searchParams.get('cursor');
+    } catch {
+      return null;
+    }
+  }
+
+  private async fetchHuggingFaceHeadMetadata(
+    target: HuggingFaceResolveTarget,
+  ): Promise<HuggingFaceFileMetadata> {
+    const filePath = target.filePath
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+    const resolveUrl = `${this.getHuggingFaceBaseEndpoint()}/${target.repoId}/resolve/${encodeURIComponent(target.revision)}/${filePath}`;
+    const response = await axios.head(resolveUrl, {
+      headers: this.buildHuggingFaceHeaders(),
+      timeout: 30000,
+      maxRedirects: 5,
+      validateStatus: () => true,
+    });
+
+    if (response.status !== 200) {
+      return { size: 0, timestamp: 0 };
+    }
+
+    const rawContentLength = response.headers['content-length'];
+    const contentLength = Array.isArray(rawContentLength) ? rawContentLength[0] : rawContentLength;
+    const parsedSize = contentLength ? Number.parseInt(contentLength, 10) : 0;
+
+    const rawLastModified = response.headers['last-modified'];
+    const lastModified = Array.isArray(rawLastModified) ? rawLastModified[0] : rawLastModified;
+    const parsedTimestamp = this.parseDateToUnixTimestamp(lastModified);
+
+    return {
+      size: Number.isFinite(parsedSize) ? parsedSize : 0,
+      timestamp: parsedTimestamp,
+    };
+  }
+
+  private parseHuggingFaceResolveUrl(rawUrl: string): HuggingFaceResolveTarget | null {
+    const trimmedUrl = rawUrl.trim();
+    if (!trimmedUrl) {
+      return null;
+    }
+
+    let normalizedPath = trimmedUrl;
+    if (/^https?:\/\//i.test(trimmedUrl)) {
+      try {
+        const parsedUrl = new URL(trimmedUrl);
+        if (!HUGGING_FACE_HOSTS.has(parsedUrl.hostname)) {
+          return null;
+        }
+        normalizedPath = parsedUrl.pathname
+          .replace(/^\/+/, '')
+          .split('/')
+          .map((segment) => decodeURIComponent(segment))
+          .join('/');
+      } catch {
+        return null;
+      }
+    }
+
+    const resolveMarker = '/resolve/';
+    const markerIndex = normalizedPath.indexOf(resolveMarker);
+    if (markerIndex === -1) {
+      return null;
+    }
+
+    const repoId = normalizedPath.slice(0, markerIndex);
+    const remainder = normalizedPath.slice(markerIndex + resolveMarker.length);
+    const firstSlashIndex = remainder.indexOf('/');
+    if (!repoId.match(/^[^/]+\/[^/]+$/) || firstSlashIndex === -1) {
+      return null;
+    }
+
+    const revision = remainder.slice(0, firstSlashIndex);
+    const filePath = remainder.slice(firstSlashIndex + 1);
+    if (!revision || !filePath) {
+      return null;
+    }
+
+    return {
+      repoId,
+      revision,
+      filePath,
+    };
+  }
+
+  private buildHuggingFaceHeaders() {
+    return {
+      'User-Agent': HUGGING_FACE_USER_AGENT,
+      ...(Config.huggingface.token
+        ? {
+            Authorization: `Bearer ${Config.huggingface.token}`,
+          }
+        : {}),
+    };
+  }
+
+  private getHuggingFaceBaseEndpoint(): string {
+    return (Config.huggingface.endpoint || 'https://huggingface.co').replace(/\/$/, '');
+  }
+
+  private parseDateToUnixTimestamp(rawDate: string | undefined): number {
+    if (!rawDate) {
+      return 0;
+    }
+
+    const timestampMs = Date.parse(rawDate);
+    if (!Number.isFinite(timestampMs)) {
+      return 0;
+    }
+
+    return Math.floor(timestampMs / 1000);
   }
 
   private validateAppConfig(parsed: Record<string, unknown>, fileName: string): string[] {

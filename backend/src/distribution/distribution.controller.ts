@@ -4,6 +4,11 @@ import { DistributionService } from './distribution.service';
 
 type DistributionMap = Record<string, DistributionRecord | null>;
 const APP_DOWNLOAD_LANDING_URL = 'https://rwkv.halowang.cloud/';
+const APP_LATEST_VERSION_OVERRIDE = '4.4.3';
+const APP_LATEST_BUILD_OVERRIDE = 717;
+const IOS_LATEST_VERSION_OVERRIDE = '4.4.1';
+const IOS_LATEST_BUILD_OVERRIDE = 715;
+const IOS_DISTRIBUTION_KEYS = new Set(['iOSTF', 'iOSAS']);
 
 interface DistributionRecord {
   id: number;
@@ -105,14 +110,17 @@ export class DistributionController {
   private hasAppRequestContext(request: Request): boolean {
     return Boolean(
       this.getHeaderValue(request, 'application-build-number') ||
-        this.getHeaderValue(request, 'application-version') ||
-        this.getHeaderValue(request, 'application-language') ||
-        this.getHeaderValue(request, 'operating-system') ||
-        this.getHeaderValue(request, 'operating-system-version'),
+      this.getHeaderValue(request, 'application-version') ||
+      this.getHeaderValue(request, 'application-language') ||
+      this.getHeaderValue(request, 'operating-system') ||
+      this.getHeaderValue(request, 'operating-system-version'),
     );
   }
 
-  private applyAppDownloadLandingUrl(result: DistributionMap, shouldRewrite: boolean): DistributionMap {
+  private applyAppRequestOverrides(
+    result: DistributionMap,
+    shouldRewrite: boolean,
+  ): DistributionMap {
     if (!shouldRewrite) {
       return result;
     }
@@ -120,12 +128,21 @@ export class DistributionController {
     const adaptedResult: DistributionMap = {};
 
     for (const [key, value] of Object.entries(result)) {
-      adaptedResult[key] = value
-        ? {
-            ...value,
-            url: APP_DOWNLOAD_LANDING_URL,
-          }
-        : null;
+      if (!value) {
+        adaptedResult[key] = null;
+        continue;
+      }
+
+      adaptedResult[key] = {
+        ...value,
+        url: APP_DOWNLOAD_LANDING_URL,
+        version: IOS_DISTRIBUTION_KEYS.has(key)
+          ? IOS_LATEST_VERSION_OVERRIDE
+          : APP_LATEST_VERSION_OVERRIDE,
+        build: IOS_DISTRIBUTION_KEYS.has(key)
+          ? IOS_LATEST_BUILD_OVERRIDE
+          : APP_LATEST_BUILD_OVERRIDE,
+      };
     }
 
     return adaptedResult;
@@ -141,13 +158,15 @@ export class DistributionController {
     // getLatestDistributions handles all errors internally and never throws
     // It always returns an object (may be empty if database is unavailable)
     const latestDistributions = await this.distributionService.getLatestDistributions();
-    const result = this.applyAppDownloadLandingUrl(
+    const result = this.applyAppRequestOverrides(
       latestDistributions as DistributionMap,
       isAppRequest,
     );
 
     if (isAppRequest) {
-      this.logger.debug('Rewrote /distributions/latest URLs to app download landing page');
+      this.logger.debug(
+        'Rewrote /distributions/latest response for app clients with landing URL and pinned platform version metadata',
+      );
     }
 
     // Filter result if keys are provided
