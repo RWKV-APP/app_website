@@ -6,11 +6,26 @@
 
 - 向后台导入一整批测评结果
 - 让 `/evals` 页面能看到新的 run
-- 为后续高分题推荐准备 `scores/` 数据
+- 为后续高分题推荐和公开高分 Prompt API 准备 `scores/` 数据
 
 参考样例：
 
 - 仓库内已有一份真实样例目录：`docs/eval_handoff/remote/evals/2026-03-25_231448_rwkv7-2-9b-g1e-20260312-ctx8192-mlx-6bit-zip/`
+
+## 与公开高分 Prompt API 的关系
+
+`GET /public-api/evals/high-score-samples` 会直接读取导入后的 eval 数据。
+
+这里和公开 Prompt API 直接相关的规则是：
+
+- `items[].score` 对应样本的 `averageWeightedScore`
+- `averageWeightedScore` 是同一样本所有已评分 attempt 的 `weighted_score` 算术平均值，保留 2 位小数
+- 如果公开接口请求里没有传 `minScore`，后端默认使用当前 `passThreshold` 做筛选阈值；代码默认值是 `8.5`，但后台管理员可以调整
+- 如果 zip 里没有 `scores/*.json`，高分推荐和公开 Prompt API 都不会有可用结果
+
+详细的公开接口调用方式见：
+
+- [docs/eval-public-high-score-prompts-api.md](./eval-public-high-score-prompts-api.md)
 
 ## 上传约束
 

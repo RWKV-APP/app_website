@@ -18,11 +18,14 @@ export class EvalPublicController {
 
   @Get('high-score-languages')
   async getHighScoreLanguages(
+    @Query('language') language?: string,
+    @Query('locale') locale?: string,
     @Headers('accept-language') acceptLanguage?: string,
     @Headers('application-language') applicationLanguage?: string,
   ) {
     return this.evalService.getPublicHighScoreLanguages({
-      locale: applicationLanguage,
+      language,
+      locale: locale ?? applicationLanguage,
       acceptLanguage,
     });
   }

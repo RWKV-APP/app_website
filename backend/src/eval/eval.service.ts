@@ -1696,7 +1696,7 @@ function resolvePublicHighScoreLanguages(
   supportedLanguages: string[],
   input: EvalLanguageSelectionInput | undefined,
 ): string[] {
-  if (!hasExplicitEvalAcceptLanguage(input)) {
+  if (!hasExplicitEvalLanguageSelection(input)) {
     return [...DEFAULT_HIGH_SCORE_LANGUAGES];
   }
 
@@ -1727,8 +1727,8 @@ function resolveEvalLanguageSelection(
   return null;
 }
 
-function hasExplicitEvalAcceptLanguage(input: EvalLanguageSelectionInput | undefined): boolean {
-  return Boolean(input?.acceptLanguage?.trim());
+function hasExplicitEvalLanguageSelection(input: EvalLanguageSelectionInput | undefined): boolean {
+  return Boolean(input?.locale?.trim() || input?.language?.trim() || input?.acceptLanguage?.trim());
 }
 
 function extractPrimaryLanguageTag(value: string | null): string | null {

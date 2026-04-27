@@ -19,7 +19,7 @@ async function bootstrap() {
   // 开启 CORS，允许前端跨域请求
   app.enableCors({
     origin: true,
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',
       'Authorization',
@@ -29,6 +29,7 @@ async function bootstrap() {
       'Operating-System',
       'Operating-System-Version',
       'Accept-Language',
+      'Application-Language',
     ],
   });
 
