@@ -18,6 +18,7 @@
 - **内容结构一致**：版本小节顺序保持一致（例如 `4.3.2 → 4.3.1 → 4.3.0`）
 - **仅语言不同**：条目含义一致，标签风格符合该语言的既有约定
 - **新增 patch 时保留上一个版本文件**：例如新增 `705-4.3.4.md` 时，不要删除或改名已有的 `704-4.3.3.md`
+- **提交粒度正确**：默认应先完成 `zh-Hans + 其他 5 个语种` 共 6 个同名文件，再统一提交；不要先单独提交 `zh-Hans`
 
 ---
 
@@ -62,6 +63,7 @@ ls backend/data/release-notes/zh-Hans/*.md | xargs -n1 basename | sort -V | tail
   - 文件名中的 build 与版本号正确
   - 最新版本小节（例如 `## 4.3.2`）在最顶部
   - 标点与术语一致（尤其是中文括号与逗号）
+- 注意：这一步完成后，**不要先提交**；`zh-Hans` 只是源文件，必须继续完成其余 5 个语种的同名文件，再统一进入提交流程
 
 #### 2) 同步到所有其他语言（创建同名文件）
 
@@ -72,11 +74,13 @@ ls backend/data/release-notes/zh-Hans/*.md | xargs -n1 basename | sort -V | tail
 - **标签对齐**：将 `[新增/优化/修复]` 替换为该语言对应标签
 - **保留关键符号**：如 `␣`、代码片段、反引号包裹内容
 - **不要删除上一个版本**：新版本文件是新增，不是替换；除非用户明确要求，否则不要删除、覆盖、改名上一个 patch 文件
+- 完成这一步后，本次发布应当已经具备 **6 个同名文件**：`zh-Hans`、`zh-Hant`、`en`、`ja`、`ru`、`ko`
 
 #### 3) 快速自检
 
 - 检查所有语言目录下都存在同名文件
 - 检查上一个版本文件仍然保留
+- 检查本次待提交内容里，至少已经包含这 6 个同名 release notes 文件，而不是只有 `zh-Hans`
 - 目视核对：
   - 最新小节是否都有
   - 条目数量是否一致
@@ -85,6 +89,8 @@ ls backend/data/release-notes/zh-Hans/*.md | xargs -n1 basename | sort -V | tail
 #### 4) Git 提交与推送
 
 - 默认先执行 `git status --short`，确认工作区中是否存在与本次发布无关的改动
+- **禁止只提交 `zh-Hans/<build>-<version>.md` 单文件**；默认必须等 6 个语言文件都准备好后再提交
+- 如果本次只涉及 release notes，同一次 commit 至少应包含 `backend/data/release-notes/{zh-Hans,zh-Hant,en,ja,ru,ko}/<build>-<version>.md` 这 6 个同名文件
 - 如果工作区只包含本次 release notes 与 workflow 相关改动，则按以下顺序执行：
 
 ```bash
@@ -96,8 +102,16 @@ git push
 - 如果工作区存在无关改动，不要直接提交无关内容，应改为按路径添加，例如：
 
 ```bash
-git add backend/data/release-notes docs/release-notes-workflow-log.md
+git add backend/data/release-notes/*/<build>-<version>.md docs/release-notes-workflow-log.md
 git commit -m "chore: sync latest release notes and update workflow"
+git push
+```
+
+- 如果这次没有改 workflow 文档，而只是同步某一个版本的多语言 release notes，更推荐显式只添加这 6 个文件，例如：
+
+```bash
+git add backend/data/release-notes/*/<build>-<version>.md
+git commit -m "chore: sync release notes <build>-<version>"
 git push
 ```
 
@@ -126,3 +140,5 @@ git push
 
 - 默认保留历史 patch 文件，不要因为新增了 `4.3.4` 就删除 `4.3.3`
 - 如果未来确实需要清理旧文件，必须由用户明确下指令，不能自行假设
+- 默认流程是：**先改 `zh-Hans`，再补齐其他 5 个语种，确认 6 个文件齐全后再统一提交**
+- 如果只看到 `zh-Hans` 已修改，但另外 5 个同名文件还没创建或还没校对完成，这个状态不应进入提交阶段
