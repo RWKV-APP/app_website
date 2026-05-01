@@ -8,6 +8,10 @@ export enum DistributionType {
   linuxAF = 'linuxAF', // linux tar.gz file in aifasthub
   linuxGR = 'linuxGR', // linux tar.gz file in github release
   linuxHFM = 'linuxHFM', // linux tar.gz file in hf-mirror
+  linuxAppImageHF = 'linuxAppImageHF', // linux AppImage file in huggingface
+  linuxAppImageAF = 'linuxAppImageAF', // linux AppImage file in aifasthub
+  linuxAppImageGR = 'linuxAppImageGR', // linux AppImage file in github release
+  linuxAppImageHFM = 'linuxAppImageHFM', // linux AppImage file in hf-mirror
 
   winHF = 'winHF', // win installer file in huggingface
   winAF = 'winAF', // win installer file in aifasthub

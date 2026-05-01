@@ -8,6 +8,8 @@ export interface HomePageCopy {
   downloadSectionTitle: string;
   installerRecommendedDesc: string;
   zipPortableDesc: string;
+  appImagePortableDesc: string;
+  tarGzArchiveDesc: string;
   sourceDescEarlyAccess: string;
   sourceDescStableRelease: string;
   sourceDescFastInChina: string;
@@ -36,6 +38,8 @@ const homepageCopy: Record<Locale, HomePageCopy> = {
     downloadSectionTitle: '下载',
     installerRecommendedDesc: '推荐，自动安装',
     zipPortableDesc: '免安装，解压即用',
+    appImagePortableDesc: '单文件运行，适合桌面用户',
+    tarGzArchiveDesc: '压缩包，适合手动部署',
     sourceDescEarlyAccess: '抢先体验最新版本',
     sourceDescStableRelease: '稳定正式版',
     sourceDescFastInChina: '国内高速下载',
@@ -62,6 +66,8 @@ const homepageCopy: Record<Locale, HomePageCopy> = {
     downloadSectionTitle: '下載',
     installerRecommendedDesc: '推薦，自動安裝',
     zipPortableDesc: '免安裝，解壓即用',
+    appImagePortableDesc: '單檔執行，適合桌面用戶',
+    tarGzArchiveDesc: '壓縮包，適合手動部署',
     sourceDescEarlyAccess: '搶先體驗最新版本',
     sourceDescStableRelease: '穩定正式版',
     sourceDescFastInChina: '中國大陸高速下載',
@@ -88,6 +94,8 @@ const homepageCopy: Record<Locale, HomePageCopy> = {
     downloadSectionTitle: 'ダウンロード',
     installerRecommendedDesc: '推奨、自動インストール',
     zipPortableDesc: '展開してすぐ使えます',
+    appImagePortableDesc: '単一ファイルで実行、デスクトップ向け',
+    tarGzArchiveDesc: '手動配置向けの圧縮アーカイブ',
     sourceDescEarlyAccess: '最新バージョンを先行体験',
     sourceDescStableRelease: '安定版',
     sourceDescFastInChina: '中国本土で高速',
@@ -114,6 +122,8 @@ const homepageCopy: Record<Locale, HomePageCopy> = {
     downloadSectionTitle: '다운로드',
     installerRecommendedDesc: '권장, 자동 설치',
     zipPortableDesc: '압축 해제 후 바로 사용',
+    appImagePortableDesc: '단일 파일 실행, 데스크톱에 적합',
+    tarGzArchiveDesc: '수동 배포용 압축 파일',
     sourceDescEarlyAccess: '최신 버전 미리 체험',
     sourceDescStableRelease: '안정 버전',
     sourceDescFastInChina: '중국 본토에서 빠름',
@@ -140,6 +150,8 @@ const homepageCopy: Record<Locale, HomePageCopy> = {
     downloadSectionTitle: 'Download',
     installerRecommendedDesc: 'Recommended, auto install',
     zipPortableDesc: 'Portable, no install needed',
+    appImagePortableDesc: 'Single-file app for desktop users',
+    tarGzArchiveDesc: 'Archive for manual setup',
     sourceDescEarlyAccess: 'Get early access to new versions',
     sourceDescStableRelease: 'Stable release',
     sourceDescFastInChina: 'Fast in China',
@@ -166,6 +178,8 @@ const homepageCopy: Record<Locale, HomePageCopy> = {
     downloadSectionTitle: 'Скачать',
     installerRecommendedDesc: 'Рекомендуется, установка автоматически',
     zipPortableDesc: 'Портативная версия, без установки',
+    appImagePortableDesc: 'Один файл для настольных систем',
+    tarGzArchiveDesc: 'Архив для ручной настройки',
     sourceDescEarlyAccess: 'Ранний доступ к новым версиям',
     sourceDescStableRelease: 'Стабильный релиз',
     sourceDescFastInChina: 'Быстро в материковом Китае',

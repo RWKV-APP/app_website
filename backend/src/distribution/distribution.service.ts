@@ -91,6 +91,18 @@ export class DistributionService implements OnModuleInit {
       case DistributionType.linuxHFM:
         await this.checkLinuxHFM();
         break;
+      case DistributionType.linuxAppImageHF:
+        await this.checkLinuxAppImageHF();
+        break;
+      case DistributionType.linuxAppImageAF:
+        await this.checkLinuxAppImageAF();
+        break;
+      case DistributionType.linuxAppImageGR:
+        await this.checkLinuxAppImageGR();
+        break;
+      case DistributionType.linuxAppImageHFM:
+        await this.checkLinuxAppImageHFM();
+        break;
       case DistributionType.winHF:
         await this.checkWinHF();
         break;
@@ -706,6 +718,39 @@ export class DistributionService implements OnModuleInit {
       type: DistributionType.linuxHFM,
       folderPath: 'linux-x64',
       fileExtension: '.tar.gz',
+      endpoint: 'https://hf-mirror.com',
+    });
+  }
+
+  private async checkLinuxAppImageHF() {
+    await this.checkHuggingFaceDistribution({
+      type: DistributionType.linuxAppImageHF,
+      folderPath: 'linux-x64',
+      fileExtension: '.AppImage',
+    });
+  }
+
+  private async checkLinuxAppImageAF() {
+    await this.checkAifasthubDistribution({
+      type: DistributionType.linuxAppImageAF,
+      folderPath: 'linux-x64',
+      fileExtension: '.AppImage',
+    });
+  }
+
+  private async checkLinuxAppImageGR() {
+    await this.checkGitHubReleaseDistribution({
+      type: DistributionType.linuxAppImageGR,
+      fileExtension: '.AppImage',
+      fileNamePattern: /linux/i,
+    });
+  }
+
+  private async checkLinuxAppImageHFM() {
+    await this.checkHuggingFaceDistribution({
+      type: DistributionType.linuxAppImageHFM,
+      folderPath: 'linux-x64',
+      fileExtension: '.AppImage',
       endpoint: 'https://hf-mirror.com',
     });
   }

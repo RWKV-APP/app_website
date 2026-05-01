@@ -154,6 +154,7 @@ function StepIcon({ name }: { name: 'platform' | 'arch' | 'format' | 'download' 
 type Platform = 'android' | 'ios' | 'windows' | 'macos' | 'linux';
 type WinArch = 'x64' | 'arm64';
 type WinFormat = 'installer' | 'zip';
+type LinuxFormat = 'appimage' | 'tarGz';
 type DownloadSource =
   | 'HF'
   | 'AF'
@@ -170,6 +171,22 @@ interface SourceOption {
   desc: string;
   recommended?: boolean;
 }
+
+const LINUX_SOURCE_KEYS: DownloadSource[] = ['HF', 'AF', 'GR', 'HFM'];
+const LINUX_DISTRIBUTION_TYPES: Record<LinuxFormat, Partial<Record<DownloadSource, DistributionType>>> = {
+  appimage: {
+    HF: DistributionType.linuxAppImageHF,
+    AF: DistributionType.linuxAppImageAF,
+    GR: DistributionType.linuxAppImageGR,
+    HFM: DistributionType.linuxAppImageHFM,
+  },
+  tarGz: {
+    HF: DistributionType.linuxHF,
+    AF: DistributionType.linuxAF,
+    GR: DistributionType.linuxGR,
+    HFM: DistributionType.linuxHFM,
+  },
+};
 
 const SEMANTIC_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const TESTFLIGHT_FALLBACK_URL = 'https://testflight.apple.com/join/DaMqCNKh';
@@ -282,6 +299,28 @@ function compareDistributionRecords(
   return 0;
 }
 
+function hasLinuxFormatDownload(
+  format: LinuxFormat,
+  distributions: LatestDistributionsResponse | null,
+): boolean {
+  return LINUX_SOURCE_KEYS.some((source) => {
+    const distributionType = LINUX_DISTRIBUTION_TYPES[format][source];
+    return distributionType ? distributions?.[distributionType]?.url != null : false;
+  });
+}
+
+function getDefaultLinuxFormat(distributions: LatestDistributionsResponse | null): LinuxFormat {
+  if (hasLinuxFormatDownload('appimage', distributions)) {
+    return 'appimage';
+  }
+
+  if (hasLinuxFormatDownload('tarGz', distributions)) {
+    return 'tarGz';
+  }
+
+  return 'appimage';
+}
+
 export default function Home() {
   const t = useAtomValue(translationsAtom);
   const [locale, setLocale] = useAtom(localeAtom);
@@ -302,6 +341,7 @@ export default function Home() {
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | null>(null);
   const [winArch, setWinArch] = useState<WinArch | null>(null);
   const [winFormat, setWinFormat] = useState<WinFormat | null>(null);
+  const [linuxFormat, setLinuxFormat] = useState<LinuxFormat | null>(null);
   const [selectedSource, setSelectedSource] = useState<DownloadSource | null>(null);
   const [sourceSelectionMode, setSourceSelectionMode] = useState<'auto' | 'manual'>('auto');
   const [showMoreSources, setShowMoreSources] = useState(false);
@@ -309,7 +349,7 @@ export default function Home() {
   // Refs for scroll
   const step2Ref = useRef<HTMLDivElement>(null);
   const step3Ref = useRef<HTMLDivElement>(null);
-  const stepWinFormatRef = useRef<HTMLDivElement>(null);
+  const stepFormatRef = useRef<HTMLDivElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -455,15 +495,24 @@ export default function Home() {
     }
   }, [selectedPlatform, winArch, winFormat]);
 
+  // Prefer AppImage once it is available, while keeping existing tar.gz links usable.
+  useEffect(() => {
+    if (selectedPlatform === 'linux' && !linuxFormat) {
+      setLinuxFormat(getDefaultLinuxFormat(distributions));
+    }
+  }, [selectedPlatform, linuxFormat, distributions]);
+
   const homeCopy = getHomePageCopy(locale);
   const prefersChinaDownloadSources = shouldPreferChinaDownloadSources(location);
 
   // Determine which steps to show (defined early for use in useEffect below)
   const showWinArchStep = selectedPlatform === 'windows';
   const showWinFormatStep = selectedPlatform === 'windows' && winArch !== null;
+  const showLinuxFormatStep = selectedPlatform === 'linux';
   const showSourceStep =
     selectedPlatform !== null &&
-    (selectedPlatform !== 'windows' || (winArch !== null && winFormat !== null));
+    (selectedPlatform !== 'windows' || (winArch !== null && winFormat !== null)) &&
+    (selectedPlatform !== 'linux' || linuxFormat !== null);
 
   const features = [
     { icon: 'offline', title: t.featureOffline, desc: t.featureOfflineDesc },
@@ -489,6 +538,7 @@ export default function Home() {
     setSelectedPlatform(p);
     setWinArch(null);
     setWinFormat(null);
+    setLinuxFormat(null);
     setSelectedSource(null);
     setSourceSelectionMode('auto');
     setShowMoreSources(false);
@@ -500,11 +550,14 @@ export default function Home() {
       // Default to zip so Windows users immediately see a download link
       setWinFormat('zip');
       scrollTo(step2Ref);
+    } else if (p === 'linux') {
+      setLinuxFormat(getDefaultLinuxFormat(distributions));
+      scrollTo(stepFormatRef);
     } else if (p === 'ios') {
       // iOS goes straight to source selection (TestFlight / App Store)
       scrollTo(step2Ref);
     } else {
-      // android, macos, linux → go to source selection
+      // Android and macOS go straight to source selection
       scrollTo(step2Ref);
     }
   };
@@ -515,11 +568,19 @@ export default function Home() {
     setSelectedSource(null);
     setSourceSelectionMode('auto');
     setShowMoreSources(false);
-    scrollTo(stepWinFormatRef);
+    scrollTo(stepFormatRef);
   };
 
   const handleWinFormatSelect = (fmt: WinFormat) => {
     setWinFormat(fmt);
+    setSelectedSource(null);
+    setSourceSelectionMode('auto');
+    setShowMoreSources(false);
+    scrollTo(step3Ref);
+  };
+
+  const handleLinuxFormatSelect = (fmt: LinuxFormat) => {
+    setLinuxFormat(fmt);
     setSelectedSource(null);
     setSourceSelectionMode('auto');
     setShowMoreSources(false);
@@ -574,13 +635,8 @@ export default function Home() {
       return map[src] ?? null;
     }
 
-    if (selectedPlatform === 'linux') {
-      const map: Partial<Record<DownloadSource, DistributionType>> = {
-        HF: DistributionType.linuxHF,
-        AF: DistributionType.linuxAF,
-        GR: DistributionType.linuxGR,
-        HFM: DistributionType.linuxHFM,
-      };
+    if (selectedPlatform === 'linux' && linuxFormat) {
+      const map = LINUX_DISTRIBUTION_TYPES[linuxFormat];
       return map[src] ?? null;
     }
 
@@ -949,7 +1005,7 @@ export default function Home() {
 
           {/* Step 3 (Windows only): Choose Format */}
           {showWinFormatStep && (
-            <div className={styles.wizardStep} ref={stepWinFormatRef}>
+            <div className={styles.wizardStep} ref={stepFormatRef}>
               <div className={styles.stepHeader}>
                 <StepIcon name="format" />
                 <h2 className={styles.stepTitle}>{homeCopy.chooseInstallType}</h2>
@@ -975,11 +1031,41 @@ export default function Home() {
             </div>
           )}
 
+          {/* Step 2 (Linux only): Choose Format */}
+          {showLinuxFormatStep && (
+            <div className={styles.wizardStep} ref={stepFormatRef}>
+              <div className={styles.stepHeader}>
+                <StepIcon name="format" />
+                <h2 className={styles.stepTitle}>{homeCopy.chooseInstallType}</h2>
+              </div>
+              <div className={styles.optionRow}>
+                <button
+                  className={`${styles.optionCard} ${styles.optionCardWide} ${linuxFormat === 'appimage' ? styles.optionCardSelected : ''}`}
+                  onClick={() => handleLinuxFormatSelect('appimage')}
+                  type="button"
+                >
+                  <span className={styles.optionLabel}>AppImage</span>
+                  <span className={styles.optionDesc}>{homeCopy.appImagePortableDesc}</span>
+                </button>
+                <button
+                  className={`${styles.optionCard} ${styles.optionCardWide} ${linuxFormat === 'tarGz' ? styles.optionCardSelected : ''}`}
+                  onClick={() => handleLinuxFormatSelect('tarGz')}
+                  type="button"
+                >
+                  <span className={styles.optionLabel}>tar.gz</span>
+                  <span className={styles.optionDesc}>{homeCopy.tarGzArchiveDesc}</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Download Result + Source Selection */}
           {showSourceStep && (
             <div
               className={styles.wizardStep}
-              ref={selectedPlatform === 'windows' ? step3Ref : step2Ref}
+              ref={
+                selectedPlatform === 'windows' || selectedPlatform === 'linux' ? step3Ref : step2Ref
+              }
             >
               <div className={styles.stepHeader}>
                 <StepIcon name="download" />

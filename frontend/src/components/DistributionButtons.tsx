@@ -45,6 +45,10 @@ const distributionConfigs: DistributionButtonConfig[] = [
   { type: DistributionType.linuxAF, label: 'Linux (Aifasthub)', iconType: 'linux' },
   { type: DistributionType.linuxGR, label: 'Linux (GitHub Release)', iconType: 'linux' },
   { type: DistributionType.linuxHFM, label: 'Linux (HF-Mirror)', iconType: 'linux' },
+  { type: DistributionType.linuxAppImageHF, label: 'Linux AppImage (HuggingFace)', iconType: 'linux' },
+  { type: DistributionType.linuxAppImageAF, label: 'Linux AppImage (Aifasthub)', iconType: 'linux' },
+  { type: DistributionType.linuxAppImageGR, label: 'Linux AppImage (GitHub Release)', iconType: 'linux' },
+  { type: DistributionType.linuxAppImageHFM, label: 'Linux AppImage (HF-Mirror)', iconType: 'linux' },
   // Windows Installer
   { type: DistributionType.winHF, label: 'Windows Installer (HuggingFace)', iconType: 'windows' },
   { type: DistributionType.winAF, label: 'Windows Installer (Aifasthub)', iconType: 'windows' },
