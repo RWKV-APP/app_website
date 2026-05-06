@@ -158,6 +158,10 @@ export interface EvalHighScoreSampleItem {
   title: string;
   prompt: string;
   score: number;
+  runId: string;
+  runLanguage: string;
+  modelRequest: string | null;
+  modelNameReportedByServer: string | null;
 }
 
 export interface EvalHighScoreCategoryGroup {
@@ -170,4 +174,5 @@ export interface EvalHighScoreCategoryGroup {
 export interface EvalHighScoreSamplesResponse {
   categories: EvalHighScoreCategoryGroup[];
   minScore: number;
+  runId: string | null;
 }

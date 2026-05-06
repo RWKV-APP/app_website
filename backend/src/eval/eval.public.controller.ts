@@ -33,6 +33,7 @@ export class EvalPublicController {
   @Get('high-score-samples')
   async getHighScoreSamples(
     @Query('minScore') rawMinScore?: string,
+    @Query('runId') runId?: string,
     @Query('language') language?: string,
     @Query('locale') locale?: string,
     @Headers('accept-language') acceptLanguage?: string,
@@ -42,6 +43,7 @@ export class EvalPublicController {
     return this.evalService.getHighScoreSamples(
       minScore !== undefined && Number.isFinite(minScore) ? minScore : undefined,
       {
+        runId,
         language,
         locale: locale ?? applicationLanguage,
         acceptLanguage,

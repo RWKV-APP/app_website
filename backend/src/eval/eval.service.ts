@@ -22,6 +22,14 @@ const DEFAULT_PASS_THRESHOLD = 8.5;
 const EVAL_PASS_THRESHOLD_KEY = 'eval.pass_threshold';
 const DEFAULT_HIGH_SCORE_LANGUAGES = ['zh-Hans'];
 const EVAL_HIGH_SCORE_LANGUAGES_KEY = 'eval.high_score_languages';
+const DEFAULT_HIGH_SCORE_MODEL_WHERE: Prisma.EvalRunWhereInput = {
+  OR: [
+    { modelNameReportedByServer: { contains: '2.9B' } },
+    { modelNameReportedByServer: { contains: '2.9b' } },
+    { runId: { contains: '2-9b' } },
+    { runId: { contains: '2_9b' } },
+  ],
+};
 const FILE_SIZE_LIMIT_MB = 64;
 const HIGH_SCORE_CATEGORY_ORDER = [
   'career',
@@ -52,6 +60,10 @@ interface EvalLanguageSelectionInput {
   language?: string | null;
   locale?: string | null;
   acceptLanguage?: string | null;
+}
+
+interface EvalHighScoreSamplesInput extends EvalLanguageSelectionInput {
+  runId?: string | null;
 }
 
 interface ListSamplesOptions {
@@ -589,23 +601,31 @@ export class EvalService {
 
   async getHighScoreSamples(
     minScore?: number,
-    languageSelection?: EvalLanguageSelectionInput,
+    input?: EvalHighScoreSamplesInput,
   ): Promise<EvalHighScoreSamplesResponse> {
     const threshold = minScore ?? (await this.getPassThreshold());
-    const supportedLanguages = await this.getPublicSupportedHighScoreLanguages();
-    const effectiveLanguages = resolvePublicHighScoreLanguages(
-      supportedLanguages,
-      languageSelection,
-    );
+    const runId = normalizeOptionalString(input?.runId);
+    let runFilter: Prisma.EvalRunWhereInput;
 
-    if (effectiveLanguages.length === 0) {
-      return { categories: [], minScore: threshold };
+    if (runId) {
+      runFilter = { runId };
+    } else {
+      const supportedLanguages = await this.getPublicSupportedHighScoreLanguages();
+      const effectiveLanguages = resolvePublicHighScoreLanguages(supportedLanguages, input);
+
+      if (effectiveLanguages.length === 0) {
+        return { categories: [], minScore: threshold, runId: null };
+      }
+
+      runFilter = {
+        AND: [buildEvalRunLanguagesWhereInput(effectiveLanguages), DEFAULT_HIGH_SCORE_MODEL_WHERE],
+      };
     }
 
     const where: Prisma.EvalSampleWhereInput = {
       averageWeightedScore: { gte: threshold },
       run: {
-        is: buildEvalRunLanguagesWhereInput(effectiveLanguages),
+        is: runFilter,
       },
     };
 
@@ -617,6 +637,14 @@ export class EvalService {
         averageWeightedScore: true,
         sourceCategory: true,
         sourceCategoryDisplayName: true,
+        run: {
+          select: {
+            runId: true,
+            language: true,
+            modelRequest: true,
+            modelNameReportedByServer: true,
+          },
+        },
       },
       orderBy: { averageWeightedScore: 'desc' },
     });
@@ -634,7 +662,15 @@ export class EvalService {
         categoryMap.set(row.sourceCategory, entry);
       }
       entry.scoreSum += score;
-      entry.items.push({ title: row.renderingName, prompt: row.prompt, score });
+      entry.items.push({
+        title: row.renderingName,
+        prompt: row.prompt,
+        score,
+        runId: row.run.runId,
+        runLanguage: row.run.language,
+        modelRequest: row.run.modelRequest ?? null,
+        modelNameReportedByServer: row.run.modelNameReportedByServer ?? null,
+      });
     }
 
     // Build sorted categories using the product-defined fixed category order.
@@ -647,7 +683,7 @@ export class EvalService {
       }))
       .sort((left, right) => compareHighScoreCategories(left.category, right.category));
 
-    return { categories, minScore: threshold };
+    return { categories, minScore: threshold, runId: runId ?? null };
   }
 
   async getSampleDetail(runId: string, sampleIndex: number): Promise<EvalSampleSummary> {
@@ -1863,6 +1899,10 @@ function readRequiredString(value: unknown, fieldName: string): string {
 }
 
 function readOptionalString(value: unknown): string | null {
+  return normalizeOptionalString(value);
+}
+
+function normalizeOptionalString(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null;
   }
