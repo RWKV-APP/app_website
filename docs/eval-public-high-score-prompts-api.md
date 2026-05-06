@@ -15,6 +15,8 @@
 
 它返回按语种 / 指定 eval run 和分数阈值筛选后的高分题目分组，每个题目都带有原始 Prompt 文本。
 
+本次 `runId` 支持是在这个既有接口上增加可选 query 参数，不新增替代接口，也不改变旧调用方使用的 API 路径。
+
 重要更新：
 
 - 如果不传 `runId`，接口按语种返回默认的 2.9B 高分 Prompt。
@@ -35,7 +37,7 @@ GET https://api.rwkv.halowang.cloud/public-api/evals/high-score-samples
 支持的 query 参数：
 
 - `runId`：可选。指定某一次 eval run。传入后会精确筛选该 run，适合区分 7.2B / 2.9B 等模型版本。
-- `locale`：可选，推荐优先使用。用于指定网页应用当前语种，例如 `zh-CN`、`zh-TW`、`ja`、`en`、`ru`
+- `locale`：可选，推荐优先使用。用于指定网页应用当前语种，例如 `zh-CN`、`zh-TW`、`ja`、`ko`、`en`、`ru`
 - `language`：可选，语义上也是指定目标语言，但优先级低于 `locale`
 - `minScore`：可选，最小分数阈值
 
@@ -55,6 +57,8 @@ GET https://api.rwkv.halowang.cloud/public-api/evals/high-score-samples
 
 1. 如果传了 `runId`，后端按该 run 精确筛选，`locale` / `language` / 请求头不会再影响样本来源。
 2. 如果没有传 `runId`，后端按下面的语言解析规则筛选，并且只返回默认 2.9B 数据。
+
+注意：这里讨论的是 `GET /public-api/evals/high-score-samples`。普通样本列表接口 `GET /public-api/evals/samples` 不具备“不传 `runId` 默认 2.9B”的语义，不能替代本接口用于获取默认高分 Prompt。
 
 语言解析优先级如下：
 
@@ -156,8 +160,6 @@ console.log(data.categories)
 - `items[].modelRequest`：生成时请求的模型档位，例如 `7b`
 - `items[].modelNameReportedByServer`：生成服务上报的模型名称
 - 顶层 `runId`：本次请求显式指定的 run；没有传 `runId` 时为 `null`
-
-### 2. 语言探测辅助接口
 
 ### 2. 获取可用 eval run 列表
 
@@ -366,7 +368,7 @@ run.runId == runId
 }
 ```
 
-常见原因有三种：
+常见原因包括：
 
 - 当前语言没有公开可用数据
 - 传入了不存在的 `runId`

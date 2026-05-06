@@ -16,6 +16,8 @@ GET /public-api/evals/high-score-samples
 
 该接口是公开 GET API，不需要鉴权，浏览器可以直接跨域请求。
 
+本次能力是在这个既有接口上增加可选 query 参数 `runId`，不新增替代接口，也不改变旧调用方已经使用的 API 路径。
+
 ## 这次新版主要变化
 
 现在同一个语种下可能同时存在多个模型版本的 eval run，例如英文同时有 7.2B 和 2.9B。
@@ -26,6 +28,8 @@ GET /public-api/evals/high-score-samples
 - 传 `runId`：只返回指定 eval run 的高分 Prompt，适合明确区分 7.2B / 2.9B。
 
 如果产品需要 7.2B 或其他非默认模型版本，一定要传对应的 `runId`。
+
+注意：不要把普通样本列表 `GET /public-api/evals/samples` 当作本接口的替代品。普通样本列表不传 `runId` 时会返回多个 run 的数据，并没有“默认 2.9B 高分 Prompt”的兼容语义。
 
 ## 推荐调用方式
 

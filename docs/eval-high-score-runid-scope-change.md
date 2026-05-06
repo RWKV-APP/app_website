@@ -16,6 +16,7 @@
 本次调整的目标是：
 
 - 保留旧调用方式，避免影响已接入方。
+- 不新增替代 API 路径；继续使用既有的 `GET /public-api/evals/high-score-samples`。
 - 没有传 `runId` 时，默认只返回 2.9B 高分 Prompt，避免旧调用方混入 7.2B 数据。
 - 增加 `runId` 精确筛选能力，让调用方可以明确请求 7.2B、2.9B 或任意一次指定 eval run。
 - 在返回 item 中附加来源信息，方便前端或调试工具识别 prompt 来自哪个 run 和模型。
@@ -43,7 +44,7 @@
 
 文件：`backend/src/eval/eval.public.controller.ts`
 
-`GET /public-api/evals/high-score-samples` 新增 query 参数：
+`GET /public-api/evals/high-score-samples` 在原路径不变的前提下新增 query 参数：
 
 ```text
 runId
@@ -95,6 +96,8 @@ GET /public-api/evals/high-score-samples?locale=en&minScore=8.5
 ```
 
 该模式现在会返回对应语言的默认 2.9B 高分 Prompt，不会混入 7.2B。
+
+普通样本列表 `GET /public-api/evals/samples` 不是本次兼容逻辑的目标接口，不传 `runId` 时不会自动限制为 2.9B。
 
 ### 推荐接入方式
 
