@@ -15,12 +15,7 @@ import {
   type CpuArchitecture,
   type LocationInfo,
 } from '@/atoms';
-import {
-  ThemeSwitcher,
-  LanguageSwitcher,
-  GitHubLink,
-  ReleaseNotesLink,
-} from '@/components';
+import { ThemeSwitcher, LanguageSwitcher, GitHubLink, ReleaseNotesLink } from '@/components';
 import {
   areLatestDistributionsEqual,
   areLocationsEqual,
@@ -38,6 +33,23 @@ import {
   LatestDistributionsResponse,
   DistributionType,
 } from '@/types/distribution';
+import {
+  APP_STORE_FALLBACK_URL,
+  compareDistributionRecords,
+  DownloadSource,
+  getDefaultLinuxFormat,
+  getDisplaySemanticVersion,
+  GOOGLE_PLAY_FALLBACK_URL,
+  isOfficialStoreSource,
+  LINUX_DISTRIBUTION_TYPES,
+  LinuxFormat,
+  Platform,
+  shouldPreferChinaDownloadSources,
+  SourceOption,
+  TESTFLIGHT_FALLBACK_URL,
+  WinArch,
+  WinFormat,
+} from '@/features/download/downloadRules';
 import styles from './page.module.css';
 
 // SVG feature icons — monoline, consistent weight
@@ -149,176 +161,6 @@ function StepIcon({ name }: { name: 'platform' | 'arch' | 'format' | 'download' 
     default:
       return null;
   }
-}
-
-type Platform = 'android' | 'ios' | 'windows' | 'macos' | 'linux';
-type WinArch = 'x64' | 'arm64';
-type WinFormat = 'installer' | 'zip';
-type LinuxFormat = 'appimage' | 'tarGz';
-type DownloadSource =
-  | 'HF'
-  | 'AF'
-  | 'GR'
-  | 'HFM'
-  | 'Pgyer'
-  | 'TestFlight'
-  | 'AppStore'
-  | 'GooglePlay';
-
-interface SourceOption {
-  key: DownloadSource;
-  label: string;
-  desc: string;
-  recommended?: boolean;
-}
-
-const LINUX_SOURCE_KEYS: DownloadSource[] = ['HF', 'AF', 'GR', 'HFM'];
-const LINUX_DISTRIBUTION_TYPES: Record<LinuxFormat, Partial<Record<DownloadSource, DistributionType>>> = {
-  appimage: {
-    HF: DistributionType.linuxAppImageHF,
-    AF: DistributionType.linuxAppImageAF,
-    GR: DistributionType.linuxAppImageGR,
-    HFM: DistributionType.linuxAppImageHFM,
-  },
-  tarGz: {
-    HF: DistributionType.linuxHF,
-    AF: DistributionType.linuxAF,
-    GR: DistributionType.linuxGR,
-    HFM: DistributionType.linuxHFM,
-  },
-};
-
-const SEMANTIC_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
-const TESTFLIGHT_FALLBACK_URL = 'https://testflight.apple.com/join/DaMqCNKh';
-const APP_STORE_FALLBACK_URL = 'https://apps.apple.com/app/rwkv-chat/id6740192639';
-const GOOGLE_PLAY_FALLBACK_URL = 'https://play.google.com/store/apps/details?id=com.rwkvzone.chat';
-
-function shouldPreferChinaDownloadSources(location: LocationInfo | null): boolean {
-  return location?.isMainlandChina ?? false;
-}
-
-function isOfficialStoreSource(source: DownloadSource): boolean {
-  return source === 'AppStore' || source === 'GooglePlay';
-}
-
-function getDisplaySemanticVersion(version: string | null | undefined): string | null {
-  if (!version) {
-    return null;
-  }
-
-  const normalizedVersion = version.trim().replace(/^v/i, '');
-  if (!normalizedVersion || normalizedVersion === 'latest') {
-    return null;
-  }
-
-  if (!SEMANTIC_VERSION_PATTERN.test(normalizedVersion)) {
-    return null;
-  }
-
-  return normalizedVersion;
-}
-
-function compareVersionStrings(left: string, right: string): number {
-  if (left === right) {
-    return 0;
-  }
-
-  if (left === 'latest') {
-    return 1;
-  }
-
-  if (right === 'latest') {
-    return -1;
-  }
-
-  const leftParts = left.split('.').map((part) => Number.parseInt(part, 10));
-  const rightParts = right.split('.').map((part) => Number.parseInt(part, 10));
-  const leftIsValid = leftParts.every((part) => Number.isFinite(part));
-  const rightIsValid = rightParts.every((part) => Number.isFinite(part));
-
-  if (!leftIsValid && !rightIsValid) {
-    return 0;
-  }
-
-  if (!leftIsValid) {
-    return -1;
-  }
-
-  if (!rightIsValid) {
-    return 1;
-  }
-
-  const maxLength = Math.max(leftParts.length, rightParts.length);
-  for (let index = 0; index < maxLength; index += 1) {
-    const leftPart = leftParts[index] || 0;
-    const rightPart = rightParts[index] || 0;
-
-    if (leftPart < rightPart) {
-      return -1;
-    }
-    if (leftPart > rightPart) {
-      return 1;
-    }
-  }
-
-  return 0;
-}
-
-function compareDistributionRecords(
-  left: DistributionRecord | null,
-  right: DistributionRecord | null,
-): number {
-  if (!left && !right) {
-    return 0;
-  }
-
-  if (!left) {
-    return -1;
-  }
-
-  if (!right) {
-    return 1;
-  }
-
-  const versionCompare = compareVersionStrings(left.version, right.version);
-  if (versionCompare !== 0) {
-    return versionCompare;
-  }
-
-  const leftBuild = left.build ?? -1;
-  const rightBuild = right.build ?? -1;
-
-  if (leftBuild < rightBuild) {
-    return -1;
-  }
-
-  if (leftBuild > rightBuild) {
-    return 1;
-  }
-
-  return 0;
-}
-
-function hasLinuxFormatDownload(
-  format: LinuxFormat,
-  distributions: LatestDistributionsResponse | null,
-): boolean {
-  return LINUX_SOURCE_KEYS.some((source) => {
-    const distributionType = LINUX_DISTRIBUTION_TYPES[format][source];
-    return distributionType ? distributions?.[distributionType]?.url != null : false;
-  });
-}
-
-function getDefaultLinuxFormat(distributions: LatestDistributionsResponse | null): LinuxFormat {
-  if (hasLinuxFormatDownload('appimage', distributions)) {
-    return 'appimage';
-  }
-
-  if (hasLinuxFormatDownload('tarGz', distributions)) {
-    return 'tarGz';
-  }
-
-  return 'appimage';
 }
 
 export default function Home() {

@@ -1,4 +1,6 @@
-export type RemoteConfigType = 'app_config' | 'suggestions';
+import type { RemoteConfigType } from '@app/contracts';
+
+export type { RemoteConfigType } from '@app/contracts';
 
 export interface RemoteConfigVersionRecord {
   id: number;

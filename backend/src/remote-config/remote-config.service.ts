@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import axios from 'axios';
 import { RemoteConfig, RemoteConfigActivity } from '@prisma/client';
 import JSZip = require('jszip');
+import { APP_CONFIG_SECTIONS } from '@app/contracts';
 import { Config } from '../config';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -14,7 +15,6 @@ import {
   RemoteConfigVersionSummary,
 } from '../types/remote-config';
 
-const APP_CONFIG_SECTIONS = ['chat', 'albatross', 'roleplay', 'world', 'tts', 'othello', 'sudoku'];
 const HUGGING_FACE_HOSTS = new Set(['huggingface.co', 'www.huggingface.co']);
 const HUGGING_FACE_USER_AGENT = 'RWKV-App-Website/1.0';
 const HUGGING_FACE_TREE_PAGE_SIZE = 100;

@@ -4,8 +4,40 @@ import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import {
+  BRAND_LABELS,
+  BRAND_ORDER,
+  BUILD_MODE_LABELS,
+  capitalizeBrand,
+  CellMetricBasis,
+  deriveModelTag,
+  deriveQuantLabel,
+  deriveSortOrder,
+  deriveWeightLabel,
+  filterLeaderboardData,
+  formatFilterSelection,
+  formatHardwareSummary,
+  formatMetricBasisLabel,
+  formatSpeed,
+  getDisplaySpeeds,
+  inferBrand,
+  isBatchColumn,
+  MODEL_TAG_LABELS,
+  OS_LABELS,
+  OS_ORDER,
+  toggleFilterValue,
+} from '@/features/telemetry/telemetryRules';
 import { ThemeSwitcher } from '@/components';
-import { fetchAdminSession } from '@/utils/api';
+import {
+  fetchAdminSession,
+  fetchPublicTelemetryFilters,
+  fetchPublicTelemetryLeaderboard,
+  fetchPublicTelemetryRecords,
+} from '@/utils/api';
+import type {
+  TelemetryLeaderboardEntry as LeaderboardEntry,
+  TelemetryRecordEntry as RecordEntry,
+} from '@/types/telemetry';
 import {
   resolveAndroidSocName,
   resolveAppleDevicePresentation,
@@ -17,54 +49,6 @@ import styles from './page.module.css';
 // Types
 // ---------------------------------------------------------------------------
 
-interface LeaderboardEntry {
-  os: string;
-  modelSha256: string;
-  modelName: string;
-  modelFileName: string;
-  modelSizeB: number | null;
-  quantization: string | null;
-  socName: string;
-  socBrand: string;
-  deviceModels: string[];
-  deviceDisplayNames: string[];
-  backend: string;
-  isBatch: boolean;
-  batchCount: number;
-  sampleCount: number;
-  decodeSpeed: { avg: number; max: number | null; top10: number | null };
-  prefillSpeed: { avg: number; max: number | null; top10: number | null };
-}
-
-interface RecordEntry {
-  id: number;
-  socName: string;
-  socBrand: string;
-  os: string;
-  osVersion: string | null;
-  deviceModel: string | null;
-  deviceDisplayName: string | null;
-  cpuName: string | null;
-  gpuName: string | null;
-  totalMemoryMb: number | null;
-  totalVramMb: number | null;
-  appVersion: string;
-  appBuild: string;
-  buildMode: string;
-  modelName: string;
-  modelFileName: string;
-  modelSha256: string;
-  modelSizeB: number | null;
-  quantization: string | null;
-  backend: string;
-  isBatch: boolean;
-  batchCount: number;
-  prefillSpeed: number;
-  decodeSpeed: number;
-  clientTimestamp: string;
-  createdAt: string;
-}
-
 interface WeightColumn {
   key: string; // modelSha256 + backend + batch dimension
   label: string;
@@ -75,8 +59,6 @@ interface WeightColumn {
   batchCount: number;
   sortOrder: number;
 }
-
-type CellMetricBasis = 'top10' | 'decode_div_batch';
 
 interface MatrixCell {
   prefillDisplay: number | null;
@@ -203,135 +185,6 @@ function BrandIcon({ brand, className }: { brand: string; className?: string }) 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const OS_LABELS: Record<string, string> = {
-  macos: 'macOS',
-  android: '安卓',
-  ios: 'iOS',
-  windows: 'Windows',
-  linux: 'Linux',
-};
-
-const OS_ORDER = ['macos', 'android', 'ios', 'windows', 'linux'];
-
-const BRAND_LABELS: Record<string, string> = {
-  apple: 'Apple',
-  qualcomm: 'Qualcomm',
-  snapdragon: 'Qualcomm',
-  nvidia: 'NVIDIA',
-  amd: 'AMD',
-  intel: 'Intel',
-  mediatek: 'MediaTek',
-  samsung: 'Samsung',
-  google: 'Google',
-  huawei: 'Huawei',
-};
-
-const BUILD_MODE_LABELS: Record<string, string> = {
-  debug: 'debug',
-  profile: 'profile',
-  release: 'release',
-  unknown: '未知',
-};
-
-const BRAND_ORDER = [
-  'apple',
-  'qualcomm',
-  'google',
-  'huawei',
-  'nvidia',
-  'amd',
-  'intel',
-  'mediatek',
-  'samsung',
-];
-
-/** 从 socName 推断 brand（当 socBrand 为 unknown 时） */
-function inferBrand(socName: string, socBrand: string): string {
-  if (socBrand && socBrand !== 'unknown') {
-    // 统一 snapdragon → qualcomm
-    if (socBrand.toLowerCase() === 'snapdragon') return 'qualcomm';
-    return socBrand.toLowerCase();
-  }
-  const lower = socName.toLowerCase();
-  if (lower.includes('rtx') || lower.includes('gtx') || lower.includes('nvidia')) return 'nvidia';
-  if (lower.includes('radeon') || lower.includes('amd') || lower.includes('rx ')) return 'amd';
-  if (lower.includes('intel') || lower.includes('arc ')) return 'intel';
-  if (
-    lower.includes('apple') ||
-    lower.includes('iphone') ||
-    lower.includes('ipad') ||
-    lower.includes('ipod') ||
-    /^a\d+(?:\s+(?:pro|max|bionic))?$/.test(lower.trim()) ||
-    lower.includes(' m1') ||
-    lower.includes(' m2') ||
-    lower.includes(' m3') ||
-    lower.includes(' m4')
-  )
-    return 'apple';
-  if (lower.includes('mediatek') || lower.includes('dimensity') || lower.includes('helio'))
-    return 'mediatek';
-  if (lower.includes('kirin')) return 'huawei';
-  if (
-    lower.includes('google tensor') ||
-    lower.includes('tensor_soc') ||
-    /\btensor\s*g\d+\b/.test(lower) ||
-    /\bpixel\s*7(?:\s*pro|\s*a)?\b/.test(lower)
-  )
-    return 'google';
-  if (lower.includes('exynos') || lower.includes('samsung')) return 'samsung';
-  return 'unknown';
-}
-
-const MODEL_TAG_LABELS: Record<string, string> = {
-  Chat: 'Chat',
-  VL: 'VL',
-  TTS: 'TTS',
-  Translate: 'Translate',
-  Neko: 'Neko',
-};
-
-function deriveWeightLabel(entry: LeaderboardEntry): string {
-  const size = entry.modelSizeB;
-  if (size != null && size > 0) {
-    return `${size}B`;
-  }
-  const match = entry.modelFileName.match(/(\d+\.?\d*)B/i);
-  if (match) return `${match[1]}B`;
-  return entry.modelName || entry.modelFileName;
-}
-
-function deriveQuantLabel(entry: LeaderboardEntry): string {
-  if (entry.quantization) return entry.quantization.toUpperCase();
-  const match = entry.modelFileName.match(/\d+\.?\d*B[_-]?([\w_]+?)\.gguf/i);
-  if (match) return match[1].toUpperCase();
-  return entry.backend;
-}
-
-function deriveSortOrder(entry: LeaderboardEntry): number {
-  if (entry.modelSizeB != null && entry.modelSizeB > 0) return entry.modelSizeB;
-  const match = entry.modelFileName.match(/(\d+\.?\d*)B/i);
-  if (match) return parseFloat(match[1]);
-  return 999;
-}
-
-function capitalizeBrand(brand: string): string {
-  if (!brand) return '';
-  const map: Record<string, string> = {
-    snapdragon: 'Qualcomm',
-    qualcomm: 'Qualcomm',
-    mediatek: 'MediaTek',
-    apple: 'Apple',
-    samsung: 'Samsung',
-    nvidia: 'NVIDIA',
-    amd: 'AMD',
-    intel: 'Intel',
-    unknown: '',
-    google: 'Google',
-    huawei: 'Huawei',
-  };
-  return map[brand.toLowerCase()] ?? brand.charAt(0).toUpperCase() + brand.slice(1);
-}
 
 function getSocDisplayInfo(input: {
   socName: string;
@@ -469,49 +322,6 @@ function getRecordHardwareLabel(record: RecordEntry): StackedCellLabel {
   };
 }
 
-function formatSpeed(value: number | null): string {
-  if (value === null || value === undefined) return '—';
-  return value % 1 === 0 ? value.toFixed(0) : value.toFixed(1);
-}
-
-function formatHardwareSummary(cpuName: string | null, gpuName: string | null): string {
-  if (cpuName && gpuName) return `${cpuName} / ${gpuName}`;
-  if (cpuName) return cpuName;
-  if (gpuName) return gpuName;
-  return '—';
-}
-
-function toggleFilterValue(values: string[], value: string): string[] {
-  if (values.includes(value)) {
-    return values.filter((item) => item !== value);
-  }
-  return [...values, value];
-}
-
-function formatFilterSelection(
-  values: string[],
-  allLabel: string,
-  formatValue: (value: string) => string = (value) => value,
-): string {
-  return values.length === 0 ? allLabel : values.map(formatValue).join('+');
-}
-
-function deriveModelTag(entry: LeaderboardEntry): string {
-  const name = (entry.modelName || entry.modelFileName).toLowerCase();
-  if (
-    name.includes('-vl') ||
-    name.includes('_vl') ||
-    name.includes(' vl') ||
-    name.includes('rwkv-vl')
-  )
-    return 'VL';
-  if (name.includes('tts') || name.includes('spark') || name.includes('voice')) return 'TTS';
-  if (name.includes('translate') || name.includes('-trans') || name.includes('translation'))
-    return 'Translate';
-  if (name.includes('neko')) return 'Neko';
-  return 'Chat';
-}
-
 function buildCellClass(decode: number | null): string {
   if (decode === null) return '';
   if (decode >= 35) return styles.cellStrong;
@@ -530,84 +340,11 @@ function formatTimestamp(ts: string): string {
   });
 }
 
-function isBatchColumn(input: { isBatch: boolean; batchCount: number }): boolean {
-  return input.isBatch && input.batchCount > 1;
-}
-
-function getMetricBasis(input: { isBatch: boolean; batchCount: number }): CellMetricBasis {
-  return isBatchColumn(input) ? 'decode_div_batch' : 'top10';
-}
-
-function getDisplaySpeeds(entry: LeaderboardEntry): {
-  prefill: number | null;
-  decode: number | null;
-  decodeRaw: number | null;
-  metricBasis: CellMetricBasis;
-} {
-  const metricBasis = getMetricBasis(entry);
-  const prefillBase = entry.prefillSpeed.top10 ?? entry.prefillSpeed.max ?? entry.prefillSpeed.avg;
-  const decodeBase = entry.decodeSpeed.top10 ?? entry.decodeSpeed.max ?? entry.decodeSpeed.avg;
-  if (metricBasis === 'decode_div_batch') {
-    return {
-      prefill: prefillBase,
-      decode: entry.batchCount > 0 ? decodeBase / entry.batchCount : decodeBase,
-      decodeRaw: decodeBase,
-      metricBasis,
-    };
-  }
-  return {
-    prefill: prefillBase,
-    decode: decodeBase,
-    decodeRaw: decodeBase,
-    metricBasis,
-  };
-}
-
-function formatMetricBasisLabel(metricBasis: CellMetricBasis): string {
-  return metricBasis === 'decode_div_batch' ? 'decode / batchCount' : 'top10';
-}
-
 function getCellFooterNote(cell: MatrixCell): string {
   if (cell.isBatch && cell.batchCount > 1) {
     return `Batch ×${cell.batchCount} · ${cell.sampleCount}次测评`;
   }
   return `${cell.sampleCount}次测评`;
-}
-
-function filterLeaderboardData(
-  data: LeaderboardEntry[],
-  filters: {
-    selectedPlatforms: string[];
-    selectedBatch: string[];
-    selectedSize: string[];
-    selectedModelTag: string[];
-    selectedBrand: string[];
-    selectedSoc: string[];
-  },
-): LeaderboardEntry[] {
-  let filtered = data;
-  if (filters.selectedPlatforms.length > 0) {
-    filtered = filtered.filter((entry) => filters.selectedPlatforms.includes(entry.os));
-  }
-  if (filters.selectedBatch.length > 0) {
-    const batchCounts = new Set(filters.selectedBatch.map((value) => parseInt(value, 10)));
-    filtered = filtered.filter((entry) => batchCounts.has(entry.batchCount));
-  }
-  if (filters.selectedSize.length > 0) {
-    filtered = filtered.filter((entry) => filters.selectedSize.includes(deriveWeightLabel(entry)));
-  }
-  if (filters.selectedModelTag.length > 0) {
-    filtered = filtered.filter((entry) => filters.selectedModelTag.includes(deriveModelTag(entry)));
-  }
-  if (filters.selectedBrand.length > 0) {
-    filtered = filtered.filter((entry) =>
-      filters.selectedBrand.includes(inferBrand(entry.socName, entry.socBrand)),
-    );
-  }
-  if (filters.selectedSoc.length > 0) {
-    filtered = filtered.filter((entry) => filters.selectedSoc.includes(entry.socName));
-  }
-  return filtered;
 }
 
 function getWeightColumnReportLabel(column: WeightColumn): string {
@@ -1096,40 +833,15 @@ function buildPlatforms(
   return { platforms, weightColumns };
 }
 
-// ---------------------------------------------------------------------------
-// API
-// ---------------------------------------------------------------------------
-
-const getApiBaseUrl = (): string => {
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    if (hostname === 'rwkv.halowang.cloud') {
-      return 'https://api.rwkv.halowang.cloud';
-    }
-    // dev 模式：Next.js rewrites 已将 /public-api/* 代理到 localhost:3001
-    return '';
-  }
-  return '';
-};
-
 async function fetchLeaderboard(
   appVersions?: string[],
   buildModes?: string[],
 ): Promise<LeaderboardEntry[]> {
-  const base = getApiBaseUrl();
-  const qs = new URLSearchParams({ limit: '5000' });
-  if (appVersions && appVersions.length > 0) qs.set('appVersion', appVersions.join(','));
-  if (buildModes && buildModes.length > 0) qs.set('buildMode', buildModes.join(','));
-  const res = await fetch(`${base}/public-api/telemetry/leaderboard?${qs}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  return fetchPublicTelemetryLeaderboard({ appVersions, buildModes, limit: 5000 });
 }
 
 async function fetchFilters(): Promise<{ appVersions: string[]; buildModes: string[] }> {
-  const base = getApiBaseUrl();
-  const res = await fetch(`${base}/public-api/telemetry/filters`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  return fetchPublicTelemetryFilters();
 }
 
 async function fetchRecords(params: {
@@ -1142,25 +854,7 @@ async function fetchRecords(params: {
   appVersions?: string[];
   buildModes?: string[];
 }): Promise<RecordEntry[]> {
-  const base = getApiBaseUrl();
-  const qs = new URLSearchParams({
-    socName: params.socName,
-    modelSha256: params.modelSha256,
-    backend: params.backend,
-    isBatch: String(params.isBatch),
-    batchCount: String(params.batchCount),
-    limit: '100',
-  });
-  if (params.os) qs.set('os', params.os);
-  if (params.appVersions && params.appVersions.length > 0) {
-    qs.set('appVersion', params.appVersions.join(','));
-  }
-  if (params.buildModes && params.buildModes.length > 0) {
-    qs.set('buildMode', params.buildModes.join(','));
-  }
-  const res = await fetch(`${base}/public-api/telemetry/records?${qs}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  return fetchPublicTelemetryRecords(params);
 }
 
 // ---------------------------------------------------------------------------

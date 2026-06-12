@@ -1,23 +1,8 @@
 import { Request } from 'express';
+import type { RemoteConfigAction, RemoteConfigType } from '@app/contracts';
 
-export const REMOTE_CONFIG_TYPES = {
-  appConfig: 'app_config',
-  suggestions: 'suggestions',
-} as const;
-
-export const REMOTE_CONFIG_ACTIONS = {
-  login: 'login',
-  logout: 'logout',
-  upload: 'upload',
-  publish: 'publish',
-  rollback: 'rollback',
-  download: 'download',
-  downloadArchive: 'download_archive',
-} as const;
-
-export type RemoteConfigType = (typeof REMOTE_CONFIG_TYPES)[keyof typeof REMOTE_CONFIG_TYPES];
-
-export type RemoteConfigAction = (typeof REMOTE_CONFIG_ACTIONS)[keyof typeof REMOTE_CONFIG_ACTIONS];
+export { REMOTE_CONFIG_ACTIONS, REMOTE_CONFIG_TYPES } from '@app/contracts';
+export type { RemoteConfigAction, RemoteConfigType } from '@app/contracts';
 
 export interface ParsedRemoteConfigUpload {
   type: RemoteConfigType;

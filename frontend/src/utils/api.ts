@@ -17,36 +17,13 @@ import {
   UploadRemoteConfigRequest,
   UploadRemoteConfigResponse,
 } from '@/types/remote-config';
+import type {
+  TelemetryLeaderboardEntry,
+  TelemetryPublicFilters,
+  TelemetryRecordEntry,
+} from '@/types/telemetry';
+import { API_BASE_URL } from './apiBase';
 
-// Use api.rwkv.halowang.cloud in production, or env variable if set
-// In development, use relative path to leverage Next.js rewrites
-const getApiBaseUrl = (): string => {
-  // Allow override via environment variable
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
-  }
-
-  // In browser, check if we're on production domain
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    // If on rwkv.halowang.cloud, use api.rwkv.halowang.cloud
-    if (hostname === 'rwkv.halowang.cloud') {
-      return 'https://api.rwkv.halowang.cloud';
-    }
-    // In development, use relative path to leverage Next.js rewrites
-    // This will proxy to http://localhost:3462 via rewrites
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return '';
-    }
-    // Otherwise use relative path (for same-domain deployment)
-    return '';
-  }
-
-  // Server-side rendering: use relative path in dev (rewrites work), or production URL
-  return '';
-};
-
-const API_BASE_URL = getApiBaseUrl();
 const ADMIN_TOKEN_STORAGE_KEY = 'rwkv-admin-token';
 
 export interface AdminTelemetryPerfRecord {
@@ -350,6 +327,70 @@ export async function fetchAdminTelemetryFilters(): Promise<AdminTelemetryPerfFi
     throw new Error(await parseErrorResponse(response));
   }
   return (await response.json()) as AdminTelemetryPerfFilters;
+}
+
+export async function fetchPublicTelemetryLeaderboard(options?: {
+  appVersions?: string[];
+  buildModes?: string[];
+  limit?: number;
+}): Promise<TelemetryLeaderboardEntry[]> {
+  const params = new URLSearchParams({ limit: String(options?.limit ?? 5000) });
+  if (options?.appVersions && options.appVersions.length > 0) {
+    params.set('appVersion', options.appVersions.join(','));
+  }
+  if (options?.buildModes && options.buildModes.length > 0) {
+    params.set('buildMode', options.buildModes.join(','));
+  }
+
+  const response = await fetch(`${API_BASE_URL}/public-api/telemetry/leaderboard?${params}`);
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+  return (await response.json()) as TelemetryLeaderboardEntry[];
+}
+
+export async function fetchPublicTelemetryFilters(): Promise<TelemetryPublicFilters> {
+  const response = await fetch(`${API_BASE_URL}/public-api/telemetry/filters`);
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+  return (await response.json()) as TelemetryPublicFilters;
+}
+
+export async function fetchPublicTelemetryRecords(params: {
+  socName: string;
+  modelSha256: string;
+  backend: string;
+  isBatch: boolean;
+  batchCount: number;
+  os?: string;
+  appVersions?: string[];
+  buildModes?: string[];
+  limit?: number;
+}): Promise<TelemetryRecordEntry[]> {
+  const query = new URLSearchParams({
+    socName: params.socName,
+    modelSha256: params.modelSha256,
+    backend: params.backend,
+    isBatch: String(params.isBatch),
+    batchCount: String(params.batchCount),
+    limit: String(params.limit ?? 100),
+  });
+  if (params.os) {
+    query.set('os', params.os);
+  }
+  if (params.appVersions && params.appVersions.length > 0) {
+    query.set('appVersion', params.appVersions.join(','));
+  }
+  if (params.buildModes && params.buildModes.length > 0) {
+    query.set('buildMode', params.buildModes.join(','));
+  }
+
+  const response = await fetch(`${API_BASE_URL}/public-api/telemetry/records?${query}`);
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+  return (await response.json()) as TelemetryRecordEntry[];
 }
 
 export async function fetchPublicEvalRuns(): Promise<EvalRunSummaryRecord[]> {

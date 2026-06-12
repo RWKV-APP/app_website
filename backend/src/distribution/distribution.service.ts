@@ -65,122 +65,54 @@ export class DistributionService implements OnModuleInit {
     }
   }
 
+  private readonly distributionCheckers: Record<DistributionType, () => Promise<void>> = {
+    [DistributionType.macosHF]: () => this.checkMacosHF(),
+    [DistributionType.macosAF]: () => this.checkMacosAF(),
+    [DistributionType.macosGR]: () => this.checkMacosGR(),
+    [DistributionType.macosHFM]: () => this.checkMacosHFM(),
+    [DistributionType.linuxHF]: () => this.checkLinuxHF(),
+    [DistributionType.linuxAF]: () => this.checkLinuxAF(),
+    [DistributionType.linuxGR]: () => this.checkLinuxGR(),
+    [DistributionType.linuxHFM]: () => this.checkLinuxHFM(),
+    [DistributionType.linuxAppImageHF]: () => this.checkLinuxAppImageHF(),
+    [DistributionType.linuxAppImageAF]: () => this.checkLinuxAppImageAF(),
+    [DistributionType.linuxAppImageGR]: () => this.checkLinuxAppImageGR(),
+    [DistributionType.linuxAppImageHFM]: () => this.checkLinuxAppImageHFM(),
+    [DistributionType.winHF]: () => this.checkWinHF(),
+    [DistributionType.winAF]: () => this.checkWinAF(),
+    [DistributionType.winGR]: () => this.checkWinGR(),
+    [DistributionType.winHFM]: () => this.checkWinHFM(),
+    [DistributionType.winZipHF]: () => this.checkWinZipHF(),
+    [DistributionType.winZipAF]: () => this.checkWinZipAF(),
+    [DistributionType.winZipGR]: () => this.checkWinZipGR(),
+    [DistributionType.winZipHFM]: () => this.checkWinZipHFM(),
+    [DistributionType.winArm64HF]: () => this.checkWinArm64HF(),
+    [DistributionType.winArm64AF]: () => this.checkWinArm64AF(),
+    [DistributionType.winArm64GR]: () => this.checkWinArm64GR(),
+    [DistributionType.winArm64HFM]: () => this.checkWinArm64HFM(),
+    [DistributionType.winArm64ZipHF]: () => this.checkWinArm64ZipHF(),
+    [DistributionType.winArm64ZipAF]: () => this.checkWinArm64ZipAF(),
+    [DistributionType.winArm64ZipGR]: () => this.checkWinArm64ZipGR(),
+    [DistributionType.winArm64ZipHFM]: () => this.checkWinArm64ZipHFM(),
+    [DistributionType.iOSTF]: () => this.checkIOSTF(),
+    [DistributionType.iOSAS]: () => this.checkIOSAS(),
+    [DistributionType.androidHF]: () => this.checkAndroidHF(),
+    [DistributionType.androidAF]: () => this.checkAndroidAF(),
+    [DistributionType.androidGR]: () => this.checkAndroidGR(),
+    [DistributionType.androidHFM]: () => this.checkAndroidHFM(),
+    [DistributionType.androidPgyerAPK]: () => this.checkAndroidPgyerAPK(),
+    [DistributionType.androidPgyer]: () => this.checkAndroidPgyer(),
+    [DistributionType.androidGooglePlay]: () => this.checkAndroidGooglePlay(),
+  };
+
   private async checkDistribution(type: DistributionType) {
-    switch (type) {
-      case DistributionType.macosHF:
-        await this.checkMacosHF();
-        break;
-      case DistributionType.macosAF:
-        await this.checkMacosAF();
-        break;
-      case DistributionType.macosGR:
-        await this.checkMacosGR();
-        break;
-      case DistributionType.macosHFM:
-        await this.checkMacosHFM();
-        break;
-      case DistributionType.linuxHF:
-        await this.checkLinuxHF();
-        break;
-      case DistributionType.linuxAF:
-        await this.checkLinuxAF();
-        break;
-      case DistributionType.linuxGR:
-        await this.checkLinuxGR();
-        break;
-      case DistributionType.linuxHFM:
-        await this.checkLinuxHFM();
-        break;
-      case DistributionType.linuxAppImageHF:
-        await this.checkLinuxAppImageHF();
-        break;
-      case DistributionType.linuxAppImageAF:
-        await this.checkLinuxAppImageAF();
-        break;
-      case DistributionType.linuxAppImageGR:
-        await this.checkLinuxAppImageGR();
-        break;
-      case DistributionType.linuxAppImageHFM:
-        await this.checkLinuxAppImageHFM();
-        break;
-      case DistributionType.winHF:
-        await this.checkWinHF();
-        break;
-      case DistributionType.winAF:
-        await this.checkWinAF();
-        break;
-      case DistributionType.winGR:
-        await this.checkWinGR();
-        break;
-      case DistributionType.winHFM:
-        await this.checkWinHFM();
-        break;
-      case DistributionType.winZipHF:
-        await this.checkWinZipHF();
-        break;
-      case DistributionType.winZipAF:
-        await this.checkWinZipAF();
-        break;
-      case DistributionType.winZipGR:
-        await this.checkWinZipGR();
-        break;
-      case DistributionType.winZipHFM:
-        await this.checkWinZipHFM();
-        break;
-      case DistributionType.winArm64HF:
-        await this.checkWinArm64HF();
-        break;
-      case DistributionType.winArm64AF:
-        await this.checkWinArm64AF();
-        break;
-      case DistributionType.winArm64GR:
-        await this.checkWinArm64GR();
-        break;
-      case DistributionType.winArm64HFM:
-        await this.checkWinArm64HFM();
-        break;
-      case DistributionType.winArm64ZipHF:
-        await this.checkWinArm64ZipHF();
-        break;
-      case DistributionType.winArm64ZipAF:
-        await this.checkWinArm64ZipAF();
-        break;
-      case DistributionType.winArm64ZipGR:
-        await this.checkWinArm64ZipGR();
-        break;
-      case DistributionType.winArm64ZipHFM:
-        await this.checkWinArm64ZipHFM();
-        break;
-      case DistributionType.iOSTF:
-        await this.checkIOSTF();
-        break;
-      case DistributionType.iOSAS:
-        await this.checkIOSAS();
-        break;
-      case DistributionType.androidHF:
-        await this.checkAndroidHF();
-        break;
-      case DistributionType.androidAF:
-        await this.checkAndroidAF();
-        break;
-      case DistributionType.androidGR:
-        await this.checkAndroidGR();
-        break;
-      case DistributionType.androidHFM:
-        await this.checkAndroidHFM();
-        break;
-      case DistributionType.androidPgyerAPK:
-        await this.checkAndroidPgyerAPK();
-        break;
-      case DistributionType.androidPgyer:
-        await this.checkAndroidPgyer();
-        break;
-      case DistributionType.androidGooglePlay:
-        await this.checkAndroidGooglePlay();
-        break;
-      default:
-        this.logger.warn(`Unknown distribution type: ${type}`);
+    const checker = this.distributionCheckers[type];
+    if (!checker) {
+      this.logger.warn(`Unknown distribution type: ${type}`);
+      return;
     }
+
+    await checker();
   }
 
   // Helper method to check HuggingFace distribution

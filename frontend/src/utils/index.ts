@@ -8,6 +8,8 @@ export {
   getGooglePlayBadgePath,
 } from './getAssetPath';
 
+export { API_BASE_URL, getApiBaseUrl } from './apiBase';
+
 export {
   fetchLatestDistributions,
   fetchLocation,
@@ -25,6 +27,9 @@ export {
   fetchPublicEvalSampleDetail,
   fetchPublicEvalSamples,
   fetchPublicEvalRuns,
+  fetchPublicTelemetryFilters,
+  fetchPublicTelemetryLeaderboard,
+  fetchPublicTelemetryRecords,
   fetchRemoteConfigVersionContent,
   loginAdmin,
   logoutAdmin,

@@ -5,9 +5,14 @@
   "description": "Monorepo for app website with backend and frontend",
   "scripts": {
     "dev": "pnpm -r --parallel --stream --filter backend --filter frontend run dev",
-    "build": "pnpm --filter frontend build && pnpm --filter backend build",
+    "build": "pnpm --filter @app/contracts build && pnpm --filter frontend build && pnpm --filter backend build",
+    "check": "pnpm check:no-new-specs && pnpm type-check && pnpm lint:check",
+    "check:no-new-specs": "node tools/check-no-new-specs.mjs",
     "deploy:prod": "bash scripts/start-prod.sh",
-    "lint": "pnpm --filter backend lint && pnpm --filter frontend lint",
+    "lint": "pnpm lint:check",
+    "lint:check": "pnpm --filter backend lint:check && pnpm --filter frontend lint:check",
+    "lint:fix": "pnpm --filter backend lint:fix && pnpm --filter frontend lint:fix",
+    "type-check": "pnpm --filter @app/contracts build && pnpm --filter backend type-check && pnpm --filter frontend type-check",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
   },
   "devDependencies": {

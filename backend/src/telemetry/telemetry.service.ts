@@ -1,6 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { aos as aosDevices, isAndroidDeviceString } from '@naverpay/device-info';
 import { createHash } from 'crypto';
+import {
+  TELEMETRY_ADMIN_FILTER_BRAND_ORDER,
+  TELEMETRY_ADMIN_FILTER_MODEL_TAG_ORDER,
+  TELEMETRY_ADMIN_FILTER_OS_ORDER,
+  TELEMETRY_BUILD_MODE_ORDER,
+  type TelemetryBuildMode,
+} from '@app/contracts';
 import { PrismaService } from '../prisma/prisma.service';
 
 const TELEMETRY_SALT = process.env.TELEMETRY_SALT || 'rwkv-telemetry-default-salt';
@@ -8,20 +15,9 @@ const TELEMETRY_SALT = process.env.TELEMETRY_SALT || 'rwkv-telemetry-default-sal
 // Reasonable speed bounds
 const MAX_PREFILL_SPEED = 100_000;
 const MAX_DECODE_SPEED = 5_000;
-const TELEMETRY_BUILD_MODE_ORDER = ['debug', 'profile', 'release', 'unknown'] as const;
-const ADMIN_FILTER_OS_ORDER = ['macos', 'android', 'ios', 'windows', 'linux'];
-const ADMIN_FILTER_MODEL_TAG_ORDER = ['Chat', 'VL', 'TTS', 'Translate', 'Neko'];
-const ADMIN_FILTER_BRAND_ORDER = [
-  'apple',
-  'qualcomm',
-  'google',
-  'huawei',
-  'nvidia',
-  'amd',
-  'intel',
-  'mediatek',
-  'samsung',
-];
+const ADMIN_FILTER_OS_ORDER: readonly string[] = TELEMETRY_ADMIN_FILTER_OS_ORDER;
+const ADMIN_FILTER_MODEL_TAG_ORDER: readonly string[] = TELEMETRY_ADMIN_FILTER_MODEL_TAG_ORDER;
+const ADMIN_FILTER_BRAND_ORDER: readonly string[] = TELEMETRY_ADMIN_FILTER_BRAND_ORDER;
 const SOC_NAME_ALIASES: Record<string, string> = {
   mt6765: 'MediaTek Helio P35',
   '888': 'Snapdragon 888',
@@ -39,8 +35,6 @@ const SOC_NAME_ALIASES: Record<string, string> = {
   pixel7a: 'Google Tensor G2',
   pixel7pro: 'Google Tensor G2',
 };
-
-type TelemetryBuildMode = (typeof TELEMETRY_BUILD_MODE_ORDER)[number];
 
 interface TelemetryPerfBody {
   schemaVersion: number;

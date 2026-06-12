@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import { DragEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type * as Monaco from 'monaco-editor';
+import { APP_CONFIG_SECTIONS } from '@app/contracts';
 import {
   downloadRemoteConfigArchive,
   downloadRemoteConfigVersion,
@@ -48,7 +49,6 @@ const INLINE_STRING_ARRAY_KEYS = new Set([
   'socLimitations',
   'unsupportedSocBrand',
 ]);
-const APP_CONFIG_SECTIONS = ['chat', 'albatross', 'roleplay', 'world', 'tts', 'othello', 'sudoku'];
 const REMOTE_CONFIG_EDITOR_PATH_PREFIX = '/remote-config/';
 const SHANGHAI_TIME_ZONE = 'Asia/Shanghai';
 const JSON_DATE_VALUE_PATTERN = /"date"\s*:\s*(-?\d{8,13})\b/g;
