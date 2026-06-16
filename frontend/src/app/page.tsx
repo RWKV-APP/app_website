@@ -15,7 +15,14 @@ import {
   type CpuArchitecture,
   type LocationInfo,
 } from '@/atoms';
-import { ThemeSwitcher, LanguageSwitcher, GitHubLink, ReleaseNotesLink } from '@/components';
+import {
+  ThemeSwitcher,
+  LanguageSwitcher,
+  PageQrButton,
+  MobilePageQrCard,
+  GitHubLink,
+  ReleaseNotesLink,
+} from '@/components';
 import {
   areLatestDistributionsEqual,
   areLocationsEqual,
@@ -773,6 +780,7 @@ export default function Home() {
           </div>
           <div className={styles.navRight}>
             <LanguageSwitcher />
+            <PageQrButton />
             <ThemeSwitcher />
             <ReleaseNotesLink />
             <GitHubLink />
@@ -1053,6 +1061,7 @@ export default function Home() {
       {/* Open Source Section — default background band */}
       <section className={styles.sectionBandAlt}>
         <div className={styles.sectionInner}>
+          <MobilePageQrCard />
           <h2 className={styles.sectionTitle}>{t.openSource}</h2>
           <p className={styles.openSourceDesc}>{t.openSourceDesc}</p>
           <a

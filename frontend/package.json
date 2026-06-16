@@ -21,6 +21,7 @@
     "jotai": "^2.0.0",
     "monaco-editor": "^0.55.1",
     "next": "^14.0.0",
+    "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^10.1.0"

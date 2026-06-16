@@ -1,11 +1,21 @@
+const path = require('path');
+
 /** @type {import('next').NextConfig} */
 const isDev = process.env.NODE_ENV === 'development';
 const devBackendOrigin =
   process.env.BACKEND_ORIGIN || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const contractsSource = path.resolve(__dirname, '../packages/contracts/src');
 
 const nextConfig = {
   reactStrictMode: true,
-  transpilePackages: [],
+  transpilePackages: ['@app/contracts'],
+  webpack(config) {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@app/contracts': contractsSource,
+    };
+    return config;
+  },
   // Only use static export in production
   ...(isDev ? {} : { output: 'export' }),
   ...(isDev ? {} : { distDir: 'out' }),
