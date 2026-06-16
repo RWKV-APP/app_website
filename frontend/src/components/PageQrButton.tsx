@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useId, useState } from 'react';
+import { useId } from 'react';
 import { useAtomValue } from 'jotai';
 import { QRCodeSVG } from 'qrcode.react';
 import { localeAtom } from '@/atoms';
 import type { Locale } from '@/i18n/locales';
 import styles from './PageQrButton.module.css';
 
-const DEFAULT_PAGE_URL = 'https://rwkv.halowang.cloud/';
+const DEFAULT_PAGE_URL = process.env.NEXT_PUBLIC_APP_PAGE_URL || 'https://rwkv.halowang.cloud/';
 
 const qrCopy: Record<
   Locale,
@@ -60,16 +60,9 @@ const qrCopy: Record<
 
 function usePageQrInfo() {
   const locale = useAtomValue(localeAtom);
-  const [pageUrl, setPageUrl] = useState(DEFAULT_PAGE_URL);
   const copy = qrCopy[locale] ?? qrCopy.en;
 
-  useEffect(() => {
-    if (window.location.href) {
-      setPageUrl(window.location.href);
-    }
-  }, []);
-
-  return { copy, pageUrl };
+  return { copy, pageUrl: DEFAULT_PAGE_URL };
 }
 
 export function PageQrButton() {

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3010",
+    "dev": "next dev --hostname 0.0.0.0 --port 3010",
     "predev": "pnpm --filter @app/contracts build",
     "prebuild": "pnpm --filter @app/contracts build",
     "build": "node ../tools/generate-build-info.mjs && next build",

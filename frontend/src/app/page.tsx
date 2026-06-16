@@ -22,6 +22,7 @@ import {
   MobilePageQrCard,
   GitHubLink,
   ReleaseNotesLink,
+  WeChatOpenBrowserNotice,
 } from '@/components';
 import {
   areLatestDistributionsEqual,
@@ -787,6 +788,8 @@ export default function Home() {
           </div>
         </nav>
       </div>
+
+      <WeChatOpenBrowserNotice />
 
       <div className={styles.container}>
         {/* Hero Section */}
