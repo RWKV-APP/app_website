@@ -21,21 +21,29 @@ export class ReleaseNotesService {
    * @returns Language folder name (e.g., "zh-Hans", "en", "ja")
    */
   private getLanguageFolder(locale: string): string {
-    if (locale.startsWith('zh-CN') || locale === 'zh') {
+    const normalizedLocale = locale.trim().toLowerCase();
+
+    if (
+      normalizedLocale === 'zh' ||
+      normalizedLocale.startsWith('zh-cn') ||
+      normalizedLocale.startsWith('zh-hans') ||
+      normalizedLocale.startsWith('zh-sg')
+    ) {
       return 'zh-Hans'; // Simplified Chinese
     } else if (
-      locale.startsWith('zh-TW') ||
-      locale.startsWith('zh-HK') ||
-      locale.startsWith('zh-MO')
+      normalizedLocale.startsWith('zh-tw') ||
+      normalizedLocale.startsWith('zh-hk') ||
+      normalizedLocale.startsWith('zh-mo') ||
+      normalizedLocale.startsWith('zh-hant')
     ) {
       return 'zh-Hant'; // Traditional Chinese
-    } else if (locale === 'en') {
+    } else if (normalizedLocale === 'en' || normalizedLocale.startsWith('en-')) {
       return 'en';
-    } else if (locale === 'ja') {
+    } else if (normalizedLocale === 'ja' || normalizedLocale.startsWith('ja-')) {
       return 'ja';
-    } else if (locale === 'ko') {
+    } else if (normalizedLocale === 'ko' || normalizedLocale.startsWith('ko-')) {
       return 'ko';
-    } else if (locale === 'ru') {
+    } else if (normalizedLocale === 'ru' || normalizedLocale.startsWith('ru-')) {
       return 'ru';
     } else {
       // Default to Simplified Chinese for unknown locales
