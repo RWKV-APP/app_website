@@ -18,6 +18,7 @@ import { EvalService } from './eval.service';
 interface EvalSettingsBody {
   passThreshold?: number;
   highScoreLanguages?: string[];
+  activeHighScoreRunIds?: string[];
 }
 
 interface UploadedArchiveFile {
@@ -78,9 +79,18 @@ export class EvalAdminController {
       throw new BadRequestException('highScoreLanguages must be an array of strings.');
     }
 
+    if (
+      body.activeHighScoreRunIds !== undefined &&
+      (!Array.isArray(body.activeHighScoreRunIds) ||
+        body.activeHighScoreRunIds.some((v) => typeof v !== 'string'))
+    ) {
+      throw new BadRequestException('activeHighScoreRunIds must be an array of strings.');
+    }
+
     return this.evalService.updateSettings({
       passThreshold: body.passThreshold,
       highScoreLanguages: body.highScoreLanguages,
+      activeHighScoreRunIds: body.activeHighScoreRunIds,
     });
   }
 

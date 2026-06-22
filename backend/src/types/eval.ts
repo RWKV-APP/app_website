@@ -9,6 +9,7 @@ export interface EvalUploadRequest extends Request {
 export interface EvalSettings {
   passThreshold: number;
   highScoreLanguages: string[];
+  activeHighScoreRunIds: string[];
 }
 
 export interface EvalCategoryOption {
@@ -43,6 +44,9 @@ export interface EvalRunSummary {
   sourceFile: string;
   modelRequest: string | null;
   modelNameReportedByServer: string | null;
+  judgeProvider: string | null;
+  judgeModel: string | null;
+  judgeApiBase: string | null;
   selectionMode: string | null;
   sourceTotalItems: number;
   sampleCountRequested: number;

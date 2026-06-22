@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { DragEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { EvalRunImportResult, EvalRunSummaryRecord, EvalSettingsRecord } from '@/types/eval';
 import {
@@ -75,6 +75,26 @@ function formatCategorySummary(run: EvalRunSummaryRecord) {
   return run.categories.slice(0, 4).map((category) => category.displayName).join(' · ');
 }
 
+function formatRunIdsInput(runIds: string[]) {
+  return runIds.join('\n');
+}
+
+function parseRunIdsInput(value: string) {
+  const seen = new Set<string>();
+  const runIds: string[] = [];
+
+  for (const item of value.split(/[\n,]+/)) {
+    const runId = item.trim();
+    if (!runId || seen.has(runId)) {
+      continue;
+    }
+    seen.add(runId);
+    runIds.push(runId);
+  }
+
+  return runIds;
+}
+
 function isAuthError(message: string) {
   return (
     message.includes('Missing bearer token') ||
@@ -97,11 +117,18 @@ export default function AdminEvalsPage() {
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [savingActiveSource, setSavingActiveSource] = useState(false);
   const [archiveStatus, setArchiveStatus] = useState('');
   const [archiveError, setArchiveError] = useState('');
   const [settingsStatus, setSettingsStatus] = useState('');
   const [settingsError, setSettingsError] = useState('');
   const [thresholdInput, setThresholdInput] = useState('');
+  const [activeRunIdsInput, setActiveRunIdsInput] = useState('');
+  const activeRunIdsFromInput = useMemo(
+    () => parseRunIdsInput(activeRunIdsInput),
+    [activeRunIdsInput],
+  );
+  const activeRunIdSet = useMemo(() => new Set(activeRunIdsFromInput), [activeRunIdsFromInput]);
 
   const redirectToLogin = useCallback(() => {
     router.replace(`/admin/login?next=${encodeURIComponent(NEXT_PATH)}`);
@@ -132,6 +159,7 @@ export default function AdminEvalsPage() {
       const nextSettings = await fetchAdminEvalSettings();
       setSettings(nextSettings);
       setThresholdInput(String(nextSettings.passThreshold));
+      setActiveRunIdsInput(formatRunIdsInput(nextSettings.activeHighScoreRunIds ?? []));
     } catch (nextError) {
       const message = normalizeError(nextError);
       if (isAuthError(message)) {
@@ -297,6 +325,7 @@ export default function AdminEvalsPage() {
       const nextSettings = await updateAdminEvalSettings(parsed);
       setSettings(nextSettings);
       setThresholdInput(String(nextSettings.passThreshold));
+      setActiveRunIdsInput(formatRunIdsInput(nextSettings.activeHighScoreRunIds));
       setSettingsStatus(`Pass threshold 已更新为 ${nextSettings.passThreshold.toFixed(2)}。`);
       await refreshRuns();
     } catch (nextError) {
@@ -308,6 +337,50 @@ export default function AdminEvalsPage() {
       setSettingsError(message);
     } finally {
       setSavingSettings(false);
+    }
+  }
+
+  function toggleActiveRunIdInput(runId: string) {
+    const nextRunIds = activeRunIdSet.has(runId)
+      ? activeRunIdsFromInput.filter((currentRunId) => currentRunId !== runId)
+      : [...activeRunIdsFromInput, runId];
+    setActiveRunIdsInput(formatRunIdsInput(nextRunIds));
+  }
+
+  async function handleSaveActiveSource() {
+    const passThreshold = settings?.passThreshold ?? Number.parseFloat(thresholdInput);
+    if (!Number.isFinite(passThreshold)) {
+      setSettingsError('请先保存一个有效的 pass threshold。');
+      return;
+    }
+
+    setSavingActiveSource(true);
+    setSettingsStatus('');
+    setSettingsError('');
+
+    try {
+      const nextSettings = await updateAdminEvalSettings({
+        passThreshold,
+        activeHighScoreRunIds: activeRunIdsFromInput,
+      });
+      setSettings(nextSettings);
+      setThresholdInput(String(nextSettings.passThreshold));
+      setActiveRunIdsInput(formatRunIdsInput(nextSettings.activeHighScoreRunIds));
+      setSettingsStatus(
+        nextSettings.activeHighScoreRunIds.length > 0
+          ? `High score prompt source 已更新为 ${nextSettings.activeHighScoreRunIds.length} 个 run。`
+          : 'High score prompt source 已清空，公开 API 会使用内置 DeepSeek V1/V2 合并逻辑。',
+      );
+      await refreshRuns();
+    } catch (nextError) {
+      const message = normalizeError(nextError);
+      if (isAuthError(message)) {
+        redirectToLogin();
+        return;
+      }
+      setSettingsError(message);
+    } finally {
+      setSavingActiveSource(false);
     }
   }
 
@@ -337,6 +410,9 @@ export default function AdminEvalsPage() {
             <span className={styles.heroPill}>Public URL: /evals</span>
             <span className={styles.heroPill}>
               Threshold: {settings ? settings.passThreshold.toFixed(2) : '...'}
+            </span>
+            <span className={styles.heroPill}>
+              Active Source: {settings ? settings.activeHighScoreRunIds.length : '...'}
             </span>
           </div>
         </div>
@@ -423,10 +499,9 @@ export default function AdminEvalsPage() {
         <article className={styles.panel}>
           <div className={styles.panelHeader}>
             <div>
-              <h2 className={styles.panelTitle}>Pass Threshold</h2>
+              <h2 className={styles.panelTitle}>Scoring Settings</h2>
               <p className={styles.panelDescription}>
-                通过线写入 `AppConfig` 的 `eval.pass_threshold`，公开页会按当前值实时计算 passed /
-                failed / pending。
+                通过线和默认高分 Prompt 来源都写入 `AppConfig`。公开 API 路径和参数保持不变。
               </p>
             </div>
           </div>
@@ -443,7 +518,7 @@ export default function AdminEvalsPage() {
                 disabled={loadingSettings || savingSettings}
               />
             </label>
-            <p className={styles.settingsHint}>允许 0 到 10，默认 8.0。</p>
+            <p className={styles.settingsHint}>允许 0 到 10，默认 8.5。</p>
             <div className={styles.actionRow}>
               <button
                 type="button"
@@ -456,6 +531,42 @@ export default function AdminEvalsPage() {
             </div>
             {settingsStatus ? <p className={styles.success}>{settingsStatus}</p> : null}
             {settingsError ? <p className={styles.error}>{settingsError}</p> : null}
+
+            <div className={styles.settingsDivider} />
+
+            <label className={styles.field}>
+              <span>High Score Prompt Source Run IDs</span>
+              <textarea
+                value={activeRunIdsInput}
+                onChange={(event) => setActiveRunIdsInput(event.target.value)}
+                className={styles.textArea}
+                placeholder="one runId per line"
+                rows={8}
+                disabled={loadingSettings || savingActiveSource}
+              />
+            </label>
+            <p className={styles.settingsHint}>
+              填写后，`/public-api/evals/high-score-samples` 在未传 runId 时只读取这些 run；留空则使用内置
+              DeepSeek V1/V2 合并逻辑。
+            </p>
+            <div className={styles.actionRow}>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() => void handleSaveActiveSource()}
+                disabled={loadingSettings || savingActiveSource}
+              >
+                {savingActiveSource ? 'Saving...' : 'Save Prompt Source'}
+              </button>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setActiveRunIdsInput('')}
+                disabled={loadingSettings || savingActiveSource}
+              >
+                Clear Source
+              </button>
+            </div>
           </div>
         </article>
       </section>
@@ -537,7 +648,19 @@ export default function AdminEvalsPage() {
                     <p className={styles.runEyebrow}>{run.language}</p>
                     <h3 className={styles.runTitle}>{run.runId}</h3>
                   </div>
-                  <span className={styles.runStatus}>{run.status}</span>
+                  <div className={styles.runActions}>
+                    <span className={styles.runStatus}>
+                      {activeRunIdSet.has(run.runId) ? 'Active source' : run.status}
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.linkButton}
+                      onClick={() => toggleActiveRunIdInput(run.runId)}
+                      disabled={loadingSettings || savingActiveSource}
+                    >
+                      {activeRunIdSet.has(run.runId) ? 'Remove' : 'Use as source'}
+                    </button>
+                  </div>
                 </div>
 
                 <p className={styles.runModel}>

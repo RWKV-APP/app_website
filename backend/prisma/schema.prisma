@@ -77,6 +77,9 @@ model EvalRun {
   sourceFile                String
   modelRequest              String?
   modelNameReportedByServer String?
+  judgeProvider             String?
+  judgeModel                String?
+  judgeApiBase              String?
   selectionMode             String?
   sourceTotalItems          Int          @default(0)
   sampleCountRequested      Int          @default(0)

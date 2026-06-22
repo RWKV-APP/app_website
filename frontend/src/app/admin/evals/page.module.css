@@ -266,7 +266,8 @@
   color: var(--muted);
 }
 
-.textInput {
+.textInput,
+.textArea {
   width: 100%;
   padding: 13px 14px;
   border: 1px solid rgba(95, 62, 30, 0.18);
@@ -276,9 +277,22 @@
   font: inherit;
 }
 
-.textInput:focus {
+.textArea {
+  min-height: 180px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  line-height: 1.5;
+}
+
+.textInput:focus,
+.textArea:focus {
   outline: 2px solid rgba(171, 79, 36, 0.18);
   border-color: rgba(171, 79, 36, 0.42);
+}
+
+.settingsDivider {
+  height: 1px;
+  background: rgba(95, 62, 30, 0.12);
 }
 
 .actionRow {
@@ -318,6 +332,13 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.runActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .resultMessage {

@@ -2,6 +2,8 @@ export type EvalPassState = 'passed' | 'failed' | 'pending';
 
 export interface EvalSettingsRecord {
   passThreshold: number;
+  highScoreLanguages: string[];
+  activeHighScoreRunIds: string[];
 }
 
 export interface EvalCategoryOptionRecord {
@@ -36,6 +38,9 @@ export interface EvalRunSummaryRecord {
   sourceFile: string;
   modelRequest: string | null;
   modelNameReportedByServer: string | null;
+  judgeProvider: string | null;
+  judgeModel: string | null;
+  judgeApiBase: string | null;
   selectionMode: string | null;
   sourceTotalItems: number;
   sampleCountRequested: number;

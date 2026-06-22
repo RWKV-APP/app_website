@@ -248,13 +248,22 @@ export async function fetchAdminEvalSettings(): Promise<EvalSettingsRecord> {
   return (await response.json()) as EvalSettingsRecord;
 }
 
-export async function updateAdminEvalSettings(passThreshold: number): Promise<EvalSettingsRecord> {
+interface UpdateAdminEvalSettingsInput {
+  passThreshold: number;
+  highScoreLanguages?: string[];
+  activeHighScoreRunIds?: string[];
+}
+
+export async function updateAdminEvalSettings(
+  input: number | UpdateAdminEvalSettingsInput,
+): Promise<EvalSettingsRecord> {
+  const body = typeof input === 'number' ? { passThreshold: input } : input;
   const response = await adminFetch('/admin-api/evals/settings', {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ passThreshold }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {

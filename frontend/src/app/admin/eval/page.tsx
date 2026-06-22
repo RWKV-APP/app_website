@@ -24,11 +24,6 @@ import styles from './page.module.css';
 
 const NEXT_PATH = '/admin/eval';
 
-// Judge model is documented in eval_scoring_plan.md but not stored in the backend yet.
-// TODO: move this to backend EvalRun metadata once the schema supports it.
-const JUDGE_MODEL = 'Qwen/Qwen3.5-122B-A10B';
-const JUDGE_PROVIDER = 'SiliconFlow';
-
 type ChartDimension = 'weighted' | 'relevance' | 'quality' | 'fluency' | 'satisfaction';
 
 const CHART_DIMENSIONS: ChartDimension[] = ['weighted', 'relevance', 'quality', 'fluency', 'satisfaction'];
@@ -44,6 +39,25 @@ function formatScore(value: number | null | undefined) {
 function formatModelName(value: string | null | undefined) {
   if (!value) return 'Unknown model';
   return value.replace(/\.(zip|bin|gguf|pth|safetensors|json)$/i, '');
+}
+
+function formatJudgeProvider(value: string | null | undefined) {
+  if (!value) return null;
+  const normalized = value.trim();
+  switch (normalized.toLowerCase()) {
+    case 'deepseek':
+      return 'DeepSeek';
+    case 'siliconflow':
+      return 'SiliconFlow';
+    default:
+      return normalized;
+  }
+}
+
+function formatJudgeModelName(model: string | null | undefined, provider: string | null | undefined) {
+  const modelName = model ? formatModelName(model) : 'Unknown model';
+  const providerName = formatJudgeProvider(provider);
+  return providerName ? `${modelName} (${providerName})` : modelName;
 }
 
 function formatChars(value: number | null | undefined) {
@@ -462,7 +476,7 @@ export default function AdminEvalPage() {
                 {t.evalResponseModel}: {formatModelName(evalDetail.modelNameReportedByServer)}
               </span>
               <span className={styles.modelTag}>
-                {t.evalJudgeModel}: {JUDGE_MODEL} ({JUDGE_PROVIDER})
+                {t.evalJudgeModel}: {formatJudgeModelName(evalDetail.judgeModel, evalDetail.judgeProvider)}
               </span>
             </div>
           </div>

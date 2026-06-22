@@ -22,12 +22,37 @@ const DEFAULT_PASS_THRESHOLD = 8.5;
 const EVAL_PASS_THRESHOLD_KEY = 'eval.pass_threshold';
 const DEFAULT_HIGH_SCORE_LANGUAGES = ['zh-Hans'];
 const EVAL_HIGH_SCORE_LANGUAGES_KEY = 'eval.high_score_languages';
-const DEFAULT_HIGH_SCORE_MODEL_WHERE: Prisma.EvalRunWhereInput = {
+const EVAL_ACTIVE_HIGH_SCORE_RUN_IDS_KEY = 'eval.active_high_score_run_ids';
+const DEFAULT_HIGH_SCORE_2_9B_MODEL_WHERE: Prisma.EvalRunWhereInput = {
   OR: [
     { modelNameReportedByServer: { contains: '2.9B' } },
     { modelNameReportedByServer: { contains: '2.9b' } },
     { runId: { contains: '2-9b' } },
     { runId: { contains: '2_9b' } },
+  ],
+};
+const DEFAULT_DEEPSEEK_SCORE_SET_WHERE: Prisma.EvalRunWhereInput = {
+  OR: [
+    { runId: { contains: '__eval_deepseek' } },
+    { uploadedFileName: { contains: '__eval_deepseek' } },
+  ],
+};
+const DEFAULT_PROMPT_VERSION_RUN_WHERE: Prisma.EvalRunWhereInput = {
+  AND: [
+    { runId: { contains: '_prompt_versions_' } },
+    {
+      OR: [
+        { runId: { contains: '_v1__eval_deepseek' } },
+        { runId: { contains: '_v2__eval_deepseek' } },
+      ],
+    },
+  ],
+};
+const DEFAULT_HIGH_SCORE_RUN_WHERE: Prisma.EvalRunWhereInput = {
+  AND: [
+    DEFAULT_HIGH_SCORE_2_9B_MODEL_WHERE,
+    DEFAULT_DEEPSEEK_SCORE_SET_WHERE,
+    DEFAULT_PROMPT_VERSION_RUN_WHERE,
   ],
 };
 const FILE_SIZE_LIMIT_MB = 64;
@@ -54,6 +79,7 @@ interface ImportRunArchiveOptions {
 interface UpdateEvalSettingsInput {
   passThreshold: number;
   highScoreLanguages?: string[];
+  activeHighScoreRunIds?: string[];
 }
 
 interface EvalLanguageSelectionInput {
@@ -98,6 +124,9 @@ interface ParsedManifest {
   sourceFile: string;
   modelRequest: string | null;
   modelNameReportedByServer: string | null;
+  judgeProvider: string | null;
+  judgeModel: string | null;
+  judgeApiBase: string | null;
   selectionMode: string | null;
   sourceTotalItems: number;
   sampleCountRequested: number;
@@ -122,6 +151,12 @@ interface ParsedScoreAttempt {
   satisfaction: number;
   weightedScore: number;
   briefNote: string | null;
+}
+
+interface EvalJudgeMetadata {
+  judgeProvider: string | null;
+  judgeModel: string | null;
+  judgeApiBase: string | null;
 }
 
 interface ParsedSampleAttempt {
@@ -316,6 +351,9 @@ export class EvalService {
           sourceFile: bundle.run.sourceFile,
           modelRequest: bundle.run.modelRequest,
           modelNameReportedByServer: bundle.run.modelNameReportedByServer,
+          judgeProvider: bundle.run.judgeProvider,
+          judgeModel: bundle.run.judgeModel,
+          judgeApiBase: bundle.run.judgeApiBase,
           selectionMode: bundle.run.selectionMode,
           sourceTotalItems: bundle.run.sourceTotalItems,
           sampleCountRequested: bundle.run.sampleCountRequested,
@@ -417,11 +455,12 @@ export class EvalService {
   }
 
   async getSettings(): Promise<EvalSettings> {
-    const [passThreshold, highScoreLanguages] = await Promise.all([
+    const [passThreshold, highScoreLanguages, activeHighScoreRunIds] = await Promise.all([
       this.getPassThreshold(),
       this.getHighScoreLanguages(),
+      this.getActiveHighScoreRunIds(),
     ]);
-    return { passThreshold, highScoreLanguages };
+    return { passThreshold, highScoreLanguages, activeHighScoreRunIds };
   }
 
   async updateSettings(input: UpdateEvalSettingsInput): Promise<EvalSettings> {
@@ -448,8 +487,26 @@ export class EvalService {
       highScoreLanguages = await this.getHighScoreLanguages();
     }
 
+    let activeHighScoreRunIds: string[];
+    if (input.activeHighScoreRunIds !== undefined) {
+      activeHighScoreRunIds = normalizeRunIdList(input.activeHighScoreRunIds);
+      await this.assertEvalRunIdsExist(activeHighScoreRunIds);
+      ops.push(
+        this.prisma.appConfig.upsert({
+          where: { key: EVAL_ACTIVE_HIGH_SCORE_RUN_IDS_KEY },
+          create: {
+            key: EVAL_ACTIVE_HIGH_SCORE_RUN_IDS_KEY,
+            value: JSON.stringify(activeHighScoreRunIds),
+          },
+          update: { value: JSON.stringify(activeHighScoreRunIds) },
+        }),
+      );
+    } else {
+      activeHighScoreRunIds = await this.getActiveHighScoreRunIds();
+    }
+
     await Promise.all(ops);
-    return { passThreshold, highScoreLanguages };
+    return { passThreshold, highScoreLanguages, activeHighScoreRunIds };
   }
 
   async getHighScoreLanguages(): Promise<string[]> {
@@ -458,9 +515,19 @@ export class EvalService {
       return configured;
     }
 
-    const derived = await this.deriveHighScoreLanguagesFromRuns();
+    const activeRunIds = await this.getActiveHighScoreRunIds();
+    const derived = await this.deriveHighScoreLanguagesFromRuns(activeRunIds);
     if (derived.length > 0) {
       return derived;
+    }
+
+    if (activeRunIds.length > 0) {
+      return DEFAULT_HIGH_SCORE_LANGUAGES;
+    }
+
+    const allDerived = await this.deriveHighScoreLanguagesFromRuns();
+    if (allDerived.length > 0) {
+      return allDerived;
     }
 
     return DEFAULT_HIGH_SCORE_LANGUAGES;
@@ -474,10 +541,11 @@ export class EvalService {
   }
 
   private async getPublicSupportedHighScoreLanguages(): Promise<string[]> {
-    const [configured, derived] = await Promise.all([
+    const [configured, activeRunIds] = await Promise.all([
       this.readConfiguredHighScoreLanguages(),
-      this.deriveHighScoreLanguagesFromRuns(),
+      this.getActiveHighScoreRunIds(),
     ]);
+    const derived = await this.deriveHighScoreLanguagesFromRuns(activeRunIds);
 
     const merged = normalizeSupportedEvalLanguages([...(configured ?? []), ...derived]);
     if (merged.length > 0) {
@@ -485,6 +553,49 @@ export class EvalService {
     }
 
     return [...DEFAULT_HIGH_SCORE_LANGUAGES];
+  }
+
+  private async getActiveHighScoreRunIds(): Promise<string[]> {
+    const configured = await this.readConfiguredActiveHighScoreRunIds();
+    return configured ?? [];
+  }
+
+  private async readConfiguredActiveHighScoreRunIds(): Promise<string[] | null> {
+    const setting = await this.prisma.appConfig.findUnique({
+      where: { key: EVAL_ACTIVE_HIGH_SCORE_RUN_IDS_KEY },
+      select: { value: true },
+    });
+    if (!setting) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(setting.value);
+      if (Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')) {
+        return normalizeRunIdList(parsed);
+      }
+    } catch {
+      // fall through
+    }
+
+    return null;
+  }
+
+  private async assertEvalRunIdsExist(runIds: string[]): Promise<void> {
+    if (runIds.length === 0) {
+      return;
+    }
+
+    const rows = await this.prisma.evalRun.findMany({
+      where: { runId: { in: runIds } },
+      select: { runId: true },
+    });
+    const existing = new Set(rows.map((row) => row.runId));
+    const missing = runIds.filter((runId) => !existing.has(runId));
+
+    if (missing.length > 0) {
+      throw new BadRequestException(`Unknown eval runId(s): ${missing.join(', ')}`);
+    }
   }
 
   private async readConfiguredHighScoreLanguages(): Promise<string[] | null> {
@@ -508,9 +619,9 @@ export class EvalService {
     return null;
   }
 
-  private async deriveHighScoreLanguagesFromRuns(): Promise<string[]> {
-    const rows = await this.prisma.evalRun.findMany({
-      where: {
+  private async deriveHighScoreLanguagesFromRuns(runIds?: string[]): Promise<string[]> {
+    const clauses: Prisma.EvalRunWhereInput[] = [
+      {
         samples: {
           some: {
             averageWeightedScore: {
@@ -519,6 +630,14 @@ export class EvalService {
           },
         },
       },
+    ];
+
+    if (runIds && runIds.length > 0) {
+      clauses.push({ runId: { in: runIds } });
+    }
+
+    const rows = await this.prisma.evalRun.findMany({
+      where: clauses.length === 1 ? clauses[0] : { AND: clauses },
       select: {
         language: true,
       },
@@ -610,7 +729,10 @@ export class EvalService {
     if (runId) {
       runFilter = { runId };
     } else {
-      const supportedLanguages = await this.getPublicSupportedHighScoreLanguages();
+      const [supportedLanguages, activeRunIds] = await Promise.all([
+        this.getPublicSupportedHighScoreLanguages(),
+        this.getActiveHighScoreRunIds(),
+      ]);
       const effectiveLanguages = resolvePublicHighScoreLanguages(supportedLanguages, input);
 
       if (effectiveLanguages.length === 0) {
@@ -618,7 +740,12 @@ export class EvalService {
       }
 
       runFilter = {
-        AND: [buildEvalRunLanguagesWhereInput(effectiveLanguages), DEFAULT_HIGH_SCORE_MODEL_WHERE],
+        AND: [
+          buildEvalRunLanguagesWhereInput(effectiveLanguages),
+          activeRunIds.length > 0
+            ? { runId: { in: activeRunIds } }
+            : DEFAULT_HIGH_SCORE_RUN_WHERE,
+        ],
       };
     }
 
@@ -827,6 +954,13 @@ export class EvalService {
     ).length;
 
     return {
+      ...resolveEvalJudgeMetadata({
+        runId: run.runId,
+        uploadedFileName: run.uploadedFileName,
+        judgeProvider: run.judgeProvider ?? null,
+        judgeModel: run.judgeModel ?? null,
+        judgeApiBase: run.judgeApiBase ?? null,
+      }),
       runId: run.runId,
       uploadedFileName: run.uploadedFileName,
       uploadedBy: run.uploadedBy ?? null,
@@ -1023,6 +1157,9 @@ export class EvalService {
         metadata: Record<string, string | number | null>;
       }
     >();
+    const judgeProviders = new Set<string>();
+    const judgeModels = new Set<string>();
+    const judgeApiBases = new Set<string>();
     for (const [path, entry] of scoreEntries) {
       const parsed = this.parseScoreFile(await readZipJson(entry, path), path, manifest.runId);
       if (scoreMap.has(parsed.sampleIndex)) {
@@ -1039,6 +1176,9 @@ export class EvalService {
           sourceCategory: parsed.sourceCategory,
         },
       });
+      addOptionalSetValue(judgeProviders, parsed.judgeProvider);
+      addOptionalSetValue(judgeModels, parsed.judgeModel);
+      addOptionalSetValue(judgeApiBases, parsed.judgeApiBase);
     }
 
     const samples: ParsedSample[] = [];
@@ -1074,10 +1214,18 @@ export class EvalService {
     const computedCounts = summarizeSampleStatuses(samples);
     const latestCompletedFallback = getLatestCompletedSampleInfo(samples);
     const runDevice = mergeDeviceInfo(manifest.device, samples[0]?.device || emptyDeviceInfo());
+    const judgeMetadata = resolveEvalJudgeMetadata({
+      runId: manifest.runId,
+      uploadedFileName: fileName,
+      judgeProvider: joinSetValues(judgeProviders) ?? manifest.judgeProvider,
+      judgeModel: joinSetValues(judgeModels) ?? manifest.judgeModel,
+      judgeApiBase: joinSetValues(judgeApiBases) ?? manifest.judgeApiBase,
+    });
 
     return {
       run: {
         ...manifest,
+        ...judgeMetadata,
         totalSamples: samples.length,
         completedSamples: computedCounts.completedSamples,
         runningSamples: computedCounts.runningSamples,
@@ -1111,6 +1259,9 @@ export class EvalService {
       sourceFile: readRequiredString(payload.source_file, `${path}.source_file`),
       modelRequest: readOptionalString(payload.model_request),
       modelNameReportedByServer: readOptionalString(payload.model_name_reported_by_server),
+      judgeProvider: readOptionalString(payload.judge_provider),
+      judgeModel: readOptionalString(payload.judge_model),
+      judgeApiBase: readOptionalString(payload.judge_api_base),
       selectionMode: readOptionalString(payload.selection_mode),
       sourceTotalItems: readRequiredInt(payload.source_total_items, `${path}.source_total_items`),
       sampleCountRequested: readRequiredInt(
@@ -1228,6 +1379,9 @@ export class EvalService {
     renderingName: string;
     prompt: string;
     sourceCategory: string;
+    judgeProvider: string | null;
+    judgeModel: string | null;
+    judgeApiBase: string | null;
     attempts: ParsedScoreAttempt[];
   } {
     const payload = readObject(raw, path);
@@ -1270,9 +1424,60 @@ export class EvalService {
       renderingName: readRequiredString(payload.rendering_name, `${path}.rendering_name`),
       prompt: readRequiredString(payload.prompt, `${path}.prompt`),
       sourceCategory: readRequiredString(payload.source_category, `${path}.source_category`),
+      judgeProvider: readOptionalString(payload.judge_provider),
+      judgeModel: readOptionalString(payload.judge_model),
+      judgeApiBase: readOptionalString(payload.judge_api_base),
       attempts,
     };
   }
+}
+
+function addOptionalSetValue(values: Set<string>, value: string | null): void {
+  if (value) {
+    values.add(value);
+  }
+}
+
+function joinSetValues(values: Set<string>): string | null {
+  return values.size > 0 ? [...values].sort().join(', ') : null;
+}
+
+function resolveEvalJudgeMetadata(input: EvalJudgeMetadata & {
+  runId: string;
+  uploadedFileName?: string | null;
+}): EvalJudgeMetadata {
+  let judgeProvider = normalizeOptionalString(input.judgeProvider);
+  let judgeModel = normalizeOptionalString(input.judgeModel);
+  let judgeApiBase = normalizeOptionalString(input.judgeApiBase);
+  const sourceText = `${input.runId} ${input.uploadedFileName ?? ''}`.toLowerCase();
+
+  if (sourceText.includes('__eval_deepseek')) {
+    judgeProvider = judgeProvider ?? 'deepseek';
+    judgeModel = judgeModel ?? 'deepseek-v4-flash';
+    judgeApiBase = judgeApiBase ?? 'https://api.deepseek.com';
+  }
+
+  if (sourceText.includes('__eval_qwen_legacy')) {
+    judgeProvider = judgeProvider ?? 'SiliconFlow';
+    judgeModel = judgeModel ?? 'Qwen/Qwen3.5-122B-A10B';
+    judgeApiBase = judgeApiBase ?? 'https://api.siliconflow.cn/v1/chat/completions';
+  }
+
+  if (judgeModel === 'deepseek-v4-flash') {
+    judgeProvider = judgeProvider ?? 'deepseek';
+    judgeApiBase = judgeApiBase ?? 'https://api.deepseek.com';
+  }
+
+  if (judgeModel === 'Qwen/Qwen3.5-122B-A10B') {
+    judgeProvider = judgeProvider ?? 'SiliconFlow';
+    judgeApiBase = judgeApiBase ?? 'https://api.siliconflow.cn/v1/chat/completions';
+  }
+
+  return {
+    judgeProvider,
+    judgeModel,
+    judgeApiBase,
+  };
 }
 
 function normalizeArchiveFiles(zip: JSZip): Map<string, JSZip.JSZipObject> {
@@ -1338,7 +1543,7 @@ function normalizeArchivePath(rawPath: string): string | null {
 async function readZipJson(entry: JSZip.JSZipObject, path: string): Promise<unknown> {
   const content = await entry.async('string');
   try {
-    return JSON.parse(content);
+    return JSON.parse(content) as unknown;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Invalid JSON';
     throw new BadRequestException(`Failed to parse ${path}: ${message}`);
@@ -1909,6 +2114,22 @@ function normalizeOptionalString(value: unknown): string | null {
 
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeRunIdList(values: string[]): string[] {
+  const seen = new Set<string>();
+  const runIds: string[] = [];
+
+  for (const value of values) {
+    const runId = normalizeOptionalString(value);
+    if (!runId || seen.has(runId)) {
+      continue;
+    }
+    seen.add(runId);
+    runIds.push(runId);
+  }
+
+  return runIds;
 }
 
 function readRequiredInt(value: unknown, fieldName: string): number {
