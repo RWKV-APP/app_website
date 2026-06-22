@@ -5,13 +5,15 @@ This repository is the public RWKV app website and supporting backend API.
 ## Safe Commands
 
 - Local development: `pnpm dev`
-- Production deploy: `pnpm deploy:prod`
+- Production publish runbook: `docs/ai/publish-prod.md`
+- Low-level artifact deploy: `pnpm deploy:prod`
+- Legacy server-side source deploy: `pnpm deploy:prod:server-build`
 - Full read-only verification: `pnpm check`
 - Type-only verification: `pnpm type-check`
 - Read-only lint: `pnpm lint:check`
 - Auto-fix lint: `pnpm lint:fix`
 
-Do not use `pnpm deploy:prod` unless the task is explicitly a production deployment.
+Do not use `pnpm deploy:prod` directly unless the task is explicitly only an artifact deployment. For normal production publishing, follow `docs/ai/publish-prod.md`.
 
 ## Repository Shape
 
@@ -19,8 +21,12 @@ Do not use `pnpm deploy:prod` unless the task is explicitly a production deploym
 - `backend/`: NestJS backend API, PM2 production target.
 - `packages/contracts/`: shared frontend/backend enums and stable constants.
 - `docs/`: operational docs and handoff notes.
+- `docs/ai/publish-prod.md`: standard Agent-run production publish workflow.
 - `tools/`: maintenance scripts and build metadata generation.
-- `scripts/start-prod.sh`: canonical production deploy script.
+- `tools/sync-release-notes.mjs`: syncs latest `zh-Hans` release notes into other locales.
+- `scripts/build-prod-artifact.sh`: builds local production release artifacts.
+- `scripts/deploy-prod-artifact.sh`: low-level artifact upload and remote restart script.
+- `scripts/start-prod.sh`: legacy server-side source build fallback.
 
 ## Shared Contracts
 
@@ -77,6 +83,8 @@ Do not add a second API base URL helper inside pages. Add API calls to `frontend
 - Backend PM2 process: `rwkv-backend`
 - Production backend port: `3462`
 - Build marker: `https://rwkv.halowang.cloud/build-info.json`
+- Runtime release symlink: `/root/app_website-artifacts/current`
+- Runtime persistent data: `/root/app_website-runtime/backend`
 
 ## Refactor Preference
 

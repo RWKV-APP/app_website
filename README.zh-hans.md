@@ -11,15 +11,14 @@ RWKV App 下载站与配套后端 API 的公开 monorepo。
 ```bash
 # 本地开发
 pnpm dev
-
-# 生产部署
-pnpm deploy:prod
 ```
+
+生产发布时，把 [`docs/ai/publish-prod.md`](./docs/ai/publish-prod.md) 提给 Agent。
 
 ## 文档
 
 - Eval Run Zip 格式说明：[`docs/eval-run-zip-format.md`](./docs/eval-run-zip-format.md)
-- Linux 线上机发布流程：[`docs/production-deploy-playbook.md`](./docs/production-deploy-playbook.md)
+- 生产发布 Agent Runbook：[`docs/ai/publish-prod.md`](./docs/ai/publish-prod.md)
 
 ## 仓库结构
 
@@ -51,12 +50,14 @@ app_website/
 
 当前生产环境采用如下架构：
 
-- 前端以静态导出方式构建到 `frontend/out`
+- 前端在本地以静态导出方式构建到 `frontend/out`
 - `nginx` 直接托管前端静态文件
 - 后端由 `PM2` 独立运行
 - `nginx` 将 API 请求反向代理到后端，后端默认监听 `3462` 端口
 
-对于当前的 `nginx + PM2` 拓扑来说，`frontend/out` 是前端唯一的正式构建产物目录。
+生产发布使用本地构建出的 release artifact。服务器运行
+`/root/app_website-artifacts/current`，并把 `.env`、SQLite 数据库和日志保存在
+`/root/app_website-runtime/backend`。
 
 ## 环境要求
 
@@ -106,22 +107,39 @@ pnpm build
 
 典型的生产职责划分如下：
 
-- 前端：构建 `frontend/out`，并由 `nginx` 直接托管
-- 后端：构建 NestJS 应用，并由 `PM2` 运行
+- 本地开发机：执行检查，构建前后端，并上传 release artifact
+- 服务器：安装 Linux 运行依赖，准备 Prisma，切换 `current`，重启 PM2
 
-推荐的一键生产发布命令是：
+推荐的生产发布入口是 Agent Runbook：
+
+[`docs/ai/publish-prod.md`](./docs/ai/publish-prod.md)
+
+想发布时, 直接把这个文件提给 Agent。该 runbook 会要求 Agent：
+
+- 将最新 `zh-Hans` 更新日志同步到 `zh-Hant`、`en`、`ja`、`ko`、`ru`
+- 在有本地改动时创建 Git commit
+- 将 commit 推送到已配置的 Git 远端
+- 执行 `pnpm check`
+- 构建 `frontend/out` 和 `backend/dist`
+- 生成 `.release/app-website-<git-sha>-<timestamp>.tar.gz`
+- 上传 artifact 到 `rwkv.halowang.cloud`
+- 将 `/root/app_website-artifacts/current` 指向新 release
+- 在 Linux 上准备 Prisma，并重启 `rwkv-backend` 这个 PM2 进程
+
+artifact 构建会使用已提交的本地 `HEAD` 生成 `release.json` 和
+`build-info.json` 的版本标识。正常生产发布不再要求服务器通过 Git 拉取源码。
+
+runbook 内部使用的底层 artifact 上传命令是：
 
 ```bash
 pnpm deploy:prod
 ```
 
-该命令应当在生产服务器上执行，它会：
+如果需要临时使用旧的服务器源码构建路径，可以执行：
 
-- 构建前端到 `frontend/out`
-- 保持 `frontend/out` 作为 `nginx` 的静态目录
-- 准备 Prisma
-- 构建后端
-- 重启或启动 `rwkv-backend` 这个 PM2 进程
+```bash
+pnpm deploy:prod:server-build
+```
 
 每次前端构建时，还会额外生成一份 `frontend/public/build-info.json`，最终会随静态站点一起发布为 `/build-info.json`。这份文件就是前端构建标识，用来确认当前线上页面到底来自哪一次 build。
 

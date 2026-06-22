@@ -11,15 +11,14 @@ Public monorepo for the RWKV app download website and its supporting backend API
 ```bash
 # local development
 pnpm dev
-
-# production deployment
-pnpm deploy:prod
 ```
+
+For production publishing, mention [`docs/ai/publish-prod.md`](./docs/ai/publish-prod.md) to the agent.
 
 ## Documentation
 
 - Eval run zip format: [`docs/eval-run-zip-format.md`](./docs/eval-run-zip-format.md)
-- Production deploy playbook: [`docs/production-deploy-playbook.md`](./docs/production-deploy-playbook.md)
+- Production publish agent runbook: [`docs/ai/publish-prod.md`](./docs/ai/publish-prod.md)
 
 ## Repository Layout
 
@@ -51,12 +50,14 @@ app_website/
 
 The current production architecture is:
 
-- the frontend is built as a static export into `frontend/out`
+- the frontend is built locally as a static export into `frontend/out`
 - `nginx` serves the static frontend
 - the backend runs separately under `PM2`
 - `nginx` proxies API traffic to the backend, which listens on port `3462` by default
 
-For the current `nginx + PM2` setup, `frontend/out` is the canonical frontend build output.
+Production publishes use local-built release artifacts. The server runs
+`/root/app_website-artifacts/current` and keeps `.env`, SQLite data, and logs in
+`/root/app_website-runtime/backend`.
 
 ## Prerequisites
 
@@ -106,30 +107,48 @@ This builds the frontend static export into `frontend/out` and also builds the b
 
 Typical production responsibilities are split as follows:
 
-- frontend: build `frontend/out` and let `nginx` serve it directly
-- backend: build the NestJS app and run it with `PM2`
+- local machine: run checks, build frontend/backend, and upload a release artifact
+- server: install Linux runtime dependencies, prepare Prisma, switch `current`, and restart PM2
 
-The canonical one-command production publish command is:
+The preferred production publish entry is the agent runbook:
+
+[`docs/ai/publish-prod.md`](./docs/ai/publish-prod.md)
+
+Mention that file to the agent when you want to publish. The runbook asks the agent to:
+
+- syncs the latest `zh-Hans` release note into `zh-Hant`, `en`, `ja`, `ko`, and `ru`
+- commits local changes when needed
+- pushes the commit to the configured Git remote
+- runs `pnpm check`
+- builds `frontend/out` and `backend/dist`
+- writes `.release/app-website-<git-sha>-<timestamp>.tar.gz`
+- uploads the artifact to `rwkv.halowang.cloud`
+- points `/root/app_website-artifacts/current` at the new release
+- prepares Prisma on Linux and restarts `rwkv-backend` under `PM2`
+
+The artifact build uses the committed local `HEAD` for `release.json` and
+`build-info.json`. The server no longer needs to pull source code with Git for
+normal production publishes.
+
+The lower-level artifact upload command used by the runbook is:
 
 ```bash
 pnpm deploy:prod
 ```
 
-This command is intended to run on the production server. It:
+If you need the old server-side source build path for emergency maintenance,
+run:
 
-- builds the frontend into `frontend/out`
-- keeps `frontend/out` as the live static directory for `nginx`
-- prepares Prisma
-- builds the backend
-- restarts or starts `rwkv-backend` under `PM2`
+```bash
+pnpm deploy:prod:server-build
+```
 
 Each frontend build also writes deployment metadata into `frontend/public/build-info.json`, which is exported as `/build-info.json` in the final site. This is used as a build marker so you can verify which frontend build is currently online.
 
 You can check it with:
 
 ```bash
-curl
-https://rwkv.halowang.cloud/build-info.json
+curl https://rwkv.halowang.cloud/build-info.json
 ```
 
 You can also inspect the page source or DevTools and look for these meta tags:

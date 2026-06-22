@@ -1,11 +1,13 @@
 const path = require('path');
 
+const appRoot = process.env.APP_WEBSITE_BACKEND_CWD || __dirname;
+
 module.exports = {
   apps: [
     {
       name: 'rwkv-backend',
-      cwd: __dirname,
-      script: path.join(__dirname, 'dist/main.js'),
+      cwd: appRoot,
+      script: path.join(appRoot, 'dist/main.js'),
       instances: 1,
       exec_mode: 'fork',
       env: {
@@ -14,8 +16,8 @@ module.exports = {
         PORT: 3462,
       },
       // 独立的日志文件，确保不会和其他任务混在一起
-      error_file: path.join(__dirname, 'logs/rwkv-backend-error.log'),
-      out_file: path.join(__dirname, 'logs/rwkv-backend-out.log'),
+      error_file: path.join(appRoot, 'logs/rwkv-backend-error.log'),
+      out_file: path.join(appRoot, 'logs/rwkv-backend-out.log'),
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: false, // 不合并日志，保持独立
       autorestart: true,

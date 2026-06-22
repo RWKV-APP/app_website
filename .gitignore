@@ -8,11 +8,13 @@ coverage/
 *.lcov
 
 # Production
+.release/
 dist/
 build/
 .next/
 out/
 frontend/public/build-info.json
+*.tsbuildinfo
 
 # Environment variables
 .env
