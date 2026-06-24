@@ -891,6 +891,7 @@ export default function ModelFitPreviewPage() {
   const [appVersions, setAppVersions] = useState<string[]>([]);
   const [buildModes, setBuildModes] = useState<string[]>([]);
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+  const [selectedBackend, setSelectedBackend] = useState<string[]>([]);
   const [selectedBatch, setSelectedBatch] = useState<string[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<string[]>([]);
   const [selectedBuildMode, setSelectedBuildMode] = useState<string[]>([]);
@@ -956,6 +957,18 @@ export default function ModelFitPreviewPage() {
     return Array.from(counts).sort((a, b) => a - b);
   }, [data]);
 
+  // Available inference backends from data
+  const availableBackends = useMemo(() => {
+    if (!data) return [];
+    const counts = new Map<string, number>();
+    for (const entry of data) {
+      counts.set(entry.backend, (counts.get(entry.backend) ?? 0) + entry.sampleCount);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([backend]) => backend);
+  }, [data]);
+
   // Available model tags from data
   const availableModelTags = useMemo(() => {
     if (!data) return [];
@@ -982,13 +995,14 @@ export default function ModelFitPreviewPage() {
     if (!data) return [];
     return filterLeaderboardData(data, {
       selectedPlatforms: [],
+      selectedBackend,
       selectedBatch,
       selectedSize,
       selectedModelTag,
       selectedBrand,
       selectedSoc: [],
     });
-  }, [data, selectedBatch, selectedSize, selectedModelTag, selectedBrand]);
+  }, [data, selectedBackend, selectedBatch, selectedSize, selectedModelTag, selectedBrand]);
 
   // Available individual SoCs after upper filters, sorted by data count desc
   const availableSocs = useMemo(() => {
@@ -1070,6 +1084,7 @@ export default function ModelFitPreviewPage() {
     writeLs(LS_KEY_BRAND, []);
     startFilterTransition(() => {
       setSelectedPlatforms([]);
+      setSelectedBackend([]);
       setSelectedBatch([]);
       setSelectedModelTag([]);
       setSelectedSize([]);
@@ -1085,13 +1100,22 @@ export default function ModelFitPreviewPage() {
     if (!data) return [];
     return filterLeaderboardData(data, {
       selectedPlatforms: [],
+      selectedBackend,
       selectedBatch,
       selectedSize,
       selectedModelTag,
       selectedBrand,
       selectedSoc,
     });
-  }, [data, selectedBatch, selectedSize, selectedModelTag, selectedBrand, selectedSoc]);
+  }, [
+    data,
+    selectedBackend,
+    selectedBatch,
+    selectedSize,
+    selectedModelTag,
+    selectedBrand,
+    selectedSoc,
+  ]);
 
   // Compute available OS filters from data after non-platform filters.
   const availableOsTabs = useMemo(() => {
@@ -1147,6 +1171,7 @@ export default function ModelFitPreviewPage() {
       sanitizeFileNamePart(
         formatFilterSelection(selectedBatch, 'all-batches', (batchCount) => `batch-${batchCount}`),
       ),
+      sanitizeFileNamePart(formatFilterSelection(selectedBackend, 'all-backends')),
       sanitizeFileNamePart(formatFilterSelection(selectedModelTag, 'all-types')),
       sanitizeFileNamePart(formatFilterSelection(selectedSize, 'all-weights')),
       sanitizeFileNamePart(formatFilterSelection(selectedBrand, 'all-brands', capitalizeBrand)),
@@ -1170,6 +1195,7 @@ export default function ModelFitPreviewPage() {
     return parts.join('__');
   }, [
     selectedBatch,
+    selectedBackend,
     selectedBrand,
     selectedBuildMode,
     selectedModelTag,
@@ -1200,6 +1226,7 @@ export default function ModelFitPreviewPage() {
           label: 'Batch',
           value: formatFilterSelection(selectedBatch, '不限制', (value) => `x${value}`),
         },
+        { label: 'Backend', value: formatFilterSelection(selectedBackend, '不限制') },
         { label: 'Type', value: formatFilterSelection(selectedModelTag, '不限制') },
         { label: 'Weight', value: formatFilterSelection(selectedSize, '不限制') },
         { label: 'Chip', value: socDisplay.primaryLabel },
@@ -1273,6 +1300,7 @@ export default function ModelFitPreviewPage() {
       exportFileBaseName,
       filteredData,
       selectedBatch,
+      selectedBackend,
       selectedBrand,
       selectedBuildMode,
       selectedModelTag,
@@ -1435,6 +1463,32 @@ export default function ModelFitPreviewPage() {
                       }
                     >
                       {bc === 1 ? '单条' : `batch×${bc}`}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {/* Backend */}
+              {availableBackends.length > 1 ? (
+                <div className={styles.tabRow}>
+                  <span className={styles.filterLabel}>Backend</span>
+                  <button
+                    type="button"
+                    className={`${styles.tabButtonSmall} ${selectedBackend.length === 0 ? styles.tabButtonSelected : ''}`}
+                    onClick={() => setSelectedBackend([])}
+                  >
+                    不限制
+                  </button>
+                  {availableBackends.map((backend) => (
+                    <button
+                      key={backend}
+                      type="button"
+                      className={`${styles.tabButtonSmall} ${selectedBackend.includes(backend) ? styles.tabButtonSelected : ''}`}
+                      onClick={() =>
+                        setSelectedBackend((current) => toggleFilterValue(current, backend))
+                      }
+                    >
+                      {backend}
                     </button>
                   ))}
                 </div>

@@ -239,6 +239,7 @@ export function filterLeaderboardData(
   data: TelemetryLeaderboardEntry[],
   filters: {
     selectedPlatforms: string[];
+    selectedBackend: string[];
     selectedBatch: string[];
     selectedSize: string[];
     selectedModelTag: string[];
@@ -249,6 +250,9 @@ export function filterLeaderboardData(
   let filtered = data;
   if (filters.selectedPlatforms.length > 0) {
     filtered = filtered.filter((entry) => filters.selectedPlatforms.includes(entry.os));
+  }
+  if (filters.selectedBackend.length > 0) {
+    filtered = filtered.filter((entry) => filters.selectedBackend.includes(entry.backend));
   }
   if (filters.selectedBatch.length > 0) {
     const batchCounts = new Set(filters.selectedBatch.map((value) => parseInt(value, 10)));
