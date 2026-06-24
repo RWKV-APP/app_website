@@ -122,6 +122,7 @@ interface LeaderboardAccumulator {
   isBatch: boolean;
   batchCount: number;
   deviceModelCounts: Map<string, number>;
+  hardwareBrands: Set<string>;
   sampleCount: number;
   decodeValues: number[];
   prefillValues: number[];
@@ -248,28 +249,35 @@ function deriveAdminWeightSortValue(label: string): number {
   return match ? Number.parseFloat(match[1]) : Number.POSITIVE_INFINITY;
 }
 
-function deriveAdminBrandKey(input: {
+function toAdminBrandKey(value: string): string {
+  return value === 'snapdragon' ? 'qualcomm' : value;
+}
+
+function collectHardwareBrandKeys(input: {
   socName?: string | null;
   socBrand?: string | null;
   cpuName?: string | null;
   gpuName?: string | null;
   deviceModel?: string | null;
-}): string {
-  const normalizedBrand = normalizeBrand(input.socBrand);
-  if (normalizedBrand && normalizedBrand !== 'unknown') {
-    return normalizedBrand === 'snapdragon' ? 'qualcomm' : normalizedBrand;
-  }
+}): string[] {
+  const brands = new Set<string>();
+  const addBrand = (brand: string) => {
+    const key = toAdminBrandKey(brand);
+    if (key && key !== 'unknown' && ADMIN_FILTER_BRAND_ORDER.includes(key)) {
+      brands.add(key);
+    }
+  };
 
-  const inferred = inferBrandFromHardware([
-    input.gpuName,
-    input.cpuName,
-    input.socName,
-    input.deviceModel,
-  ]);
-  if (inferred && inferred !== 'unknown') {
-    return inferred === 'snapdragon' ? 'qualcomm' : inferred;
-  }
-  return 'unknown';
+  addBrand(normalizeBrand(input.socBrand));
+  addBrand(inferBrandFromHardware([input.socName]));
+  addBrand(inferBrandFromHardware([input.cpuName]));
+  addBrand(inferBrandFromHardware([input.gpuName]));
+  addBrand(inferBrandFromHardware([input.deviceModel]));
+  addBrand(
+    inferBrandFromHardware([input.gpuName, input.cpuName, input.socName, input.deviceModel]),
+  );
+
+  return Array.from(brands);
 }
 
 function stripOsVersion(version: string | undefined): string | null {
@@ -888,6 +896,9 @@ export class TelemetryService {
             (existing.deviceModelCounts.get(row.deviceModel) ?? 0) + 1,
           );
         }
+        for (const brand of collectHardwareBrandKeys(row)) {
+          existing.hardwareBrands.add(brand);
+        }
         existing.decodeValues.push(row.decodeSpeed);
         existing.prefillValues.push(row.prefillSpeed);
         existing.decodeTotal += row.decodeSpeed;
@@ -916,6 +927,7 @@ export class TelemetryService {
         isBatch: row.isBatch,
         batchCount: row.batchCount,
         deviceModelCounts: row.deviceModel ? new Map([[row.deviceModel, 1]]) : new Map(),
+        hardwareBrands: new Set(collectHardwareBrandKeys(row)),
         sampleCount: 1,
         decodeValues: [row.decodeSpeed],
         prefillValues: [row.prefillSpeed],
@@ -949,6 +961,9 @@ export class TelemetryService {
           quantization: group.quantization,
           socName: group.socName,
           socBrand: group.socBrand,
+          hardwareBrands: ADMIN_FILTER_BRAND_ORDER.filter((brand) =>
+            group.hardwareBrands.has(brand),
+          ),
           deviceModels: sortedDeviceModels,
           deviceDisplayNames,
           backend: group.backend,
@@ -1134,7 +1149,10 @@ export class TelemetryService {
       if (modelSizeValues.size > 0 && !modelSizeValues.has(deriveAdminWeightLabel(row))) {
         return false;
       }
-      if (socBrandValues.size > 0 && !socBrandValues.has(deriveAdminBrandKey(normalized))) {
+      if (
+        socBrandValues.size > 0 &&
+        !collectHardwareBrandKeys(normalized).some((brand) => socBrandValues.has(brand))
+      ) {
         return false;
       }
       if (socNameKeys.size > 0 && !socNameKeys.has(normalized.socNameKey)) {
@@ -1225,8 +1243,9 @@ export class TelemetryService {
       modelSizeSet.add(deriveAdminWeightLabel(row));
 
       const normalized = normalizeTelemetryDevice(row, row.backend);
-      const brand = deriveAdminBrandKey(normalized);
-      if (brand !== 'unknown') socBrandSet.add(brand);
+      for (const brand of collectHardwareBrandKeys(normalized)) {
+        socBrandSet.add(brand);
+      }
       if (normalized.socName) {
         socCounts.set(normalized.socName, (socCounts.get(normalized.socName) ?? 0) + 1);
       }

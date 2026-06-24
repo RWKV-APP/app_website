@@ -48,6 +48,14 @@ export function inferBrand(socName: string, socBrand: string): string {
     return socBrand.toLowerCase();
   }
   const lower = socName.toLowerCase();
+  if (
+    lower.includes('snapdragon') ||
+    lower.includes('qualcomm') ||
+    /\bsm\d{4}\b/.test(lower) ||
+    /\b888\b/.test(lower)
+  ) {
+    return 'qualcomm';
+  }
   if (lower.includes('rtx') || lower.includes('gtx') || lower.includes('nvidia')) return 'nvidia';
   if (lower.includes('radeon') || lower.includes('amd') || lower.includes('rx ')) return 'amd';
   if (lower.includes('intel') || lower.includes('arc ')) return 'intel';
@@ -88,6 +96,29 @@ export function deriveWeightLabel(entry: TelemetryLeaderboardEntry): string {
   const match = entry.modelFileName.match(/(\d+\.?\d*)B/i);
   if (match) return `${match[1]}B`;
   return entry.modelName || entry.modelFileName;
+}
+
+function normalizeBrandKey(brand: string): string {
+  return brand.toLowerCase() === 'snapdragon' ? 'qualcomm' : brand.toLowerCase();
+}
+
+export function getHardwareBrandKeys(entry: TelemetryLeaderboardEntry): string[] {
+  const brands = new Set<string>();
+  for (const brand of entry.hardwareBrands ?? []) {
+    const key = normalizeBrandKey(brand);
+    if (key && key !== 'unknown' && BRAND_LABELS[key]) {
+      brands.add(key);
+    }
+  }
+
+  if (brands.size === 0) {
+    const inferred = normalizeBrandKey(inferBrand(entry.socName, entry.socBrand));
+    if (inferred && inferred !== 'unknown' && BRAND_LABELS[inferred]) {
+      brands.add(inferred);
+    }
+  }
+
+  return Array.from(brands);
 }
 
 export function deriveQuantLabel(entry: TelemetryLeaderboardEntry): string {
@@ -230,8 +261,9 @@ export function filterLeaderboardData(
     filtered = filtered.filter((entry) => filters.selectedModelTag.includes(deriveModelTag(entry)));
   }
   if (filters.selectedBrand.length > 0) {
+    const selectedBrands = new Set(filters.selectedBrand);
     filtered = filtered.filter((entry) =>
-      filters.selectedBrand.includes(inferBrand(entry.socName, entry.socBrand)),
+      getHardwareBrandKeys(entry).some((brand) => selectedBrands.has(brand)),
     );
   }
   if (filters.selectedSoc.length > 0) {

@@ -13,6 +13,7 @@ export interface TelemetryLeaderboardEntry {
   quantization: string | null;
   socName: string;
   socBrand: string;
+  hardwareBrands?: string[];
   deviceModels: string[];
   deviceDisplayNames: string[];
   backend: string;

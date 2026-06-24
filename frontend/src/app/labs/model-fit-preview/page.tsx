@@ -1,7 +1,7 @@
 'use client';
 
 import type { CSSProperties } from 'react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -20,6 +20,7 @@ import {
   formatMetricBasisLabel,
   formatSpeed,
   getDisplaySpeeds,
+  getHardwareBrandKeys,
   inferBrand,
   isBatchColumn,
   MODEL_TAG_LABELS,
@@ -124,6 +125,25 @@ interface StackedCellLabel {
 const LS_KEY_MODEL_TAG = 'rwkv-perf-filter-model-tag';
 const LS_KEY_SIZE = 'rwkv-perf-filter-size';
 const LS_KEY_BRAND = 'rwkv-perf-filter-brand';
+const INITIAL_RENDERED_ROWS = 12;
+const RENDER_ROW_CHUNK = 12;
+
+type IdleWindow = Window & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+  cancelIdleCallback?: (handle: number) => void;
+};
+
+function scheduleRowRender(callback: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const idleWindow = window as IdleWindow;
+  if (idleWindow.requestIdleCallback && idleWindow.cancelIdleCallback) {
+    const handle = idleWindow.requestIdleCallback(callback, { timeout: 120 });
+    return () => idleWindow.cancelIdleCallback?.(handle);
+  }
+
+  const handle = window.setTimeout(callback, 16);
+  return () => window.clearTimeout(handle);
+}
 
 function parseFilterList(value: string | null | undefined): string[] {
   if (!value) return [];
@@ -863,6 +883,7 @@ async function fetchRecords(params: {
 
 export default function ModelFitPreviewPage() {
   const router = useRouter();
+  const [, startFilterTransition] = useTransition();
   const [authed, setAuthed] = useState(false);
   const [data, setData] = useState<LeaderboardEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -879,6 +900,7 @@ export default function ModelFitPreviewPage() {
   );
   const [selectedBrand, setSelectedBrand] = useState<string[]>(() => readLs(LS_KEY_BRAND, []));
   const [selectedSoc, setSelectedSoc] = useState<string[]>([]);
+  const [renderedRowLimit, setRenderedRowLimit] = useState(INITIAL_RENDERED_ROWS);
   const [sidebar, setSidebar] = useState<SidebarState>({
     open: false,
     loading: false,
@@ -956,22 +978,49 @@ export default function ModelFitPreviewPage() {
       .map(([label]) => label);
   }, [data]);
 
-  // Available individual SoCs from data, sorted by data count desc
-  const availableSocs = useMemo(() => {
+  const socOptionData = useMemo(() => {
     if (!data) return [];
+    return filterLeaderboardData(data, {
+      selectedPlatforms: [],
+      selectedBatch,
+      selectedSize,
+      selectedModelTag,
+      selectedBrand,
+      selectedSoc: [],
+    });
+  }, [data, selectedBatch, selectedSize, selectedModelTag, selectedBrand]);
+
+  // Available individual SoCs after upper filters, sorted by data count desc
+  const availableSocs = useMemo(() => {
+    if (socOptionData.length === 0) return [];
     const counts = new Map<string, number>();
-    for (const entry of data) {
+    for (const entry of socOptionData) {
       counts.set(entry.socName, (counts.get(entry.socName) ?? 0) + entry.sampleCount);
     }
     return Array.from(counts.entries())
       .sort((a, b) => b[1] - a[1])
       .map(([name]) => name);
-  }, [data]);
+  }, [socOptionData]);
+
+  const availableSocSet = useMemo(() => new Set(availableSocs), [availableSocs]);
+
+  useEffect(() => {
+    if (!data) return;
+    setSelectedSoc((current) => {
+      const next = current.filter((soc) => availableSocSet.has(soc));
+      return next.length === current.length ? current : next;
+    });
+  }, [availableSocSet, data]);
 
   // Available SoC brands from data
   const availableBrands = useMemo(() => {
     if (!data) return [];
-    const brands = new Set(data.map((e) => inferBrand(e.socName, e.socBrand)));
+    const brands = new Set<string>();
+    for (const entry of data) {
+      for (const brand of getHardwareBrandKeys(entry)) {
+        brands.add(brand);
+      }
+    }
     return BRAND_ORDER.filter((b) => brands.has(b));
   }, [data]);
 
@@ -1016,18 +1065,20 @@ export default function ModelFitPreviewPage() {
   }, []);
 
   const handleResetFilters = useCallback(() => {
-    setSelectedPlatforms([]);
-    setSelectedBatch([]);
-    setSelectedModelTag([]);
-    setSelectedSize([]);
-    setSelectedBrand([]);
-    setSelectedSoc([]);
-    setSelectedVersion([]);
-    setSelectedBuildMode([]);
     writeLs(LS_KEY_MODEL_TAG, []);
     writeLs(LS_KEY_SIZE, []);
     writeLs(LS_KEY_BRAND, []);
-  }, []);
+    startFilterTransition(() => {
+      setSelectedPlatforms([]);
+      setSelectedBatch([]);
+      setSelectedModelTag([]);
+      setSelectedSize([]);
+      setSelectedBrand([]);
+      setSelectedSoc([]);
+      setSelectedVersion([]);
+      setSelectedBuildMode([]);
+    });
+  }, [startFilterTransition]);
 
   // Filter data by batch + size + model tag + brand first, then apply platform selection.
   const baseFilteredData = useMemo(() => {
@@ -1063,6 +1114,22 @@ export default function ModelFitPreviewPage() {
   const displayRows = useMemo<DisplayRow[]>(() => {
     return platforms.flatMap((p) => p.rows.map((r) => ({ ...r, osLabel: p.label, osId: p.id })));
   }, [platforms]);
+
+  useEffect(() => {
+    setRenderedRowLimit(Math.min(INITIAL_RENDERED_ROWS, displayRows.length));
+  }, [displayRows.length, weightColumns.length]);
+
+  useEffect(() => {
+    if (renderedRowLimit >= displayRows.length) return;
+    return scheduleRowRender(() => {
+      setRenderedRowLimit((current) => Math.min(current + RENDER_ROW_CHUNK, displayRows.length));
+    });
+  }, [displayRows.length, renderedRowLimit]);
+
+  const renderedDisplayRows = useMemo(
+    () => displayRows.slice(0, renderedRowLimit),
+    [displayRows, renderedRowLimit],
+  );
 
   const matrixGridStyle = useMemo<CSSProperties>(
     () => ({
@@ -1527,6 +1594,11 @@ export default function ModelFitPreviewPage() {
                 </button>
                 <span>Chips: {displayRows.length}</span>
                 <span>Models: {weightColumns.length}</span>
+                {renderedDisplayRows.length < displayRows.length ? (
+                  <span>
+                    Displaying: {renderedDisplayRows.length}/{displayRows.length}
+                  </span>
+                ) : null}
               </div>
             </section>
 
@@ -1576,7 +1648,7 @@ export default function ModelFitPreviewPage() {
                         </div>
                       ))}
 
-                      {displayRows.flatMap((row, rowIndex) => {
+                      {renderedDisplayRows.flatMap((row, rowIndex) => {
                         const rowKey = `${row.osLabel ?? ''}-${row.socName}`;
                         const isLastRow = rowIndex === displayRows.length - 1;
                         const rowHeadClass = `${styles.rowCell} ${isLastRow ? styles.lastRow : ''}`;
