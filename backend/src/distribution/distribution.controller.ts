@@ -4,10 +4,10 @@ import { DistributionService } from './distribution.service';
 
 type DistributionMap = Record<string, DistributionRecord | null>;
 const APP_DOWNLOAD_LANDING_URL = 'https://rwkv.halowang.cloud/';
-const APP_LATEST_VERSION_OVERRIDE = '4.5.11';
-const APP_LATEST_BUILD_OVERRIDE = 742;
-const IOS_LATEST_VERSION_OVERRIDE = '4.5.9';
-const IOS_LATEST_BUILD_OVERRIDE = 740;
+const APP_LATEST_VERSION_OVERRIDE = '4.5.12';
+const APP_LATEST_BUILD_OVERRIDE = 743;
+const IOS_LATEST_VERSION_OVERRIDE = '4.5.11';
+const IOS_LATEST_BUILD_OVERRIDE = 742;
 const IOS_DISTRIBUTION_KEYS = new Set(['iOSTF', 'iOSAS']);
 
 interface DistributionRecord {
