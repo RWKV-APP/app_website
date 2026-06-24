@@ -473,6 +473,7 @@ export class RemoteConfigService {
     const treeCache = new Map<string, Promise<HuggingFaceTreeEntry[]>>();
     const metadataCache = new Map<string, Promise<HuggingFaceFileMetadata>>();
     let synchronizedModelCount = 0;
+    const warnings: string[] = [];
 
     for (const sectionName of APP_CONFIG_SECTIONS.filter((section) => section in parsed)) {
       const sectionValue = parsed[sectionName];
@@ -502,13 +503,32 @@ export class RemoteConfigService {
           );
         }
 
-        const metadata = await this.getHuggingFaceFileMetadata(rawUrl.trim(), {
-          fileName,
-          sectionName,
-          modelIndex: index,
-          treeCache,
-          metadataCache,
-        });
+        let metadata: HuggingFaceFileMetadata;
+        try {
+          metadata = await this.getHuggingFaceFileMetadata(rawUrl.trim(), {
+            fileName,
+            sectionName,
+            modelIndex: index,
+            treeCache,
+            metadataCache,
+          });
+        } catch (error) {
+          if (error instanceof BadRequestException) {
+            throw error;
+          }
+
+          warnings.push(
+            `Skipped Hugging Face fileSize/date sync for ${fileName}: ${this.formatHuggingFaceSyncError(error)}. Existing fileSize/date values were kept.`,
+          );
+          if (synchronizedModelCount > 0) {
+            warnings.unshift(
+              `Synced Hugging Face fileSize/date for ${synchronizedModelCount} model entr${
+                synchronizedModelCount === 1 ? 'y' : 'ies'
+              }.`,
+            );
+          }
+          return warnings;
+        }
 
         let updated = false;
         if (model.fileSize !== metadata.size) {
@@ -527,15 +547,30 @@ export class RemoteConfigService {
       }
     }
 
-    if (synchronizedModelCount === 0) {
-      return [];
+    if (synchronizedModelCount > 0) {
+      warnings.unshift(
+        `Synced Hugging Face fileSize/date for ${synchronizedModelCount} model entr${
+          synchronizedModelCount === 1 ? 'y' : 'ies'
+        }.`,
+      );
     }
 
-    return [
-      `Synced Hugging Face fileSize/date for ${synchronizedModelCount} model entr${
-        synchronizedModelCount === 1 ? 'y' : 'ies'
-      }.`,
-    ];
+    return warnings;
+  }
+
+  private formatHuggingFaceSyncError(error: unknown): string {
+    if (axios.isAxiosError(error)) {
+      const details = [error.code, error.response?.status ? `HTTP ${error.response.status}` : '']
+        .filter(Boolean)
+        .join(', ');
+      return details ? `${error.message} (${details})` : error.message;
+    }
+
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    return 'unknown metadata request error';
   }
 
   private async getHuggingFaceFileMetadata(
