@@ -5,7 +5,7 @@ This repository is the public RWKV app website and supporting backend API.
 ## Safe Commands
 
 - Local development: `pnpm dev`
-- Production publish runbook: `docs/ai/publish-prod.md`
+- Production publish runbook: `docs/deploy.md`
 - Low-level artifact deploy: `pnpm deploy:prod`
 - Legacy server-side source deploy: `pnpm deploy:prod:server-build`
 - Full read-only verification: `pnpm check`
@@ -13,7 +13,7 @@ This repository is the public RWKV app website and supporting backend API.
 - Read-only lint: `pnpm lint:check`
 - Auto-fix lint: `pnpm lint:fix`
 
-Do not use `pnpm deploy:prod` directly unless the task is explicitly only an artifact deployment. For normal production publishing, follow `docs/ai/publish-prod.md`.
+Do not use `pnpm deploy:prod` directly unless the task is explicitly only an artifact deployment. For normal production publishing, follow `docs/deploy.md`.
 
 ## Repository Shape
 
@@ -21,7 +21,7 @@ Do not use `pnpm deploy:prod` directly unless the task is explicitly only an art
 - `backend/`: NestJS backend API, PM2 production target.
 - `packages/contracts/`: shared frontend/backend enums and stable constants.
 - `docs/`: operational docs and handoff notes.
-- `docs/ai/publish-prod.md`: standard Agent-run production publish workflow.
+- `docs/deploy.md`: standard Agent-run production publish workflow.
 - `tools/`: maintenance scripts and build metadata generation.
 - `tools/sync-release-notes.mjs`: syncs latest `zh-Hans` release notes into other locales.
 - `scripts/build-prod-artifact.sh`: builds local production release artifacts.

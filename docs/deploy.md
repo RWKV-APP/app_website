@@ -1,6 +1,6 @@
 # Publish Production
 
-Use this file when the user mentions or attaches `docs/ai/publish-prod.md`, asks to publish to production, or says the latest app website changes should go live.
+Use this file when the user mentions or attaches `docs/deploy.md`, asks to publish to production, or says the latest app website changes should go live.
 
 This is an agent runbook, not a user-facing shell command. Execute the steps below from the repository root.
 

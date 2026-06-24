@@ -13,12 +13,12 @@ Public monorepo for the RWKV app download website and its supporting backend API
 pnpm dev
 ```
 
-For production publishing, mention [`docs/ai/publish-prod.md`](./docs/ai/publish-prod.md) to the agent.
+For production publishing, mention [`docs/deploy.md`](./docs/deploy.md) to the agent.
 
 ## Documentation
 
 - Eval run zip format: [`docs/eval-run-zip-format.md`](./docs/eval-run-zip-format.md)
-- Production publish agent runbook: [`docs/ai/publish-prod.md`](./docs/ai/publish-prod.md)
+- Production publish agent runbook: [`docs/deploy.md`](./docs/deploy.md)
 
 ## Repository Layout
 
@@ -112,7 +112,7 @@ Typical production responsibilities are split as follows:
 
 The preferred production publish entry is the agent runbook:
 
-[`docs/ai/publish-prod.md`](./docs/ai/publish-prod.md)
+[`docs/deploy.md`](./docs/deploy.md)
 
 Mention that file to the agent when you want to publish. The runbook asks the agent to:
 

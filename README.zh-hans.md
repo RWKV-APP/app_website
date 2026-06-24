@@ -13,12 +13,12 @@ RWKV App 下载站与配套后端 API 的公开 monorepo。
 pnpm dev
 ```
 
-生产发布时，把 [`docs/ai/publish-prod.md`](./docs/ai/publish-prod.md) 提给 Agent。
+生产发布时，把 [`docs/deploy.md`](./docs/deploy.md) 提给 Agent。
 
 ## 文档
 
 - Eval Run Zip 格式说明：[`docs/eval-run-zip-format.md`](./docs/eval-run-zip-format.md)
-- 生产发布 Agent Runbook：[`docs/ai/publish-prod.md`](./docs/ai/publish-prod.md)
+- 生产发布 Agent Runbook：[`docs/deploy.md`](./docs/deploy.md)
 
 ## 仓库结构
 
@@ -112,7 +112,7 @@ pnpm build
 
 推荐的生产发布入口是 Agent Runbook：
 
-[`docs/ai/publish-prod.md`](./docs/ai/publish-prod.md)
+[`docs/deploy.md`](./docs/deploy.md)
 
 想发布时, 直接把这个文件提给 Agent。该 runbook 会要求 Agent：
 

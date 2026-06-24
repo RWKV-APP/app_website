@@ -7,7 +7,7 @@ https://github.com/RWKV-APP/app_website
 ## 最终使用命令
 
 - 本地开发命令: `pnpm dev`
-- 线上发布入口: `docs/ai/publish-prod.md`
+- 线上发布入口: `docs/deploy.md`
 - 底层 artifact 发布命令: `pnpm deploy:prod`
 
 ## 前置任务
@@ -47,7 +47,7 @@ https://github.com/RWKV-APP/app_website
 
 - `PM2` 生产配置: `./backend/ecosystem.prod.config.js`
 - `PM2` 开发配置: `./backend/ecosystem.config.js`
-- 面向 Agent 的聚合发布说明: `./docs/ai/publish-prod.md`
+- 面向 Agent 的聚合发布说明: `./docs/deploy.md`
 - release notes 同步脚本: `./tools/sync-release-notes.mjs`
 - artifact 构建脚本: `./scripts/build-prod-artifact.sh`
 - artifact 发布脚本: `./scripts/deploy-prod-artifact.sh`
@@ -59,7 +59,7 @@ https://github.com/RWKV-APP/app_website
 
 #### 当前需要特别注意的现状
 
-- 用户想发布线上时, 优先读取并执行 `docs/ai/publish-prod.md`; 这是面向 Agent 的聚合发布说明, 负责同步 release notes、提交并推送 Git、发布 artifact、复核线上结果
+- 用户想发布线上时, 优先读取并执行 `docs/deploy.md`; 这是面向 Agent 的聚合发布说明, 负责同步 release notes、提交并推送 Git、发布 artifact、复核线上结果
 - `pnpm deploy:prod` 只负责底层 artifact 发布阶段: `pnpm check`、本地构建前端和后端、生成 `.release/app-website-<git-sha>-<timestamp>.tar.gz`、上传到 `rwkv.halowang.cloud`、在服务器安装 Linux 运行依赖、生成 Prisma Client、在没有迁移文件时执行 `prisma db push --accept-data-loss`、切换 `/root/app_website-artifacts/current`、检查并 reload nginx、重启 `rwkv-backend`
 - 当前标准发布不会在服务器执行 `git pull/fetch/checkout`; Git 只作为本地版本标识来源
 - 如果确实需要旧的服务器源码构建路径, 使用 `pnpm deploy:prod:server-build`, 不要把它当作标准入口
@@ -67,7 +67,7 @@ https://github.com/RWKV-APP/app_website
 - 每次前端构建都会先生成 `frontend/public/build-info.json`, 随后在 Next.js 导出产物中写入 `frontend/out/build-info.json`; 发布后可以通过 `https://rwkv.halowang.cloud/build-info.json` 查看当前线上前端的 build 信息
 - 页面源码和 DevTools 中还会出现 `rwkv-build-summary`, `rwkv-build-time`, `rwkv-build-source`, `rwkv-build-commit-short` 等 meta 标签, 可用于快速确认是否已切到目标 build
 - 如果看到 `rwkv-build-dirty=true`, 说明该次前端构建基于 dirty worktree, 不是完全对应某一个干净 commit
-- 更新 `backend/data/release-notes/` 中的 Markdown 后, 需要按 `docs/ai/publish-prod.md` 同步多语言文件、提交并推送 Git、重新发布 artifact; 线上 API 以 artifact 中的 release notes 为准
+- 更新 `backend/data/release-notes/` 中的 Markdown 后, 需要按 `docs/deploy.md` 同步多语言文件、提交并推送 Git、重新发布 artifact; 线上 API 以 artifact 中的 release notes 为准
 - 迁移到 artifact 发布前, 服务器旧 Git 工作副本里曾出现未跟踪文件 `/root/repo/app_website/backend/data/release-notes/zh-Hans/740-4.5.9 copy.md`; 当前标准发布不依赖也不清理它
 - `backend/ecosystem.config.js` 当前仍把开发端口写成了 `3462`, 与推荐的本地开发命令 `pnpm dev` 默认后端端口 `3001` 不一致; 本地开发应优先使用 `pnpm dev`, 不要把 PM2 开发配置当作首选入口
 - 机器上还存在一个预览站: `preview.rwkv.halowang.cloud`, 它对应的是 `/root/repo/app_website-preview/frontend/out`, 不是当前仓库
