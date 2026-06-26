@@ -11,7 +11,7 @@ REMOTE_RUNTIME_BASE="${APP_WEBSITE_REMOTE_RUNTIME_BASE:-/root/app_website-runtim
 REMOTE_OLD_REPO="${APP_WEBSITE_REMOTE_OLD_REPO:-/root/repo/app_website}"
 REMOTE_NGINX_CONFIG="${APP_WEBSITE_REMOTE_NGINX_CONFIG:-/etc/nginx/sites-available/halowang.cloud}"
 REMOTE_NVM_DIR="${APP_WEBSITE_REMOTE_NVM_DIR:-/root/.nvm}"
-REMOTE_NODE_VERSION="${APP_WEBSITE_REMOTE_NODE_VERSION:-22.16.0}"
+REMOTE_NODE_VERSION="${APP_WEBSITE_REMOTE_NODE_VERSION:-24.18.0}"
 
 run_ssh() {
   ssh -o StrictHostKeyChecking=no "${SSH_TARGET}" "$@"
@@ -167,6 +167,7 @@ fi
 cd "${CURRENT_LINK}/backend"
 desired_pm2_cwd="${CURRENT_LINK}/backend"
 export APP_WEBSITE_BACKEND_CWD="${desired_pm2_cwd}"
+export NODE_INTERPRETER="$(command -v node)"
 current_pm2_cwd="$(
   pm2 jlist | node -e "
 let input = '';

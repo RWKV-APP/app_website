@@ -8,6 +8,7 @@ module.exports = {
       name: 'rwkv-backend',
       cwd: appRoot,
       script: path.join(appRoot, 'dist/main.js'),
+      interpreter: process.env.NODE_INTERPRETER || 'node',
       instances: 1,
       exec_mode: 'fork',
       env: {
