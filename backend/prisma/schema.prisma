@@ -62,84 +62,84 @@ model RemoteConfigActivity {
 }
 
 model EvalRun {
-  id                        Int          @id @default(autoincrement())
-  runId                     String       @unique
-  uploadedFileName          String
-  uploadedBy                String?
-  uploadedAt                DateTime     @default(now())
-  runCreatedAt              DateTime?
-  runUpdatedAt              DateTime?
-  status                    String
-  language                  String
-  taskType                  String
-  baseUrl                   String?
-  endpoint                  String
-  sourceFile                String
-  modelRequest              String?
-  modelNameReportedByServer String?
-  judgeProvider             String?
-  judgeModel                String?
-  judgeApiBase              String?
-  selectionMode             String?
-  sourceTotalItems          Int          @default(0)
-  sampleCountRequested      Int          @default(0)
-  repeatCount               Int          @default(0)
-  maxTokens                 Int?
-  seed                      Int?
-  totalSamples              Int          @default(0)
-  completedSamples          Int          @default(0)
-  runningSamples            Int          @default(0)
-  partialSamples            Int          @default(0)
-  errorSamples              Int          @default(0)
-  pendingSamples            Int          @default(0)
-  doneAttempts              Int          @default(0)
-  totalAttempts             Int          @default(0)
+  id                         Int          @id @default(autoincrement())
+  runId                      String       @unique
+  uploadedFileName           String
+  uploadedBy                 String?
+  uploadedAt                 DateTime     @default(now())
+  runCreatedAt               DateTime?
+  runUpdatedAt               DateTime?
+  status                     String
+  language                   String
+  taskType                   String
+  baseUrl                    String?
+  endpoint                   String
+  sourceFile                 String
+  modelRequest               String?
+  modelNameReportedByServer  String?
+  judgeProvider              String?
+  judgeModel                 String?
+  judgeApiBase               String?
+  selectionMode              String?
+  sourceTotalItems           Int          @default(0)
+  sampleCountRequested       Int          @default(0)
+  repeatCount                Int          @default(0)
+  maxTokens                  Int?
+  seed                       Int?
+  totalSamples               Int          @default(0)
+  completedSamples           Int          @default(0)
+  runningSamples             Int          @default(0)
+  partialSamples             Int          @default(0)
+  errorSamples               Int          @default(0)
+  pendingSamples             Int          @default(0)
+  doneAttempts               Int          @default(0)
+  totalAttempts              Int          @default(0)
   latestCompletedSampleIndex Int?
-  latestCompletedCategory   String?
-  evalDeviceLabel           String?
-  evalDeviceCpu             String?
-  evalDeviceGpu             String?
-  evalDeviceMemoryGb        Float?
-  evalDeviceVramGb          Float?
-  createdAt                 DateTime     @default(now())
-  updatedAt                 DateTime     @updatedAt
-  samples                   EvalSample[]
+  latestCompletedCategory    String?
+  evalDeviceLabel            String?
+  evalDeviceCpu              String?
+  evalDeviceGpu              String?
+  evalDeviceMemoryGb         Float?
+  evalDeviceVramGb           Float?
+  createdAt                  DateTime     @default(now())
+  updatedAt                  DateTime     @updatedAt
+  samples                    EvalSample[]
 
   @@index([uploadedAt])
   @@index([runUpdatedAt])
 }
 
 model EvalSample {
-  id                       Int                 @id @default(autoincrement())
-  evalRunId                Int
-  sampleIndex              Int
-  status                   String
-  renderingName            String
-  prompt                   String
-  sourceFile               String
-  sourceCategory           String
+  id                        Int                 @id @default(autoincrement())
+  evalRunId                 Int
+  sampleIndex               Int
+  status                    String
+  renderingName             String
+  prompt                    String
+  sourceFile                String
+  sourceCategory            String
   sourceCategoryDisplayName String
-  sourceCategoryIndex      Int
-  sourceItemIndex          Int
-  baseUrl                  String?
-  endpoint                 String
-  modelRequest             String?
+  sourceCategoryIndex       Int
+  sourceItemIndex           Int
+  baseUrl                   String?
+  endpoint                  String
+  modelRequest              String?
   modelNameReportedByServer String?
-  maxTokens                Int?
-  repeatCountTarget        Int                 @default(0)
-  repeatCountDone          Int                 @default(0)
-  sampleStartedAt          DateTime?
-  sampleUpdatedAt          DateTime?
-  averageWeightedScore     Float?
-  averageRelevance         Float?
-  averageQuality           Float?
-  averageFluency           Float?
-  averageSatisfaction      Float?
-  scoredAttemptCount       Int                 @default(0)
-  createdAt                DateTime            @default(now())
-  updatedAt                DateTime            @updatedAt
-  run                      EvalRun             @relation(fields: [evalRunId], references: [id], onDelete: Cascade)
-  attempts                 EvalSampleAttempt[]
+  maxTokens                 Int?
+  repeatCountTarget         Int                 @default(0)
+  repeatCountDone           Int                 @default(0)
+  sampleStartedAt           DateTime?
+  sampleUpdatedAt           DateTime?
+  averageWeightedScore      Float?
+  averageRelevance          Float?
+  averageQuality            Float?
+  averageFluency            Float?
+  averageSatisfaction       Float?
+  scoredAttemptCount        Int                 @default(0)
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+  run                       EvalRun             @relation(fields: [evalRunId], references: [id], onDelete: Cascade)
+  attempts                  EvalSampleAttempt[]
 
   @@unique([evalRunId, sampleIndex])
   @@index([sourceCategory])
@@ -174,44 +174,119 @@ model EvalSampleAttempt {
 }
 
 model TelemetryPerf {
-  id             Int      @id @default(autoincrement())
-  schemaVersion  Int      @default(1)
+  id            Int @id @default(autoincrement())
+  schemaVersion Int @default(1)
 
-  installIdHash  String
+  installIdHash String
 
-  socName        String
-  socBrand       String
-  os             String
-  osVersion      String?
-  deviceModel    String?
-  cpuName        String?
-  gpuName        String?
-  totalMemoryMb  Int?
-  totalVramMb    Int?
+  socName       String
+  socBrand      String
+  os            String
+  osVersion     String?
+  deviceModel   String?
+  cpuName       String?
+  gpuName       String?
+  totalMemoryMb Int?
+  totalVramMb   Int?
 
-  appVersion     String
-  appBuild       String
-  buildMode      String   @default("unknown")
+  appVersion String
+  appBuild   String
+  buildMode  String @default("unknown")
 
-  modelName      String
-  modelFileName  String
-  modelSha256    String
-  modelSizeB     Float?
-  quantization   String?
-  backend        String
+  modelName     String
+  modelFileName String
+  modelSha256   String
+  modelSizeB    Float?
+  quantization  String?
+  backend       String
 
-  isBatch        Boolean  @default(false)
-  batchCount     Int      @default(1)
+  isBatch    Boolean @default(false)
+  batchCount Int     @default(1)
 
-  prefillSpeed   Float
-  decodeSpeed    Float
+  prefillSpeed Float
+  decodeSpeed  Float
 
   clientTimestamp DateTime
-  createdAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
 
   @@index([modelSha256, socName, backend, isBatch, decodeSpeed])
   @@index([modelSha256, socName, backend, isBatch, prefillSpeed])
   @@index([socName, backend])
   @@index([installIdHash, createdAt])
   @@index([createdAt])
+}
+
+model RwkvChatConversation {
+  id                 Int               @id @default(autoincrement())
+  title              String
+  createdBy          String?
+  status             String            @default("active")
+  selectedMessageId  Int?
+  selectedSlotId     String?
+  lastMessagePreview String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  messages           RwkvChatMessage[]
+  batches            RwkvChatBatch[]
+
+  @@index([updatedAt])
+  @@index([createdBy, updatedAt])
+}
+
+model RwkvChatMessage {
+  id                    Int                  @id @default(autoincrement())
+  conversationId        Int
+  role                  String
+  content               String               @default("")
+  status                String               @default("done")
+  model                 String?
+  webSearchEnabled      Boolean?
+  batchInferenceEnabled Boolean?
+  batchId               String?              @unique
+  selectedSlotId        String?
+  error                 String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  conversation          RwkvChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  batch                 RwkvChatBatch?
+
+  @@index([conversationId, createdAt])
+  @@index([status])
+}
+
+model RwkvChatBatch {
+  id                    String               @id
+  conversationId        Int
+  assistantMessageId    Int                  @unique
+  model                 String
+  webSearchEnabled      Boolean
+  batchInferenceEnabled Boolean
+  status                String               @default("queued")
+  error                 String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  conversation          RwkvChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  assistantMessage      RwkvChatMessage      @relation(fields: [assistantMessageId], references: [id], onDelete: Cascade)
+  slots                 RwkvChatSlot[]
+
+  @@index([conversationId, createdAt])
+  @@index([status])
+}
+
+model RwkvChatSlot {
+  id            String        @id
+  batchId       String
+  providerKey   String
+  providerLabel String
+  status        String        @default("queued")
+  references    String        @default("[]")
+  content       String        @default("")
+  error         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  batch         RwkvChatBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@index([providerKey])
+  @@index([status])
 }

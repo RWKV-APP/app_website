@@ -22,6 +22,7 @@ Do not use `pnpm deploy:prod` directly unless the task is explicitly only an art
 - `packages/contracts/`: shared frontend/backend enums and stable constants.
 - `docs/`: operational docs and handoff notes.
 - `docs/deploy.md`: standard Agent-run production publish workflow.
+- `docs/ai/rwkv-chat-handoff.md`: admin RWKV Chat architecture, persistence, search-provider, and smoke-test context.
 - `tools/`: maintenance scripts and build metadata generation.
 - `tools/sync-release-notes.mjs`: syncs latest `zh-Hans` release notes into other locales.
 - `scripts/build-prod-artifact.sh`: builds local production release artifacts.
@@ -46,6 +47,7 @@ Avoid re-creating these constants inside feature pages or services.
 - `distribution/`: app distribution sync, release notes, webhook refresh.
 - `remote-config/`: app config upload, publish, archive, public config endpoints.
 - `eval/`: eval run import and public/admin eval views.
+- `rwkv-chat/`: admin-only RWKV Chat proxy, batch inference, search-provider adapters, conversation persistence.
 - `telemetry/`: performance telemetry ingest, leaderboard, admin records.
 - `prisma/`: shared Prisma service/module.
 
@@ -56,6 +58,7 @@ When adding a backend feature, prefer a feature module over registering everythi
 - `frontend/src/app/page.tsx`: download page UI and state.
 - `frontend/src/features/download/downloadRules.ts`: pure download selection/version/source rules.
 - `frontend/src/app/labs/model-fit-preview/page.tsx`: telemetry leaderboard UI.
+- `frontend/src/app/admin/rwkv-chat/page.tsx`: admin RWKV Chat conversation workbench.
 - `frontend/src/features/telemetry/telemetryRules.ts`: pure telemetry labels, grouping, filtering, and metric rules.
 - `frontend/src/utils/api.ts`: frontend API client functions.
 - `frontend/src/utils/apiBase.ts`: API origin resolution.

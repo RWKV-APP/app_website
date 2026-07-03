@@ -555,6 +555,388 @@ export async function downloadRemoteConfigArchive(scope: 'all' | 'published') {
   );
 }
 
+export type AdminRwkvChatModel = '7b' | '13b';
+
+export interface AdminRwkvChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export type AdminRwkvChatSlotStatus =
+  | 'queued'
+  | 'searching'
+  | 'generating'
+  | 'done'
+  | 'error'
+  | 'skipped';
+
+export interface AdminRwkvChatReference {
+  title: string;
+  url: string;
+  summary: string;
+  source?: string;
+}
+
+export interface AdminRwkvChatSlot {
+  id: string;
+  providerKey: string;
+  providerLabel: string;
+  status: AdminRwkvChatSlotStatus;
+  references: AdminRwkvChatReference[];
+  content?: string;
+  error?: string;
+}
+
+export type AdminRwkvChatMessageStatus = 'done' | 'running' | 'error' | 'stopped';
+
+export interface AdminRwkvChatBatchRecord {
+  id: string;
+  model: AdminRwkvChatModel;
+  webSearchEnabled: boolean;
+  batchInferenceEnabled: boolean;
+  status: string;
+  error?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  slots: AdminRwkvChatSlot[];
+}
+
+export interface AdminRwkvChatStoredMessage {
+  id: number;
+  conversationId: number;
+  role: 'user' | 'assistant';
+  content: string;
+  status: AdminRwkvChatMessageStatus | string;
+  model?: AdminRwkvChatModel | null;
+  webSearchEnabled?: boolean | null;
+  batchInferenceEnabled?: boolean | null;
+  batchId?: string | null;
+  selectedSlotId?: string | null;
+  error?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  batch?: AdminRwkvChatBatchRecord | null;
+}
+
+export interface AdminRwkvChatConversationSummary {
+  id: number;
+  title: string;
+  status: string;
+  selectedMessageId?: number | null;
+  selectedSlotId?: string | null;
+  lastMessagePreview?: string | null;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminRwkvChatConversationDetail extends Omit<
+  AdminRwkvChatConversationSummary,
+  'messageCount'
+> {
+  createdBy?: string | null;
+  messages: AdminRwkvChatStoredMessage[];
+}
+
+export type AdminRwkvChatStreamEvent =
+  | {
+      type: 'batch_start';
+      batchId: string;
+      model: AdminRwkvChatModel;
+      webSearchEnabled: boolean;
+      batchInferenceEnabled: boolean;
+      batchCount?: number;
+      conversation?: AdminRwkvChatConversationSummary;
+      userMessage?: AdminRwkvChatStoredMessage;
+      assistantMessage?: AdminRwkvChatStoredMessage;
+      slots: AdminRwkvChatSlot[];
+    }
+  | {
+      type: 'slot_status';
+      batchId: string;
+      slot: AdminRwkvChatSlot;
+    }
+  | {
+      type: 'slot_references';
+      batchId: string;
+      slotId: string;
+      providerKey: string;
+      references: AdminRwkvChatReference[];
+    }
+  | {
+      type: 'slot_delta';
+      batchId: string;
+      slotId: string;
+      providerKey: string;
+      delta: string;
+    }
+  | {
+      type: 'slot_done';
+      batchId: string;
+      slot: AdminRwkvChatSlot;
+    }
+  | {
+      type: 'slot_error';
+      batchId: string;
+      slot: AdminRwkvChatSlot;
+      message: string;
+    }
+  | {
+      type: 'batch_done';
+      batchId: string;
+      slots: AdminRwkvChatSlot[];
+    };
+
+export interface StreamAdminRwkvChatOptions {
+  model: AdminRwkvChatModel;
+  conversationId?: number;
+  message?: string;
+  messages: AdminRwkvChatMessage[];
+  webSearchEnabled?: boolean;
+  batchInferenceEnabled?: boolean;
+  batchCount?: number;
+  providers?: string[];
+  signal?: AbortSignal;
+  onEvent: (event: AdminRwkvChatStreamEvent) => void;
+}
+
+export async function streamAdminRwkvChat(options: StreamAdminRwkvChatOptions): Promise<void> {
+  const response = await adminFetch('/admin-api/rwkv-chat/stream', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: options.model,
+      conversationId: options.conversationId,
+      message: options.message,
+      messages: options.messages,
+      webSearchEnabled: options.webSearchEnabled,
+      batchInferenceEnabled: options.batchInferenceEnabled,
+      batchCount: options.batchCount,
+      providers: options.providers,
+    }),
+    signal: options.signal,
+  });
+
+  if (response.status === 401) {
+    throw new Error('Session expired');
+  }
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+  if (!response.body) {
+    throw new Error('RWKV Chat stream is unavailable.');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      pending += decoder.decode(value, { stream: true });
+      const events = splitSseEvents(pending);
+      pending = events.pending;
+      for (const event of events.items) {
+        if (event.type === 'done') {
+          return;
+        }
+        if (event.type === 'error') {
+          throw new Error(event.message || 'RWKV Chat stream failed.');
+        }
+        if (isAdminRwkvChatStreamEvent(event)) {
+          options.onEvent(event);
+          if (event.type === 'batch_done') {
+            return;
+          }
+        }
+      }
+    }
+  } catch (error) {
+    if (options.signal?.aborted) {
+      return;
+    }
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+export async function fetchAdminRwkvChatConversations(): Promise<
+  AdminRwkvChatConversationSummary[]
+> {
+  const response = await adminFetch('/admin-api/rwkv-chat/conversations');
+  if (response.status === 401) {
+    throw new Error('Session expired');
+  }
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+  return (await response.json()) as AdminRwkvChatConversationSummary[];
+}
+
+export async function createAdminRwkvChatConversation(options?: {
+  title?: string;
+}): Promise<AdminRwkvChatConversationDetail> {
+  const response = await adminFetch('/admin-api/rwkv-chat/conversations', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(options || {}),
+  });
+  if (response.status === 401) {
+    throw new Error('Session expired');
+  }
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+  return (await response.json()) as AdminRwkvChatConversationDetail;
+}
+
+export async function fetchAdminRwkvChatConversation(
+  id: number,
+): Promise<AdminRwkvChatConversationDetail> {
+  const response = await adminFetch(`/admin-api/rwkv-chat/conversations/${id}`);
+  if (response.status === 401) {
+    throw new Error('Session expired');
+  }
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+  return (await response.json()) as AdminRwkvChatConversationDetail;
+}
+
+export async function deleteAdminRwkvChatConversation(id: number): Promise<void> {
+  const response = await adminFetch(`/admin-api/rwkv-chat/conversations/${id}`, {
+    method: 'DELETE',
+  });
+  if (response.status === 401) {
+    throw new Error('Session expired');
+  }
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+}
+
+export async function selectAdminRwkvChatMessageSlot(
+  messageId: number,
+  slotId: string,
+): Promise<AdminRwkvChatConversationDetail> {
+  const response = await adminFetch(`/admin-api/rwkv-chat/messages/${messageId}/select-slot`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ slotId }),
+  });
+  if (response.status === 401) {
+    throw new Error('Session expired');
+  }
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+  return (await response.json()) as AdminRwkvChatConversationDetail;
+}
+
+export async function stopAdminRwkvChatMessage(
+  messageId: number,
+): Promise<AdminRwkvChatConversationDetail> {
+  const response = await adminFetch(`/admin-api/rwkv-chat/messages/${messageId}/stop`, {
+    method: 'POST',
+  });
+  if (response.status === 401) {
+    throw new Error('Session expired');
+  }
+  if (!response.ok) {
+    throw new Error(await parseErrorResponse(response));
+  }
+  return (await response.json()) as AdminRwkvChatConversationDetail;
+}
+
+function splitSseEvents(input: string): {
+  items: Array<{ type: string; message?: string } | AdminRwkvChatStreamEvent>;
+  pending: string;
+} {
+  const items: Array<{ type: string; message?: string } | AdminRwkvChatStreamEvent> = [];
+  let pending = input;
+
+  while (true) {
+    const separatorIndex = pending.indexOf('\n\n');
+    if (separatorIndex < 0) {
+      break;
+    }
+
+    const rawEvent = pending.slice(0, separatorIndex);
+    pending = pending.slice(separatorIndex + 2);
+    const event = parseSseEvent(rawEvent);
+    if (event) {
+      items.push(event);
+    }
+  }
+
+  return { items, pending };
+}
+
+function parseSseEvent(rawEvent: string):
+  | {
+      type: string;
+      message?: string;
+    }
+  | AdminRwkvChatStreamEvent
+  | null {
+  const lines = rawEvent.split(/\r?\n/);
+  const eventType = lines
+    .find((line) => line.startsWith('event:'))
+    ?.slice(6)
+    .trim();
+  const data = lines
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trimStart())
+    .join('\n')
+    .trim();
+
+  if (eventType === 'done') {
+    return { type: 'done' };
+  }
+  if (!data) {
+    return null;
+  }
+
+  const payload = JSON.parse(data) as { type?: unknown; message?: unknown };
+  if (eventType === 'error') {
+    return {
+      type: 'error',
+      message: typeof payload.message === 'string' ? payload.message : '',
+    };
+  }
+
+  return {
+    ...payload,
+    type: typeof payload.type === 'string' ? payload.type : eventType || 'message',
+  } as AdminRwkvChatStreamEvent;
+}
+
+function isAdminRwkvChatStreamEvent(
+  event: { type: string; message?: string } | AdminRwkvChatStreamEvent,
+): event is AdminRwkvChatStreamEvent {
+  return [
+    'batch_start',
+    'slot_status',
+    'slot_references',
+    'slot_delta',
+    'slot_done',
+    'slot_error',
+    'batch_done',
+  ].includes(event.type);
+}
+
 export interface ReleaseNote {
   build: number;
   version: string;

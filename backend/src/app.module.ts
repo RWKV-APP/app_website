@@ -6,6 +6,7 @@ import { AdminAuthModule } from './admin-auth/admin-auth.module';
 import { DistributionModule } from './distribution/distribution.module';
 import { EvalModule } from './eval/eval.module';
 import { RemoteConfigModule } from './remote-config/remote-config.module';
+import { RwkvChatModule } from './rwkv-chat/rwkv-chat.module';
 import { TelemetryModule } from './telemetry/telemetry.module';
 
 @Module({
@@ -15,6 +16,7 @@ import { TelemetryModule } from './telemetry/telemetry.module';
     RemoteConfigModule,
     AdminAuthModule,
     EvalModule,
+    RwkvChatModule,
     TelemetryModule,
   ],
   controllers: [AppController],
