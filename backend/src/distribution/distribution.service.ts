@@ -165,7 +165,7 @@ export class DistributionService implements OnModuleInit {
     } = options;
 
     try {
-      const treeEntries = await this.fetchDatasetTreeEntries({
+      const treeEntries = await this.fetchDatasetTreeEntriesWithFallback({
         repoId,
         folderPath,
         baseEndpoint,
@@ -252,6 +252,36 @@ export class DistributionService implements OnModuleInit {
         this.logger.error(`Error checking ${type}: ${error.message}`);
       }
     }
+  }
+
+  private async fetchDatasetTreeEntriesWithFallback(options: {
+    repoId: string;
+    folderPath: string;
+    baseEndpoint: string;
+    authorizationHeader?: string;
+  }): Promise<any[]> {
+    try {
+      return await this.fetchDatasetTreeEntries(options);
+    } catch (error: any) {
+      if (!this.shouldUseHuggingFaceTreeFallback(options.baseEndpoint)) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Falling back to HF Mirror tree API for ${options.folderPath} because HuggingFace tree API failed: ${message}`,
+      );
+
+      return this.fetchDatasetTreeEntries({
+        ...options,
+        baseEndpoint: 'https://hf-mirror.com',
+        authorizationHeader: undefined,
+      });
+    }
+  }
+
+  private shouldUseHuggingFaceTreeFallback(baseEndpoint: string): boolean {
+    return baseEndpoint.replace(/\/+$/, '') === 'https://huggingface.co';
   }
 
   private async fetchDatasetTreeEntries(options: {
