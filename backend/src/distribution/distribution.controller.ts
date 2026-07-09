@@ -6,8 +6,8 @@ type DistributionMap = Record<string, DistributionRecord | null>;
 const APP_DOWNLOAD_LANDING_URL = 'https://rwkv.halowang.cloud/';
 const APP_LATEST_VERSION_FALLBACK = '4.6.2';
 const APP_LATEST_BUILD_FALLBACK = 745;
-const IOS_LATEST_VERSION_FALLBACK = '4.5.11';
-const IOS_LATEST_BUILD_FALLBACK = 742;
+const IOS_LATEST_VERSION_FALLBACK = '4.5.12';
+const IOS_LATEST_BUILD_FALLBACK = 743;
 const IOS_DISTRIBUTION_KEYS = new Set(['iOSTF', 'iOSAS']);
 
 interface DistributionRecord {
@@ -173,10 +173,7 @@ export class DistributionController {
     return current;
   }
 
-  private getAppOverrideMetadata(
-    result: DistributionMap,
-    iosOnly: boolean,
-  ): AppOverrideMetadata {
+  private getAppOverrideMetadata(result: DistributionMap, iosOnly: boolean): AppOverrideMetadata {
     let metadata: AppOverrideMetadata = iosOnly
       ? { version: IOS_LATEST_VERSION_FALLBACK, build: IOS_LATEST_BUILD_FALLBACK }
       : { version: APP_LATEST_VERSION_FALLBACK, build: APP_LATEST_BUILD_FALLBACK };
