@@ -4,10 +4,10 @@ import { DistributionService } from './distribution.service';
 
 type DistributionMap = Record<string, DistributionRecord | null>;
 const APP_DOWNLOAD_LANDING_URL = 'https://rwkv.halowang.cloud/';
-const APP_LATEST_VERSION_OVERRIDE = '4.5.12';
-const APP_LATEST_BUILD_OVERRIDE = 743;
-const IOS_LATEST_VERSION_OVERRIDE = '4.5.11';
-const IOS_LATEST_BUILD_OVERRIDE = 742;
+const APP_LATEST_VERSION_FALLBACK = '4.6.2';
+const APP_LATEST_BUILD_FALLBACK = 745;
+const IOS_LATEST_VERSION_FALLBACK = '4.5.11';
+const IOS_LATEST_BUILD_FALLBACK = 742;
 const IOS_DISTRIBUTION_KEYS = new Set(['iOSTF', 'iOSAS']);
 
 interface DistributionRecord {
@@ -18,6 +18,11 @@ interface DistributionRecord {
   build: number | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+interface AppOverrideMetadata {
+  version: string;
+  build: number | null;
 }
 
 @Controller('distributions')
@@ -117,6 +122,77 @@ export class DistributionController {
     );
   }
 
+  private isSemanticVersion(version: string | null | undefined): version is string {
+    return Boolean(version && /^\d+\.\d+\.\d+$/.test(version));
+  }
+
+  private compareVersions(left: string, right: string): number {
+    const leftParts = left.split('.').map((part) => Number.parseInt(part, 10));
+    const rightParts = right.split('.').map((part) => Number.parseInt(part, 10));
+    const length = Math.max(leftParts.length, rightParts.length);
+
+    for (let index = 0; index < length; index++) {
+      const leftPart = leftParts[index] || 0;
+      const rightPart = rightParts[index] || 0;
+
+      if (leftPart !== rightPart) {
+        return leftPart - rightPart;
+      }
+    }
+
+    return 0;
+  }
+
+  private pickNewerMetadata(
+    current: AppOverrideMetadata,
+    candidate: DistributionRecord | null,
+  ): AppOverrideMetadata {
+    if (!candidate || !this.isSemanticVersion(candidate.version)) {
+      return current;
+    }
+
+    const versionCompare = this.compareVersions(candidate.version, current.version);
+    if (versionCompare > 0) {
+      return {
+        version: candidate.version,
+        build: candidate.build,
+      };
+    }
+
+    if (versionCompare === 0) {
+      const currentBuild = current.build ?? -1;
+      const candidateBuild = candidate.build ?? -1;
+      if (candidateBuild > currentBuild) {
+        return {
+          version: candidate.version,
+          build: candidate.build,
+        };
+      }
+    }
+
+    return current;
+  }
+
+  private getAppOverrideMetadata(
+    result: DistributionMap,
+    iosOnly: boolean,
+  ): AppOverrideMetadata {
+    let metadata: AppOverrideMetadata = iosOnly
+      ? { version: IOS_LATEST_VERSION_FALLBACK, build: IOS_LATEST_BUILD_FALLBACK }
+      : { version: APP_LATEST_VERSION_FALLBACK, build: APP_LATEST_BUILD_FALLBACK };
+
+    for (const [key, value] of Object.entries(result)) {
+      const isIosKey = IOS_DISTRIBUTION_KEYS.has(key);
+      if (iosOnly !== isIosKey) {
+        continue;
+      }
+
+      metadata = this.pickNewerMetadata(metadata, value);
+    }
+
+    return metadata;
+  }
+
   private applyAppRequestOverrides(
     result: DistributionMap,
     shouldRewrite: boolean,
@@ -126,6 +202,8 @@ export class DistributionController {
     }
 
     const adaptedResult: DistributionMap = {};
+    const appMetadata = this.getAppOverrideMetadata(result, false);
+    const iosMetadata = this.getAppOverrideMetadata(result, true);
 
     for (const [key, value] of Object.entries(result)) {
       if (!value) {
@@ -133,15 +211,12 @@ export class DistributionController {
         continue;
       }
 
+      const metadata = IOS_DISTRIBUTION_KEYS.has(key) ? iosMetadata : appMetadata;
       adaptedResult[key] = {
         ...value,
         url: APP_DOWNLOAD_LANDING_URL,
-        version: IOS_DISTRIBUTION_KEYS.has(key)
-          ? IOS_LATEST_VERSION_OVERRIDE
-          : APP_LATEST_VERSION_OVERRIDE,
-        build: IOS_DISTRIBUTION_KEYS.has(key)
-          ? IOS_LATEST_BUILD_OVERRIDE
-          : APP_LATEST_BUILD_OVERRIDE,
+        version: metadata.version,
+        build: metadata.build,
       };
     }
 

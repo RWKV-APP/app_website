@@ -708,7 +708,7 @@ export class DistributionService implements OnModuleInit {
     await this.checkGitHubReleaseDistribution({
       type: DistributionType.winGR,
       fileExtension: '.exe',
-      fileNamePattern: /windows.*installer|setup/i,
+      fileNamePattern: /windows-x64.*setup\.exe$/i,
     });
   }
 
@@ -742,7 +742,7 @@ export class DistributionService implements OnModuleInit {
     await this.checkGitHubReleaseDistribution({
       type: DistributionType.winZipGR,
       fileExtension: '.zip',
-      fileNamePattern: /windows/i,
+      fileNamePattern: /windows-x64.*\.zip$/i,
     });
   }
 

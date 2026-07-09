@@ -1,16 +1,21 @@
+function getEnvValue(key: string, fallback = ''): string {
+  const value = process.env[key]?.trim();
+  return value ? value : fallback;
+}
+
 export const Config = {
   huggingface: {
-    repoId: process.env.HF_DATASETS_ID || process.env.HF_DATASETS_ID || '',
-    token: process.env.HF_TOKEN || '',
-    endpoint: process.env.HF_ENDPOINT || 'https://huggingface.co',
+    repoId: getEnvValue('HF_DATASETS_ID', 'HaloWang/rwkv-chat'),
+    token: getEnvValue('HF_TOKEN'),
+    endpoint: getEnvValue('HF_ENDPOINT', 'https://huggingface.co'),
   },
   github: {
-    repo: process.env.GITHUB_REPO || 'RWKV-APP/RWKV_APP',
-    token: process.env.GITHUB_TOKEN || '',
-    webhookSecret: process.env.GITHUB_WEBHOOK_SECRET || '',
+    repo: getEnvValue('GITHUB_REPO', 'RWKV-APP/RWKV_APP'),
+    token: getEnvValue('GITHUB_TOKEN'),
+    webhookSecret: getEnvValue('GITHUB_WEBHOOK_SECRET'),
   },
   pgyer: {
-    apiKey: process.env.PGYER_API_KEY || '',
-    appKey: process.env.PGYER_APP_KEY || 'rwkvchat',
+    apiKey: getEnvValue('PGYER_API_KEY'),
+    appKey: getEnvValue('PGYER_APP_KEY', 'rwkvchat'),
   },
 };
