@@ -6,12 +6,43 @@ import { DistributionType } from '../types/distribution';
 import { Config } from '../config';
 import { ReleaseNotesService } from './release-notes.service';
 
+export interface DistributionSnapshotRecord {
+  id: number;
+  type: string;
+  url: string;
+  version: string;
+  build: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+type DistributionSnapshot = Readonly<Record<string, Readonly<DistributionSnapshotRecord> | null>>;
+
+interface DistributionRefreshMemo {
+  requests: Map<string, Promise<unknown>>;
+}
+
+interface PgyerAppInfoResponse {
+  code?: number;
+  message?: string;
+  data?: {
+    buildKey?: string;
+    buildShortcutUrl?: string;
+    buildVersion?: string;
+    buildVersionNo?: string;
+  };
+}
+
 @Injectable()
 export class DistributionService implements OnModuleInit {
   private readonly logger = new Logger(DistributionService.name);
   private readonly datasetTreePageSize = 100;
   private readonly recentDatasetFileLimit = 10;
   private readonly maxDatasetTreePages = 50;
+  private allInOneInFlight: Promise<void> | null = null;
+  private activeRefreshMemo: DistributionRefreshMemo | null = null;
+  private latestSnapshot: DistributionSnapshot | null = null;
+  private latestSnapshotLoadInFlight: Promise<DistributionSnapshot> | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -38,7 +69,35 @@ export class DistributionService implements OnModuleInit {
     }
   }
 
-  async allInOne() {
+  allInOne(): Promise<void> {
+    if (this.allInOneInFlight !== null) {
+      this.logger.debug('Reusing in-flight allInOne distribution check');
+      return this.allInOneInFlight;
+    }
+
+    const run = this.runAllInOne();
+    this.allInOneInFlight = run;
+    run.then(
+      () => {
+        if (this.allInOneInFlight === run) {
+          this.allInOneInFlight = null;
+        }
+      },
+      () => {
+        if (this.allInOneInFlight === run) {
+          this.allInOneInFlight = null;
+        }
+      },
+    );
+    return run;
+  }
+
+  private async runAllInOne(): Promise<void> {
+    const refreshMemo: DistributionRefreshMemo = {
+      requests: new Map<string, Promise<unknown>>(),
+    };
+    this.activeRefreshMemo = refreshMemo;
+
     try {
       this.logger.log('Starting allInOne distribution check...');
 
@@ -55,14 +114,35 @@ export class DistributionService implements OnModuleInit {
           // Continue with next type even if one fails
         }
       }
-
-      this.logger.log('Completed allInOne distribution check');
     } catch (error: any) {
       // Catch any unexpected errors (e.g., DistributionType.values() fails)
       this.logger.error(`Fatal error in allInOne: ${error.message}`, error.stack);
       // Don't throw - allow the process to continue
       // Individual type errors are already handled above
+    } finally {
+      if (this.activeRefreshMemo === refreshMemo) {
+        this.activeRefreshMemo = null;
+      }
     }
+
+    await this.refreshLatestSnapshotAfterSync();
+    this.logger.log('Completed allInOne distribution check');
+  }
+
+  private memoizeRefreshRequest<T>(key: string, request: () => Promise<T>): Promise<T> {
+    const memo = this.activeRefreshMemo;
+    if (!memo) {
+      return request();
+    }
+
+    const cached = memo.requests.get(key);
+    if (cached !== undefined) {
+      return cached as Promise<T>;
+    }
+
+    const pending = Promise.resolve().then(request);
+    memo.requests.set(key, pending);
+    return pending;
   }
 
   private readonly distributionCheckers: Record<DistributionType, () => Promise<void>> = {
@@ -290,6 +370,25 @@ export class DistributionService implements OnModuleInit {
     baseEndpoint: string;
     authorizationHeader?: string;
   }): Promise<any[]> {
+    const cacheKey = JSON.stringify([
+      'dataset-tree',
+      options.baseEndpoint,
+      options.repoId,
+      options.folderPath,
+      options.authorizationHeader || '',
+    ]);
+
+    return this.memoizeRefreshRequest(cacheKey, () =>
+      this.fetchDatasetTreeEntriesUncached(options),
+    );
+  }
+
+  private async fetchDatasetTreeEntriesUncached(options: {
+    repoId: string;
+    folderPath: string;
+    baseEndpoint: string;
+    authorizationHeader?: string;
+  }): Promise<any[]> {
     const { repoId, folderPath, baseEndpoint, authorizationHeader } = options;
     const entries: any[] = [];
     const seenCursors = new Set<string>();
@@ -442,10 +541,14 @@ export class DistributionService implements OnModuleInit {
         headers.Authorization = `Bearer ${token}`;
       }
 
-      const response = await axios.get(apiUrl, {
-        headers,
-        timeout: 30000,
-      });
+      const response = await this.memoizeRefreshRequest(
+        JSON.stringify(['github-latest-release', apiUrl, headers.Authorization || '']),
+        () =>
+          axios.get(apiUrl, {
+            headers,
+            timeout: 30000,
+          }),
+      );
 
       if (!response.data || !response.data.assets || !Array.isArray(response.data.assets)) {
         this.logger.warn(`No assets found in latest release for ${type}`);
@@ -933,6 +1036,24 @@ export class DistributionService implements OnModuleInit {
     });
   }
 
+  private fetchPgyerAppInfo(
+    apiKey: string,
+    appKey: string,
+  ): Promise<{ data: PgyerAppInfoResponse }> {
+    const apiUrl = 'https://www.pgyer.com/apiv2/app/view';
+    return this.memoizeRefreshRequest(
+      JSON.stringify(['pgyer-app-info', apiUrl, apiKey, appKey]),
+      () =>
+        axios.get<PgyerAppInfoResponse>(apiUrl, {
+          params: {
+            _api_key: apiKey,
+            appKey,
+          },
+          timeout: 30000,
+        }),
+    );
+  }
+
   private async checkAndroidPgyerAPK() {
     const { apiKey, appKey } = Config.pgyer;
 
@@ -963,14 +1084,7 @@ export class DistributionService implements OnModuleInit {
       );
 
       // Try GET request first (Pgyer API may prefer GET)
-      const apiUrl = 'https://www.pgyer.com/apiv2/app/view';
-      const response = await axios.get(apiUrl, {
-        params: {
-          _api_key: trimmedApiKey,
-          appKey: trimmedAppKey,
-        },
-        timeout: 30000,
-      });
+      const response = await this.fetchPgyerAppInfo(trimmedApiKey, trimmedAppKey);
 
       if (!response.data || response.data.code !== 0) {
         this.logger.warn(
@@ -1069,14 +1183,7 @@ export class DistributionService implements OnModuleInit {
       );
 
       // Try GET request first (Pgyer API may prefer GET)
-      const apiUrl = 'https://www.pgyer.com/apiv2/app/view';
-      const response = await axios.get(apiUrl, {
-        params: {
-          _api_key: trimmedApiKey,
-          appKey: trimmedAppKey,
-        },
-        timeout: 30000,
-      });
+      const response = await this.fetchPgyerAppInfo(trimmedApiKey, trimmedAppKey);
 
       if (!response.data || response.data.code !== 0) {
         this.logger.warn(
@@ -1319,100 +1426,173 @@ export class DistributionService implements OnModuleInit {
    * Get the latest distribution for each type
    * Returns an object where keys are DistributionType and values are the latest record or null
    */
-  async getLatestDistributions(): Promise<Record<string, any | null>> {
+  async getLatestDistributions(): Promise<Record<string, DistributionSnapshotRecord | null>> {
+    const cached = this.latestSnapshot;
+    if (cached) {
+      return this.copyLatestSnapshot(cached);
+    }
+
     try {
-      const distributionTypes = Object.values(DistributionType);
-      const result: Record<string, any | null> = {};
+      const snapshot = await this.loadLatestSnapshot();
+      return this.copyLatestSnapshot(snapshot);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(`Fatal error in getLatestDistributions: ${message}`, stack);
+      const fallback = this.latestSnapshot;
+      if (fallback) {
+        this.logger.warn('Returning last-known-good distribution snapshot');
+        return this.copyLatestSnapshot(fallback);
+      }
+      return this.copyLatestSnapshot(this.createEmptyLatestSnapshot());
+    }
+  }
 
-      for (const type of distributionTypes) {
-        try {
-          // Get all records for this type
-          const records = await this.prisma.distribution.findMany({
-            where: { type },
-            orderBy: { createdAt: 'desc' },
-          });
+  private loadLatestSnapshot(): Promise<DistributionSnapshot> {
+    if (this.latestSnapshot) {
+      return Promise.resolve(this.latestSnapshot);
+    }
+    if (this.latestSnapshotLoadInFlight !== null) {
+      return this.latestSnapshotLoadInFlight;
+    }
 
-          if (records.length === 0) {
-            result[type] = null;
-            continue;
+    const load = this.computeLatestSnapshot();
+    this.latestSnapshotLoadInFlight = load;
+    load.then(
+      (snapshot) => {
+        if (this.latestSnapshotLoadInFlight === load) {
+          this.latestSnapshot = snapshot;
+          this.latestSnapshotLoadInFlight = null;
+        }
+      },
+      () => {
+        if (this.latestSnapshotLoadInFlight === load) {
+          this.latestSnapshotLoadInFlight = null;
+        }
+      },
+    );
+    return load;
+  }
+
+  private async refreshLatestSnapshotAfterSync(): Promise<void> {
+    const pendingLoad = this.latestSnapshotLoadInFlight;
+    if (pendingLoad !== null) {
+      try {
+        await pendingLoad;
+      } catch {
+        // A fresh query below still gets a chance to recover the snapshot.
+      }
+    }
+
+    try {
+      const snapshot = await this.computeLatestSnapshot();
+      this.latestSnapshot = snapshot;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Failed to refresh latest distribution snapshot; keeping last-known-good data: ${message}`,
+      );
+    }
+  }
+
+  private async computeLatestSnapshot(): Promise<DistributionSnapshot> {
+    const records = await this.prisma.distribution.findMany({
+      select: {
+        id: true,
+        type: true,
+        url: true,
+        version: true,
+        build: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    const recordsByType = new Map<string, DistributionSnapshotRecord[]>();
+    for (const record of records) {
+      const current = recordsByType.get(record.type);
+      if (current) {
+        current.push(record);
+      } else {
+        recordsByType.set(record.type, [record]);
+      }
+    }
+
+    const result: Record<string, Readonly<DistributionSnapshotRecord> | null> = {};
+    for (const type of Object.values(DistributionType)) {
+      const typeRecords = recordsByType.get(type) || [];
+      result[type] = typeRecords.length > 0 ? this.selectLatestRecord(typeRecords) : null;
+    }
+    return Object.freeze(result);
+  }
+
+  private selectLatestRecord(
+    records: DistributionSnapshotRecord[],
+  ): Readonly<DistributionSnapshotRecord> {
+    let latestRecord = records[0];
+    let latestVersion = latestRecord.version || '';
+    let latestBuild = latestRecord.build || null;
+
+    const latestVersionRecord = records.find((record) => record.version === 'latest');
+    if (latestVersionRecord) {
+      latestRecord = latestVersionRecord;
+    } else {
+      for (const record of records) {
+        const recordVersion = record.version || '';
+        const recordBuild = record.build || null;
+        if (recordVersion === 'latest' || !recordVersion) {
+          continue;
+        }
+
+        const versionCompare = this.compareVersions(recordVersion, latestVersion);
+        if (versionCompare > 0) {
+          latestRecord = record;
+          latestVersion = recordVersion;
+          latestBuild = recordBuild;
+        } else if (versionCompare === 0) {
+          if (
+            (recordBuild !== null && latestBuild === null) ||
+            (recordBuild !== null && latestBuild !== null && recordBuild > latestBuild)
+          ) {
+            latestRecord = record;
+            latestBuild = recordBuild;
           }
-
-          // Find the record with the latest version
-          // Priority: 1. "latest" version (for App Store/Play Store) > 2. Highest semantic version > 3. Highest build number
-          let latestRecord = records[0];
-          let latestVersion = (latestRecord as any).version || '';
-          let latestBuild = (latestRecord as any).build || null;
-
-          // Step 1: If any record has "latest" version, prefer it (for App Store/Play Store links)
-          const latestVersionRecord = records.find((r) => (r as any).version === 'latest');
-          if (latestVersionRecord) {
-            latestRecord = latestVersionRecord;
-            latestVersion = 'latest';
-            latestBuild = (latestVersionRecord as any).build || null;
-          } else {
-            // Step 2: Find the record with the highest semantic version
-            // Step 3: If versions are equal, pick the one with the highest build number
-            for (const record of records) {
-              const recordVersion = (record as any).version || '';
-              const recordBuild = (record as any).build || null;
-
-              // Skip "latest" version in comparison (already handled above)
-              if (recordVersion === 'latest') {
-                continue;
-              }
-
-              // Skip empty or invalid versions
-              if (!recordVersion) {
-                continue;
-              }
-
-              const versionCompare = this.compareVersions(recordVersion, latestVersion);
-              if (versionCompare > 0) {
-                // Newer semantic version found - this is definitely the latest
-                latestRecord = record;
-                latestVersion = recordVersion;
-                latestBuild = recordBuild;
-              } else if (versionCompare === 0) {
-                // Same semantic version, compare build numbers
-                // If both have build numbers, pick the higher one
-                // If only one has a build number, prefer the one with build number
-                if (recordBuild !== null && latestBuild !== null) {
-                  if (recordBuild > latestBuild) {
-                    latestRecord = record;
-                    latestBuild = recordBuild;
-                  }
-                } else if (recordBuild !== null && latestBuild === null) {
-                  // Prefer record with build number over one without
-                  latestRecord = record;
-                  latestBuild = recordBuild;
-                }
-                // If latestBuild has a value but recordBuild is null, keep latestRecord
-              }
-            }
-          }
-
-          result[type] = {
-            id: latestRecord.id,
-            type: latestRecord.type,
-            url: latestRecord.url,
-            version: (latestRecord as any).version,
-            build: (latestRecord as any).build,
-            createdAt: latestRecord.createdAt,
-            updatedAt: latestRecord.updatedAt,
-          };
-        } catch (error: any) {
-          // If database query fails (e.g., table doesn't exist, connection error), return null for this type
-          this.logger.warn(`Failed to fetch records for type ${type}: ${error.message}`);
-          result[type] = null;
         }
       }
-
-      return result;
-    } catch (error: any) {
-      // If there's a fatal error (e.g., Prisma not connected, database doesn't exist), return empty object
-      this.logger.error(`Fatal error in getLatestDistributions: ${error.message}`, error.stack);
-      // Return empty object instead of throwing - this allows the API to return 200 with empty data
-      return {};
     }
+
+    return Object.freeze({
+      id: latestRecord.id,
+      type: latestRecord.type,
+      url: latestRecord.url,
+      version: latestRecord.version,
+      build: latestRecord.build,
+      createdAt: new Date(latestRecord.createdAt.getTime()),
+      updatedAt: new Date(latestRecord.updatedAt.getTime()),
+    });
+  }
+
+  private copyLatestSnapshot(
+    snapshot: DistributionSnapshot,
+  ): Record<string, DistributionSnapshotRecord | null> {
+    const copy: Record<string, DistributionSnapshotRecord | null> = {};
+    for (const [type, record] of Object.entries(snapshot)) {
+      copy[type] = record
+        ? Object.freeze({
+            ...record,
+            createdAt: new Date(record.createdAt.getTime()),
+            updatedAt: new Date(record.updatedAt.getTime()),
+          })
+        : null;
+    }
+    return Object.freeze(copy);
+  }
+
+  private createEmptyLatestSnapshot(): DistributionSnapshot {
+    const result: Record<string, null> = {};
+    for (const type of Object.values(DistributionType)) {
+      result[type] = null;
+    }
+    return Object.freeze(result);
   }
 }

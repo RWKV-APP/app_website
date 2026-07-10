@@ -66,7 +66,7 @@ function FeatureIcon({ name }: { name: string }) {
     width: '1.375rem',
     height: '1.375rem',
     strokeWidth: 1.5,
-    stroke: 'var(--color-primary)',
+    stroke: 'var(--color-accent)',
     fill: 'none',
   } as const;
   switch (name) {
@@ -122,7 +122,7 @@ function StepIcon({ name }: { name: 'platform' | 'arch' | 'format' | 'download' 
     width: '1.125rem',
     height: '1.125rem',
     strokeWidth: 1.5,
-    stroke: 'var(--color-secondary)',
+    stroke: 'var(--color-secondary-text)',
     fill: 'none',
     strokeLinecap: 'round' as const,
     strokeLinejoin: 'round' as const,
@@ -379,7 +379,10 @@ export default function Home() {
   // Scroll helper
   const scrollTo = (ref: React.RefObject<HTMLDivElement | null>) => {
     setTimeout(() => {
-      ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'auto'
+        : 'smooth';
+      ref.current?.scrollIntoView({ behavior, block: 'center' });
     }, 100);
   };
 
@@ -775,7 +778,6 @@ export default function Home() {
               width={32}
               height={32}
               className={styles.navLogo}
-              priority
             />
             <span className={styles.navTitle}>{t.appName}</span>
           </div>

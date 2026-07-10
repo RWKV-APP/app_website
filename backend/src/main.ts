@@ -6,6 +6,7 @@ import * as express from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
+  app.enableShutdownHooks();
   const logger = new Logger('Bootstrap');
   const nodeEnv = process.env.NODE_ENV || 'development';
   const host = process.env.HOST || '0.0.0.0';

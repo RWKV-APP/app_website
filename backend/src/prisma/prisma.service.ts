@@ -5,6 +5,10 @@ import { PrismaClient } from '@prisma/client';
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
 
+  async checkReadiness(): Promise<void> {
+    await this.$queryRaw`SELECT 1`;
+  }
+
   async onModuleInit() {
     try {
       await this.$connect();

@@ -67,6 +67,7 @@
 .navLogo {
   width: 26px;
   height: 26px;
+  flex-shrink: 0;
   border-radius: 6px;
 }
 
@@ -80,7 +81,22 @@
 .navRight {
   display: flex;
   align-items: center;
-  gap: 0.125rem;
+  flex-shrink: 0;
+  gap: 0;
+}
+
+@media (max-width: 480px) {
+  .navbar {
+    padding: 0 0.5rem;
+  }
+
+  .navLeft {
+    min-width: 0;
+  }
+
+  .navTitle {
+    display: none;
+  }
 }
 
 /* ============================
@@ -133,7 +149,7 @@
 .heroTagline {
   font-size: 1.0625rem;
   font-weight: 400;
-  color: var(--color-secondary);
+  color: var(--color-secondary-text);
   margin: 0;
   line-height: 1.4;
 }
@@ -239,13 +255,13 @@
 }
 
 .optionCardSelected {
-  background-color: var(--color-primary-tint);
-  border-color: var(--color-primary);
+  background-color: var(--color-accent-tint);
+  border-color: var(--color-accent);
 }
 
 .optionCardSelected:hover {
-  background-color: var(--color-primary-tint);
-  border-color: var(--color-primary);
+  background-color: var(--color-accent-tint);
+  border-color: var(--color-accent);
 }
 
 .optionIcon {
@@ -269,7 +285,7 @@
 
 .optionDesc {
   font-size: 0.75rem;
-  color: var(--color-secondary);
+  color: var(--color-secondary-text);
   font-weight: 400;
   margin-top: 0.125rem;
 }
@@ -297,11 +313,11 @@
    ============================ */
 .sourceHint {
   font-size: 0.8125rem;
-  color: var(--color-primary);
+  color: var(--color-link);
   line-height: 1.47;
   padding: 0.625rem 0.875rem;
-  background-color: var(--color-primary-tint);
-  border: 1px solid var(--color-primary);
+  background-color: var(--color-accent-tint);
+  border: 1px solid var(--color-accent);
   border-radius: 10px;
   text-align: left;
   margin: -0.25rem 0 0;
@@ -344,12 +360,12 @@
 }
 
 .sourceCardSelected {
-  background-color: var(--color-primary-tint);
-  border-color: var(--color-primary);
+  background-color: var(--color-accent-tint);
+  border-color: var(--color-accent);
 }
 
 .sourceCardSelected:hover {
-  border-color: var(--color-primary);
+  border-color: var(--color-accent);
 }
 
 .sourceCardDisabled {
@@ -376,8 +392,8 @@
 .recommendedBadge {
   font-size: 0.6875rem;
   font-weight: 500;
-  color: var(--color-primary);
-  background-color: var(--color-primary-tint);
+  color: var(--color-link);
+  background-color: var(--color-accent-tint);
   border-radius: 999px;
   padding: 0.125rem 0.5rem;
   white-space: nowrap;
@@ -385,7 +401,7 @@
 
 .sourceDesc {
   font-size: 0.75rem;
-  color: var(--color-secondary);
+  color: var(--color-secondary-text);
   line-height: 1.4;
 }
 
@@ -401,7 +417,7 @@
   font-size: 0.75rem;
   font-weight: 500;
   line-height: 1.3334;
-  color: var(--color-secondary);
+  color: var(--color-secondary-text);
 }
 
 /* ============================
@@ -418,7 +434,7 @@
 
 .currentSourceText {
   font-size: 0.8125rem;
-  color: var(--color-secondary);
+  color: var(--color-secondary-text);
   margin: 0;
 }
 
@@ -428,7 +444,7 @@
 }
 
 .versionInline {
-  color: var(--color-secondary);
+  color: var(--color-secondary-text);
   font-weight: 400;
 }
 
@@ -442,7 +458,7 @@
   background: none;
   border: none;
   border-radius: 8px;
-  color: var(--color-primary);
+  color: var(--color-link);
   font-size: 0.8125rem;
   font-weight: 400;
   cursor: pointer;
@@ -473,22 +489,24 @@
   justify-content: center;
   gap: 0.5rem;
   padding: 0 2rem;
-  background-color: var(--color-primary);
+  background-color: var(--color-action-bg);
   border: none;
   border-radius: 980px;
-  color: #ffffff;
+  color: var(--color-on-action);
   text-decoration: none;
   font-size: 1.0625rem;
   font-weight: 400;
   letter-spacing: -0.01em;
   cursor: pointer;
-  transition: background-color 0.2s ease, transform 0.1s ease;
+  transition:
+    background-color 0.2s ease,
+    transform 0.1s ease;
   height: 50px;
 }
 
 .bigDownloadBtn:hover {
-  background-color: var(--color-primary-hover);
-  color: #ffffff;
+  background-color: var(--color-action-bg-hover);
+  color: var(--color-on-action);
 }
 
 .bigDownloadBtn:active {
@@ -508,7 +526,7 @@
 
 .versionText {
   font-size: 0.8125rem;
-  color: var(--color-secondary);
+  color: var(--color-secondary-text);
   font-weight: 400;
 }
 
@@ -587,7 +605,9 @@
   background-color: var(--color-background);
   border: 1px solid var(--color-border);
   border-radius: 16px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .featureCard:hover {
@@ -622,7 +642,7 @@
 
 .featureDesc {
   font-size: 0.8125rem;
-  color: var(--color-secondary);
+  color: var(--color-secondary-text);
   line-height: 1.5;
 }
 
@@ -631,7 +651,7 @@
    ============================ */
 .openSourceDesc {
   font-size: 1.0625rem;
-  color: var(--color-secondary);
+  color: var(--color-secondary-text);
   margin-bottom: 1.75rem;
   line-height: 1.47;
   max-width: 520px;
@@ -653,7 +673,9 @@
   font-size: 0.9375rem;
   font-weight: 400;
   letter-spacing: -0.01em;
-  transition: opacity 0.2s ease, transform 0.1s ease;
+  transition:
+    opacity 0.2s ease,
+    transform 0.1s ease;
 }
 
 .githubButton:hover {

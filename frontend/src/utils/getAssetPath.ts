@@ -53,7 +53,7 @@ export function getRWKVLogoPath(): string {
  * 统一使用浅色版本
  */
 export function getAppIconPath(): string {
-  return '/images/app-icon/app-icon-light.png';
+  return '/images/app-icon/app-icon-32.png';
 }
 
 /**

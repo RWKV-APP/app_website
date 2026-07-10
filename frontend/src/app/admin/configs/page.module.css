@@ -16,7 +16,7 @@
 .panel,
 .loadingPanel {
   margin: 0 auto 1.25rem;
-  border: 1px solid color-mix(in srgb, var(--color-border) 78%, var(--color-primary) 22%);
+  border: 1px solid color-mix(in srgb, var(--color-border) 78%, var(--color-accent) 22%);
   border-radius: 1.25rem;
   background: color-mix(in srgb, var(--color-background) 88%, var(--color-surface) 12%);
   box-shadow: 0 28px 56px rgba(15, 23, 42, 0.08);
@@ -105,14 +105,14 @@
 
 .metaPill,
 .neutralBadge {
-  background: color-mix(in srgb, var(--color-surface) 82%, var(--color-primary) 18%);
+  background: color-mix(in srgb, var(--color-surface) 82%, var(--color-accent) 18%);
   color: var(--color-foreground);
 }
 
 .typeBadge {
-  background: color-mix(in srgb, var(--color-primary) 18%, var(--color-background) 82%);
-  color: var(--color-primary-hover);
-  border-color: color-mix(in srgb, var(--color-primary) 48%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 18%, var(--color-background) 82%);
+  color: var(--color-link);
+  border-color: color-mix(in srgb, var(--color-accent) 48%, transparent);
 }
 
 .successBadge {
@@ -163,7 +163,7 @@
 }
 
 .checkboxRow input {
-  accent-color: var(--color-primary);
+  accent-color: var(--color-accent);
 }
 
 .dropZone {
@@ -171,12 +171,12 @@
   gap: 0.35rem;
   margin-top: 1.15rem;
   padding: 2rem 1.25rem;
-  border: 1.5px dashed color-mix(in srgb, var(--color-border) 60%, var(--color-primary) 40%);
+  border: 1.5px dashed color-mix(in srgb, var(--color-border) 60%, var(--color-accent) 40%);
   border-radius: 1rem;
   background:
     linear-gradient(
       135deg,
-      color-mix(in srgb, var(--color-background) 78%, var(--color-primary) 22%),
+      color-mix(in srgb, var(--color-background) 78%, var(--color-accent) 22%),
       transparent
     ),
     color-mix(in srgb, var(--color-surface) 84%, var(--color-background) 16%);
@@ -190,7 +190,7 @@
 
 .dropZone:hover,
 .dropZoneActive {
-  border-color: var(--color-primary);
+  border-color: var(--color-accent);
   transform: translateY(-1px);
 }
 
@@ -276,7 +276,7 @@
 .linkButton {
   padding: 0;
   background: transparent;
-  color: var(--color-primary);
+  color: var(--color-link);
 }
 
 .linkButton:hover {
@@ -335,12 +335,8 @@
   padding: 0.95rem 1.1rem;
   border: 0;
   border-radius: 1rem;
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--color-primary) 86%, #ffffff 14%),
-    #0f766e
-  );
-  color: #f8fafc;
+  background: linear-gradient(135deg, var(--color-action-bg), var(--color-action-bg-hover));
+  color: var(--color-on-action);
   box-shadow: 0 20px 30px rgba(15, 118, 110, 0.22);
 }
 
@@ -531,7 +527,7 @@
   width: min(100%, 1200px);
   max-height: calc(100vh - 4rem);
   overflow: auto;
-  border: 1px solid color-mix(in srgb, var(--color-border) 70%, var(--color-primary) 30%);
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, var(--color-accent) 30%);
   border-radius: 1.25rem;
   background: var(--color-background);
   box-shadow: 0 32px 64px rgba(15, 23, 42, 0.24);

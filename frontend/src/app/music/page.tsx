@@ -273,7 +273,7 @@ function FeatureIcon({ name }: { name: FeatureItem['icon'] }) {
     width: '1.375rem',
     height: '1.375rem',
     strokeWidth: 1.5,
-    stroke: 'var(--color-primary)',
+    stroke: 'var(--color-accent)',
     fill: 'none',
   } as const;
 
@@ -354,7 +354,11 @@ export default function MusicPage() {
   const appleLogoPath = getAppleLogoPath({ theme });
   const platformOptions = useMemo(
     () => [
-      { key: 'android' as const, label: 'Android', icon: getPlatformIconPath({ platform: 'android' }) },
+      {
+        key: 'android' as const,
+        label: 'Android',
+        icon: getPlatformIconPath({ platform: 'android' }),
+      },
       { key: 'ios' as const, label: 'iOS', icon: appleLogoPath },
       { key: 'windows' as const, label: 'Windows', icon: '/images/platforms/windows-logo.png' },
       { key: 'macos' as const, label: 'macOS', icon: appleLogoPath },
@@ -457,7 +461,9 @@ export default function MusicPage() {
               <p className={styles.currentSourceText}>
                 {copy.currentPlatformLabel}
                 {': '}
-                <strong>{platformOptions.find((item) => item.key === selectedPlatform)?.label}</strong>
+                <strong>
+                  {platformOptions.find((item) => item.key === selectedPlatform)?.label}
+                </strong>
                 {' · '}
                 <span>{copy.platformNotes[selectedPlatform]}</span>
               </p>

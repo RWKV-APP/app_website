@@ -5,13 +5,24 @@
   /* Light theme (default) — Apple-style palette */
   --color-background: #ffffff;
   --color-foreground: #1d1d1f;
-  --color-primary: #14b8a6;
-  --color-primary-hover: #0d9488;
-  --color-primary-tint: rgba(20, 184, 166, 0.08);
-  --color-secondary: #86868b;
+  --color-accent: #14b8a6;
+  --color-accent-hover: #0d9488;
+  --color-accent-tint: rgba(20, 184, 166, 0.08);
+  --color-link: #0f766e;
+  --color-link-hover: #115e59;
+  --color-action-bg: #0f766e;
+  --color-action-bg-hover: #115e59;
+  --color-on-action: #ffffff;
+  --color-secondary-text: #6e6e73;
   --color-border: rgba(0, 0, 0, 0.08);
   --color-surface: #f5f5f7;
   --color-surface-hover: rgba(0, 0, 0, 0.04);
+
+  /* Backward-compatible aliases while feature styles migrate to semantic roles. */
+  --color-primary: var(--color-accent);
+  --color-primary-hover: var(--color-accent-hover);
+  --color-primary-tint: var(--color-accent-tint);
+  --color-secondary: var(--color-secondary-text);
 }
 
 /* Dark theme — auto detect system preference */
@@ -19,10 +30,15 @@
   :root:not([data-theme='light']) {
     --color-background: #000000;
     --color-foreground: #f5f5f7;
-    --color-primary: #2dd4bf;
-    --color-primary-hover: #14b8a6;
-    --color-primary-tint: rgba(45, 212, 191, 0.1);
-    --color-secondary: #98989d;
+    --color-accent: #2dd4bf;
+    --color-accent-hover: #5eead4;
+    --color-accent-tint: rgba(45, 212, 191, 0.1);
+    --color-link: #5eead4;
+    --color-link-hover: #99f6e4;
+    --color-action-bg: #0f766e;
+    --color-action-bg-hover: #115e59;
+    --color-on-action: #ffffff;
+    --color-secondary-text: #a1a1a6;
     --color-border: rgba(255, 255, 255, 0.08);
     --color-surface: #1c1c1e;
     --color-surface-hover: rgba(255, 255, 255, 0.05);
@@ -33,10 +49,15 @@
 :root[data-theme='dark'] {
   --color-background: #000000;
   --color-foreground: #f5f5f7;
-  --color-primary: #2dd4bf;
-  --color-primary-hover: #14b8a6;
-  --color-primary-tint: rgba(45, 212, 191, 0.1);
-  --color-secondary: #98989d;
+  --color-accent: #2dd4bf;
+  --color-accent-hover: #5eead4;
+  --color-accent-tint: rgba(45, 212, 191, 0.1);
+  --color-link: #5eead4;
+  --color-link-hover: #99f6e4;
+  --color-action-bg: #0f766e;
+  --color-action-bg-hover: #115e59;
+  --color-on-action: #ffffff;
+  --color-secondary-text: #a1a1a6;
   --color-border: rgba(255, 255, 255, 0.08);
   --color-surface: #1c1c1e;
   --color-surface-hover: rgba(255, 255, 255, 0.05);
@@ -46,10 +67,15 @@
 :root[data-theme='light'] {
   --color-background: #ffffff;
   --color-foreground: #1d1d1f;
-  --color-primary: #14b8a6;
-  --color-primary-hover: #0d9488;
-  --color-primary-tint: rgba(20, 184, 166, 0.08);
-  --color-secondary: #86868b;
+  --color-accent: #14b8a6;
+  --color-accent-hover: #0d9488;
+  --color-accent-tint: rgba(20, 184, 166, 0.08);
+  --color-link: #0f766e;
+  --color-link-hover: #115e59;
+  --color-action-bg: #0f766e;
+  --color-action-bg-hover: #115e59;
+  --color-on-action: #ffffff;
+  --color-secondary-text: #6e6e73;
   --color-border: rgba(0, 0, 0, 0.08);
   --color-surface: #f5f5f7;
   --color-surface-hover: rgba(0, 0, 0, 0.04);
@@ -69,8 +95,8 @@ body {
 
 body {
   font-family:
-    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
-    'Helvetica Neue', 'Segoe UI', 'Roboto', sans-serif;
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue',
+    'Segoe UI', 'Roboto', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: 'kern';
@@ -83,13 +109,13 @@ body {
 
 /* Links */
 a {
-  color: var(--color-primary);
+  color: var(--color-link);
   text-decoration: none;
   transition: color 0.2s ease;
 }
 
 a:hover {
-  color: var(--color-primary-hover);
+  color: var(--color-link-hover);
 }
 
 /* Reset buttons */
@@ -101,4 +127,20 @@ button {
   cursor: pointer;
   font-size: inherit;
   color: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto !important;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

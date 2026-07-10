@@ -58,6 +58,9 @@ tmp/
 temp/
 *.tmp
 
+# Local agent knowledge archive
+.archive/
+
 docs/eval_handoff/**
 !docs/eval_handoff/
 !docs/eval_handoff/**/

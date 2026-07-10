@@ -1,52 +1,61 @@
 'use client';
 
-import { Provider } from 'jotai';
-import { useHydrateAtoms } from 'jotai/utils';
-import { useEffect, useState } from 'react';
+import { createStore, Provider, useAtomValue, useSetAtom } from 'jotai';
+import { useEffect, useRef } from 'react';
 import {
   localeAtom,
+  systemThemeAtom,
   themePreferenceAtom,
   detectLocale,
   getInitialThemePreference,
   getStoredLocalePreference,
 } from '@/atoms';
-import type { Locale } from '@/i18n/locales';
 
-function HydrateAtoms(props: {
-  locale: Locale;
-  themePreference: string;
-  children: React.ReactNode;
-}) {
-  useHydrateAtoms([
-    [localeAtom, props.locale],
-    [themePreferenceAtom, props.themePreference as any],
-  ]);
-  return <>{props.children}</>;
+function PreferenceSync() {
+  const locale = useAtomValue(localeAtom);
+  const setLocale = useSetAtom(localeAtom);
+  const setSystemTheme = useSetAtom(systemThemeAtom);
+  const setThemePreference = useSetAtom(themePreferenceAtom);
+
+  useEffect(() => {
+    const initialLocale = getStoredLocalePreference() || detectLocale();
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const syncSystemTheme = () => {
+      const systemTheme = mediaQuery.matches ? 'dark' : 'light';
+      setSystemTheme(systemTheme);
+
+      if (getInitialThemePreference() === 'system') {
+        document.documentElement.removeAttribute('data-theme');
+        document.documentElement.style.colorScheme = systemTheme;
+      }
+    };
+
+    setLocale(initialLocale);
+    setThemePreference(getInitialThemePreference());
+    syncSystemTheme();
+    mediaQuery.addEventListener('change', syncSystemTheme);
+
+    return () => mediaQuery.removeEventListener('change', syncSystemTheme);
+  }, [setLocale, setSystemTheme, setThemePreference]);
+
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
+
+  return null;
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [locale, setLocale] = useState<Locale>('en');
-  const [themePreference, setThemePreference] = useState<string>('system');
-  const [mounted, setMounted] = useState(false);
+  const storeRef = useRef<ReturnType<typeof createStore> | null>(null);
 
-  useEffect(() => {
-    setLocale(getStoredLocalePreference() || detectLocale());
-    if (typeof window !== 'undefined') {
-      setThemePreference(getInitialThemePreference());
-    }
-    setMounted(true);
-  }, []);
-
-  // Prevent hydration mismatch by not rendering until client-side
-  if (!mounted) {
-    return <>{children}</>;
+  if (storeRef.current === null) {
+    storeRef.current = createStore();
   }
 
   return (
-    <Provider>
-      <HydrateAtoms locale={locale} themePreference={themePreference}>
-        {children}
-      </HydrateAtoms>
+    <Provider store={storeRef.current}>
+      <PreferenceSync />
+      {children}
     </Provider>
   );
 }

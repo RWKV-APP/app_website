@@ -71,16 +71,6 @@ export function getInitialThemePreference(): ThemePreference {
   return saved && ['light', 'dark', 'system'].includes(saved) ? saved : 'system';
 }
 
-// Get initial theme based on preference
-function getInitialTheme(): Theme {
-  if (typeof window === 'undefined') return 'light';
-  const pref = getInitialThemePreference();
-  if (pref === 'system') {
-    return getSystemTheme();
-  }
-  return pref;
-}
-
 // Theme preference atom
 const _themePreferenceAtomBase = atom<ThemePreference>('system');
 
@@ -100,12 +90,15 @@ export const themePreferenceAtom = atom(
   },
 );
 
+// Reactive system theme, synchronized by the root Provider.
+export const systemThemeAtom = atom<Theme>('light');
+
 // Theme atom - derived from preference
 export const themeAtom = atom(
   (get) => {
     const preference = get(themePreferenceAtom);
     if (preference === 'system') {
-      return getSystemTheme();
+      return get(systemThemeAtom);
     }
     return preference;
   },
@@ -113,7 +106,7 @@ export const themeAtom = atom(
     if (typeof window === 'undefined') return;
 
     // Get current system theme
-    const systemTheme = getSystemTheme();
+    const systemTheme = get(systemThemeAtom);
 
     // If the user-selected theme matches system theme, save as 'system'
     // Otherwise, save as the selected theme
@@ -123,25 +116,6 @@ export const themeAtom = atom(
     applyThemeToDocument(update, newPreference);
   },
 );
-
-// Initialize theme on client side
-if (typeof window !== 'undefined') {
-  const initialPref = getInitialThemePreference();
-  const initialTheme = getInitialTheme();
-  _themePreferenceAtomBase.init = initialPref;
-  applyThemeToDocument(initialTheme, initialPref);
-
-  // Listen to system theme changes
-  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-  const handleSystemChange = () => {
-    const currentPref = localStorage.getItem(THEME_STORAGE_KEY) as ThemePreference | null;
-    if (!currentPref || currentPref === 'system') {
-      const newSystemTheme = getSystemTheme();
-      applyThemeToDocument(newSystemTheme, 'system');
-    }
-  };
-  mediaQuery.addEventListener('change', handleSystemChange);
-}
 
 // Device platform types
 export type DevicePlatform = 'ios' | 'android' | 'macos' | 'windows' | 'linux' | 'unknown';
@@ -272,19 +246,6 @@ export const cpuArchitectureAtom = atom(
     set(_cpuArchitectureAtomBase, update);
   },
 );
-
-// Initialize CPU architecture detection on client side
-if (typeof window !== 'undefined') {
-  detectCpuArchitecture()
-    .then((arch) => {
-      // Update atom when detection completes
-      // Note: This requires the atom to be used in a component context
-      // For immediate use, components should call detectCpuArchitecture() directly
-    })
-    .catch((error) => {
-      console.debug('CPU architecture detection failed:', error);
-    });
-}
 
 // Location types
 export interface LocationInfo {

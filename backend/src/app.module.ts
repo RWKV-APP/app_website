@@ -5,6 +5,7 @@ import { AppService } from './app.service';
 import { AdminAuthModule } from './admin-auth/admin-auth.module';
 import { DistributionModule } from './distribution/distribution.module';
 import { EvalModule } from './eval/eval.module';
+import { HealthModule } from './health/health.module';
 import { RemoteConfigModule } from './remote-config/remote-config.module';
 import { RwkvChatModule } from './rwkv-chat/rwkv-chat.module';
 import { TelemetryModule } from './telemetry/telemetry.module';
@@ -15,6 +16,7 @@ import { TelemetryModule } from './telemetry/telemetry.module';
     DistributionModule,
     RemoteConfigModule,
     AdminAuthModule,
+    HealthModule,
     EvalModule,
     RwkvChatModule,
     TelemetryModule,

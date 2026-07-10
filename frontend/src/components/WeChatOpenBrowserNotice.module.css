@@ -11,7 +11,7 @@
   max-width: 980px;
   margin: 0 auto;
   padding: 0.875rem;
-  background: var(--color-primary-tint);
+  background: var(--color-accent-tint);
   border: 1px solid rgba(20, 184, 166, 0.28);
   border-radius: 12px;
   text-align: left;
@@ -25,7 +25,7 @@
   height: 2rem;
   flex: 0 0 auto;
   border-radius: 8px;
-  color: var(--color-primary-hover);
+  color: var(--color-link);
   background: rgba(20, 184, 166, 0.12);
 }
 
@@ -40,7 +40,7 @@
 }
 
 .eyebrow {
-  color: var(--color-primary-hover);
+  color: var(--color-link);
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.2;

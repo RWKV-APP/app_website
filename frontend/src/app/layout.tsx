@@ -44,12 +44,12 @@ export const metadata: Metadata = {
   description: 'Download the latest version of the app',
   icons: {
     icon: [
-      { url: '/images/app-icon/app-icon-light.png', sizes: 'any', type: 'image/png' },
-      { url: '/images/app-icon/app-icon-light.png', sizes: '32x32', type: 'image/png' },
-      { url: '/images/app-icon/app-icon-light.png', sizes: '16x16', type: 'image/png' },
+      { url: '/images/app-icon/app-icon-16.png', sizes: '16x16', type: 'image/png' },
+      { url: '/images/app-icon/app-icon-32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/images/app-icon/app-icon-64.png', sizes: '64x64', type: 'image/png' },
     ],
-    apple: [{ url: '/images/app-icon/app-icon-light.png', sizes: '180x180', type: 'image/png' }],
-    shortcut: '/images/app-icon/app-icon-light.png',
+    apple: [{ url: '/images/app-icon/app-icon-180.png', sizes: '180x180', type: 'image/png' }],
+    shortcut: '/images/app-icon/app-icon-32.png',
   },
 };
 
@@ -61,8 +61,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning>
       <head>
         {/* Additional Apple Touch Icon sizes for better Safari compatibility */}
-        <link rel="apple-touch-icon" sizes="192x192" href="/images/app-icon/app-icon-light.png" />
-        <link rel="apple-touch-icon" sizes="512x512" href="/images/app-icon/app-icon-light.png" />
+        <link rel="apple-touch-icon" sizes="192x192" href="/images/app-icon/app-icon-192.png" />
+        <link rel="apple-touch-icon" sizes="512x512" href="/images/app-icon/app-icon-512.png" />
         <meta name="theme-color" content="#14b8a6" />
         <meta name="rwkv-build-summary" content={buildSummary} />
         <meta name="rwkv-build-time" content={buildInfo.builtAt} />

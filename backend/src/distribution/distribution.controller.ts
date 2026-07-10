@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Logger, Req } from '@nestjs/common';
+import { Controller, Get, Post, Logger, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
+import { AdminAuthGuard } from '../admin-auth/admin-auth.guard';
 import { DistributionService } from './distribution.service';
 
 type DistributionMap = Record<string, DistributionRecord | null>;
@@ -267,6 +268,7 @@ export class DistributionController {
   }
 
   @Post('refresh')
+  @UseGuards(AdminAuthGuard)
   async refreshDistributions() {
     try {
       // allInOne handles all errors internally and never throws

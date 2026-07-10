@@ -73,9 +73,9 @@
 }
 
 .navLink:hover {
-  border-color: var(--color-primary);
-  background-color: var(--color-primary-tint);
-  color: var(--color-primary);
+  border-color: var(--color-accent);
+  background-color: var(--color-accent-tint);
+  color: var(--color-link);
 }
 
 .shell {
@@ -94,7 +94,7 @@
 .eyebrow {
   font-size: 0.75rem;
   line-height: 1.4;
-  color: var(--color-primary);
+  color: var(--color-link);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   font-weight: 700;
@@ -196,14 +196,14 @@
 }
 
 .filterButton:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+  border-color: var(--color-accent);
+  color: var(--color-link);
 }
 
 .filterButtonSelected {
-  border-color: var(--color-primary);
-  background-color: var(--color-primary-tint);
-  color: var(--color-primary);
+  border-color: var(--color-accent);
+  background-color: var(--color-accent-tint);
+  color: var(--color-link);
 }
 
 .filterMeta {
@@ -289,9 +289,9 @@
 }
 
 .paginationControls button:hover:not(:disabled) {
-  border-color: var(--color-primary);
-  background-color: var(--color-primary-tint);
-  color: var(--color-primary);
+  border-color: var(--color-accent);
+  background-color: var(--color-accent-tint);
+  color: var(--color-link);
 }
 
 .paginationControls button:disabled {
@@ -414,8 +414,7 @@
 }
 
 .hashCell {
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
   word-break: break-all;
 }
 

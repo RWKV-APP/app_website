@@ -12,6 +12,10 @@ REMOTE_OLD_REPO="${APP_WEBSITE_REMOTE_OLD_REPO:-/root/repo/app_website}"
 REMOTE_NGINX_CONFIG="${APP_WEBSITE_REMOTE_NGINX_CONFIG:-/etc/nginx/sites-available/halowang.cloud}"
 REMOTE_NVM_DIR="${APP_WEBSITE_REMOTE_NVM_DIR:-/root/.nvm}"
 REMOTE_NODE_VERSION="${APP_WEBSITE_REMOTE_NODE_VERSION:-24.18.0}"
+REMOTE_RELEASE_KEEP="${APP_WEBSITE_REMOTE_RELEASE_KEEP:-5}"
+REMOTE_INCOMING_KEEP="${APP_WEBSITE_REMOTE_INCOMING_KEEP:-3}"
+DB_BACKUP_KEEP="${APP_WEBSITE_DB_BACKUP_KEEP:-5}"
+ALLOW_DATA_LOSS="${APP_WEBSITE_ALLOW_DATA_LOSS:-0}"
 
 run_ssh() {
   ssh -o StrictHostKeyChecking=no "${SSH_TARGET}" "$@"
@@ -24,6 +28,35 @@ run_scp() {
 shell_quote() {
   printf "%q" "$1"
 }
+
+require_nonnegative_integer() {
+  local name="$1"
+  local value="$2"
+  case "${value}" in
+    '' | *[!0-9]*)
+      echo "${name} must be a non-negative integer, got: ${value}" >&2
+      exit 1
+      ;;
+  esac
+}
+
+require_positive_integer() {
+  local name="$1"
+  local value="$2"
+  require_nonnegative_integer "${name}" "${value}"
+  if [ "${value}" -lt 1 ]; then
+    echo "${name} must be at least 1, got: ${value}" >&2
+    exit 1
+  fi
+}
+
+require_nonnegative_integer APP_WEBSITE_REMOTE_RELEASE_KEEP "${REMOTE_RELEASE_KEEP}"
+require_nonnegative_integer APP_WEBSITE_REMOTE_INCOMING_KEEP "${REMOTE_INCOMING_KEEP}"
+require_positive_integer APP_WEBSITE_DB_BACKUP_KEEP "${DB_BACKUP_KEEP}"
+if [ "${ALLOW_DATA_LOSS}" != "0" ] && [ "${ALLOW_DATA_LOSS}" != "1" ]; then
+  echo "APP_WEBSITE_ALLOW_DATA_LOSS must be 0 or 1, got: ${ALLOW_DATA_LOSS}" >&2
+  exit 1
+fi
 
 if [ $# -gt 0 ]; then
   ARCHIVE_PATH="$1"
@@ -39,6 +72,13 @@ if [ -z "${ARCHIVE_PATH}" ] || [ ! -f "${ARCHIVE_PATH}" ]; then
 fi
 
 ARCHIVE_NAME="$(basename "${ARCHIVE_PATH}")"
+case "${ARCHIVE_NAME}" in
+  app-website-*.tar.gz) ;;
+  *)
+    echo "artifact archive must match app-website-*.tar.gz: ${ARCHIVE_NAME}" >&2
+    exit 1
+    ;;
+esac
 RELEASE_NAME="${ARCHIVE_NAME%.tar.gz}"
 REMOTE_ARCHIVE="${REMOTE_RELEASE_BASE}/incoming/${ARCHIVE_NAME}"
 REMOTE_RELEASE_DIR="${REMOTE_RELEASE_BASE}/releases/${RELEASE_NAME}"
@@ -56,6 +96,10 @@ REMOTE_ENV=(
   "APP_WEBSITE_REMOTE_NGINX_CONFIG=$(shell_quote "${REMOTE_NGINX_CONFIG}")"
   "APP_WEBSITE_REMOTE_NVM_DIR=$(shell_quote "${REMOTE_NVM_DIR}")"
   "APP_WEBSITE_REMOTE_NODE_VERSION=$(shell_quote "${REMOTE_NODE_VERSION}")"
+  "APP_WEBSITE_REMOTE_RELEASE_KEEP=$(shell_quote "${REMOTE_RELEASE_KEEP}")"
+  "APP_WEBSITE_REMOTE_INCOMING_KEEP=$(shell_quote "${REMOTE_INCOMING_KEEP}")"
+  "APP_WEBSITE_DB_BACKUP_KEEP=$(shell_quote "${DB_BACKUP_KEEP}")"
+  "APP_WEBSITE_ALLOW_DATA_LOSS=$(shell_quote "${ALLOW_DATA_LOSS}")"
 )
 
 run_ssh "${REMOTE_ENV[*]} bash -s" <<'REMOTE_SCRIPT'
@@ -85,6 +129,27 @@ require_command() {
   fi
 }
 
+require_nonnegative_integer() {
+  local name="$1"
+  local value="$2"
+  case "${value}" in
+    '' | *[!0-9]*)
+      echo "${name} must be a non-negative integer, got: ${value}" >&2
+      exit 1
+      ;;
+  esac
+}
+
+require_positive_integer() {
+  local name="$1"
+  local value="$2"
+  require_nonnegative_integer "${name}" "${value}"
+  if [ "${value}" -lt 1 ]; then
+    echo "${name} must be at least 1, got: ${value}" >&2
+    exit 1
+  fi
+}
+
 copy_if_missing() {
   local source_path="$1"
   local target_path="$2"
@@ -94,25 +159,194 @@ copy_if_missing() {
   fi
 }
 
+prune_database_backups() {
+  local kept=0
+  local backup_path
+
+  while IFS= read -r backup_path; do
+    [ -f "${backup_path}" ] || continue
+    kept=$((kept + 1))
+    if [ "${kept}" -le "${APP_WEBSITE_DB_BACKUP_KEEP}" ]; then
+      continue
+    fi
+
+    case "${backup_path}" in
+      "${DB_BACKUP_DIR}"/rwkv.app-*.db)
+        if ! rm -f -- "${backup_path}"; then
+          echo "warning: failed to remove old database backup: ${backup_path}" >&2
+        fi
+        ;;
+      *)
+        echo "warning: skipped unexpected database backup path: ${backup_path}" >&2
+        ;;
+    esac
+  done < <(ls -1dt "${DB_BACKUP_DIR}"/rwkv.app-*.db 2>/dev/null || true)
+}
+
+backup_database() {
+  if [ ! -f "${DATABASE_PATH}" ]; then
+    echo "database_backup=skipped_no_existing_database"
+    return
+  fi
+
+  require_command sqlite3
+  mkdir -p "${DB_BACKUP_DIR}"
+
+  local backup_name
+  local backup_path
+  local quick_check
+  backup_name="rwkv.app-${APP_WEBSITE_RELEASE_NAME}-$(date -u +%Y%m%dT%H%M%SZ).db"
+  backup_path="${DB_BACKUP_DIR}/${backup_name}"
+
+  (
+    cd "${DB_BACKUP_DIR}"
+    sqlite3 "${DATABASE_PATH}" <<SQLITE_BACKUP
+.timeout 10000
+.backup '${backup_name}'
+SQLITE_BACKUP
+  )
+
+  quick_check="$(sqlite3 "${backup_path}" 'PRAGMA quick_check;')"
+  if [ "${quick_check}" != "ok" ]; then
+    echo "database backup failed quick_check: ${backup_path}" >&2
+    exit 1
+  fi
+
+  echo "database_backup=${backup_path}"
+  prune_database_backups
+}
+
+configure_logrotate() {
+  if ! command -v logrotate >/dev/null 2>&1; then
+    echo "warning: logrotate is not installed; rwkv-backend logs will not be rotated automatically" >&2
+    return
+  fi
+
+  local logrotate_config="/etc/logrotate.d/app-website"
+  local logrotate_tmp="${logrotate_config}.tmp"
+
+  cat >"${logrotate_tmp}" <<LOGROTATE_CONFIG
+"${RUNTIME_BACKEND}/logs/rwkv-backend-*.log" {
+    daily
+    maxsize 20M
+    rotate 7
+    missingok
+    notifempty
+    compress
+    delaycompress
+    dateext
+    copytruncate
+    su root root
+}
+LOGROTATE_CONFIG
+  chmod 0644 "${logrotate_tmp}"
+
+  if ! logrotate --debug "${logrotate_tmp}" >/dev/null 2>&1; then
+    rm -f "${logrotate_tmp}"
+    echo "invalid logrotate configuration for rwkv-backend" >&2
+    exit 1
+  fi
+
+  mv "${logrotate_tmp}" "${logrotate_config}"
+  echo "logrotate_config=${logrotate_config}"
+}
+
+prune_remote_incoming() {
+  local kept=0
+  local archive_path
+
+  while IFS= read -r archive_path; do
+    [ -f "${archive_path}" ] || continue
+    kept=$((kept + 1))
+    if [ "${kept}" -le "${APP_WEBSITE_REMOTE_INCOMING_KEEP}" ]; then
+      continue
+    fi
+
+    case "${archive_path}" in
+      "${APP_WEBSITE_REMOTE_RELEASE_BASE}"/incoming/app-website-*.tar.gz)
+        if ! rm -f -- "${archive_path}"; then
+          echo "warning: failed to remove old incoming artifact: ${archive_path}" >&2
+        fi
+        ;;
+      *)
+        echo "warning: skipped unexpected incoming artifact path: ${archive_path}" >&2
+        ;;
+    esac
+  done < <(ls -1dt "${APP_WEBSITE_REMOTE_RELEASE_BASE}"/incoming/app-website-*.tar.gz 2>/dev/null || true)
+}
+
+prune_remote_releases() {
+  local current_target
+  local kept=0
+  local release_path
+  local resolved_release_path
+
+  current_target="$(readlink -f "${CURRENT_LINK}" 2>/dev/null || true)"
+
+  while IFS= read -r release_path; do
+    [ -d "${release_path}" ] || continue
+    resolved_release_path="$(readlink -f "${release_path}" 2>/dev/null || true)"
+    if [ "${release_path}" = "${APP_WEBSITE_REMOTE_RELEASE_DIR}" ]; then
+      continue
+    fi
+    if [ -n "${current_target}" ] && [ "${resolved_release_path}" = "${current_target}" ]; then
+      continue
+    fi
+
+    kept=$((kept + 1))
+    if [ "${kept}" -le "${APP_WEBSITE_REMOTE_RELEASE_KEEP}" ]; then
+      continue
+    fi
+
+    case "${release_path}" in
+      "${APP_WEBSITE_REMOTE_RELEASE_BASE}"/releases/app-website-*)
+        if ! rm -rf -- "${release_path}"; then
+          echo "warning: failed to remove old remote release: ${release_path}" >&2
+        fi
+        ;;
+      *)
+        echo "warning: skipped unexpected remote release path: ${release_path}" >&2
+        ;;
+    esac
+  done < <(ls -1dt "${APP_WEBSITE_REMOTE_RELEASE_BASE}"/releases/app-website-* 2>/dev/null || true)
+}
+
 load_node_env
 require_command node
 require_command pnpm
 require_command pm2
 require_command nginx
 require_command curl
+require_nonnegative_integer APP_WEBSITE_REMOTE_RELEASE_KEEP "${APP_WEBSITE_REMOTE_RELEASE_KEEP}"
+require_nonnegative_integer APP_WEBSITE_REMOTE_INCOMING_KEEP "${APP_WEBSITE_REMOTE_INCOMING_KEEP}"
+require_positive_integer APP_WEBSITE_DB_BACKUP_KEEP "${APP_WEBSITE_DB_BACKUP_KEEP}"
+if [ "${APP_WEBSITE_ALLOW_DATA_LOSS}" != "0" ] && [ "${APP_WEBSITE_ALLOW_DATA_LOSS}" != "1" ]; then
+  echo "APP_WEBSITE_ALLOW_DATA_LOSS must be 0 or 1, got: ${APP_WEBSITE_ALLOW_DATA_LOSS}" >&2
+  exit 1
+fi
 
 RUNTIME_BACKEND="${APP_WEBSITE_REMOTE_RUNTIME_BASE}/backend"
 CURRENT_LINK="${APP_WEBSITE_REMOTE_RELEASE_BASE}/current"
 OLD_FRONTEND_ROOT="${APP_WEBSITE_REMOTE_OLD_REPO}/frontend/out"
 NEW_FRONTEND_ROOT="${CURRENT_LINK}/frontend/out"
+DATABASE_PATH="${RUNTIME_BACKEND}/prisma/rwkv.app.db"
+DB_BACKUP_DIR="${RUNTIME_BACKEND}/backups"
 
 mkdir -p \
   "${APP_WEBSITE_REMOTE_RELEASE_BASE}/incoming" \
   "${APP_WEBSITE_REMOTE_RELEASE_BASE}/releases" \
+  "${DB_BACKUP_DIR}" \
   "${RUNTIME_BACKEND}/prisma" \
   "${RUNTIME_BACKEND}/logs"
 
-rm -rf "${APP_WEBSITE_REMOTE_RELEASE_DIR}"
+current_target_before_extract="$(readlink -f "${CURRENT_LINK}" 2>/dev/null || true)"
+requested_release_target="$(readlink -m "${APP_WEBSITE_REMOTE_RELEASE_DIR}")"
+if [ -n "${current_target_before_extract}" ] && [ "${requested_release_target}" = "${current_target_before_extract}" ]; then
+  echo "refusing to replace the release currently referenced by ${CURRENT_LINK}" >&2
+  exit 1
+fi
+
+rm -rf -- "${APP_WEBSITE_REMOTE_RELEASE_DIR}"
 tar -xzf "${APP_WEBSITE_REMOTE_ARCHIVE}" -C "${APP_WEBSITE_REMOTE_RELEASE_BASE}/releases"
 test -d "${APP_WEBSITE_REMOTE_RELEASE_DIR}"
 
@@ -138,11 +372,20 @@ pnpm install --frozen-lockfile --filter backend...
 cd "${APP_WEBSITE_REMOTE_RELEASE_DIR}/backend"
 pnpm prisma:generate
 
+backup_database
+
 if [ ! -d "prisma/migrations" ] || [ -z "$(ls -A prisma/migrations 2>/dev/null)" ]; then
-  pnpm exec prisma db push --accept-data-loss
+  if [ "${APP_WEBSITE_ALLOW_DATA_LOSS}" = "1" ]; then
+    echo "warning: APP_WEBSITE_ALLOW_DATA_LOSS=1; Prisma may apply destructive schema changes" >&2
+    pnpm exec prisma db push --accept-data-loss
+  else
+    pnpm exec prisma db push
+  fi
 else
   pnpm prisma:migrate:deploy
 fi
+
+configure_logrotate
 
 ln -sfnT "${APP_WEBSITE_REMOTE_RELEASE_DIR}" "${CURRENT_LINK}"
 
@@ -196,16 +439,19 @@ fi
 pm2 save
 
 for attempt in {1..30}; do
-  if curl --silent --fail http://127.0.0.1:3462/location >/dev/null; then
+  if curl --silent --fail --max-time 2 http://127.0.0.1:3462/health/ready >/dev/null; then
     break
   fi
   sleep 2
 done
 
-if ! curl --silent --fail http://127.0.0.1:3462/location >/dev/null; then
-  echo "backend location endpoint did not become reachable"
+if ! curl --silent --fail --max-time 2 http://127.0.0.1:3462/health/ready >/dev/null; then
+  echo "backend readiness endpoint did not become healthy"
   exit 1
 fi
+
+prune_remote_incoming
+prune_remote_releases
 
 echo "deployed_release=${APP_WEBSITE_RELEASE_NAME}"
 readlink "${CURRENT_LINK}"
@@ -214,5 +460,6 @@ REMOTE_SCRIPT
 
 curl --silent --fail https://rwkv.halowang.cloud/build-info.json
 printf "\n"
-curl --silent --fail https://api.rwkv.halowang.cloud/location >/dev/null
+curl --silent --fail https://api.rwkv.halowang.cloud/health/live >/dev/null
+curl --silent --fail https://api.rwkv.halowang.cloud/health/ready >/dev/null
 echo "public_smoke=ok"

@@ -16,7 +16,7 @@
   width: min(100%, 28rem);
   padding: 2rem;
   border-radius: 1.4rem;
-  border: 1px solid color-mix(in srgb, var(--color-border) 72%, var(--color-primary) 28%);
+  border: 1px solid color-mix(in srgb, var(--color-border) 72%, var(--color-accent) 28%);
   background: color-mix(in srgb, var(--color-background) 88%, var(--color-surface) 12%);
   box-shadow: 0 28px 56px rgba(15, 23, 42, 0.12);
 }
@@ -69,7 +69,7 @@
 }
 
 .field input:focus {
-  outline: 2px solid color-mix(in srgb, var(--color-primary) 48%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--color-accent) 48%, transparent);
   outline-offset: 1px;
 }
 

@@ -34,9 +34,9 @@
 }
 
 .button:hover:not(:disabled) {
-  border-color: var(--color-primary);
-  background-color: var(--color-primary);
-  color: white;
+  border-color: var(--color-accent);
+  background-color: var(--color-action-bg);
+  color: var(--color-on-action);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
@@ -48,7 +48,7 @@
 }
 
 .button.available {
-  border-color: var(--color-primary);
+  border-color: var(--color-accent);
 }
 
 .button.unavailable {
