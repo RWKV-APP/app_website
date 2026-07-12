@@ -5,8 +5,8 @@ import { DistributionService } from './distribution.service';
 
 type DistributionMap = Record<string, DistributionRecord | null>;
 const APP_DOWNLOAD_LANDING_URL = 'https://rwkv.halowang.cloud/';
-const APP_LATEST_VERSION_FALLBACK = '4.6.4';
-const APP_LATEST_BUILD_FALLBACK = 747;
+const APP_LATEST_VERSION_FALLBACK = '4.6.5';
+const APP_LATEST_BUILD_FALLBACK = 748;
 const IOS_LATEST_VERSION_FALLBACK = '4.6.3';
 const IOS_LATEST_BUILD_FALLBACK = 746;
 const IOS_DISTRIBUTION_KEYS = new Set(['iOSTF', 'iOSAS']);
