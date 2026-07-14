@@ -14,22 +14,39 @@ const manualTranslations = {
   'zh-Hant': {
     '- [新增] 在安卓设备上添加了对 mediatek dimensity 9500 芯片的支持':
       '- [新增] 在 Android 設備上新增了對 MediaTek Dimensity 9500 晶片的支援',
+    '- [新增] 我们为 APP 添加了最新的权重': '- [新增] 我們為 APP 新增了最新的模型權重',
+    '- [修复] 修复了推理过程中代码渲染失效的问题':
+      '- [修復] 修復了推理過程中程式碼渲染失效的問題',
   },
   en: {
     '- [新增] 在安卓设备上添加了对 mediatek dimensity 9500 芯片的支持':
       '- [New] Added support for the MediaTek Dimensity 9500 chip on Android devices',
+    '- [新增] 我们为 APP 添加了最新的权重': '- [New] Added the latest model weights to the app',
+    '- [修复] 修复了推理过程中代码渲染失效的问题':
+      '- [Fix] Fixed code rendering failures during inference',
   },
   ja: {
     '- [新增] 在安卓设备上添加了对 mediatek dimensity 9500 芯片的支持':
       '- [新規] Android デバイスで MediaTek Dimensity 9500 チップに対応しました',
+    '- [新增] 我们为 APP 添加了最新的权重':
+      '- [新規] アプリに最新のモデルウェイトを追加しました',
+    '- [修复] 修复了推理过程中代码渲染失效的问题':
+      '- [修正] 推論中にコードが正しくレンダリングされない問題を修正しました',
   },
   ko: {
     '- [新增] 在安卓设备上添加了对 mediatek dimensity 9500 芯片的支持':
       '- [신규] Android 기기에서 MediaTek Dimensity 9500 칩 지원을 추가했습니다',
+    '- [新增] 我们为 APP 添加了最新的权重': '- [신규] 앱에 최신 모델 가중치를 추가했습니다',
+    '- [修复] 修复了推理过程中代码渲染失效的问题':
+      '- [수정] 추론 중 코드가 올바르게 렌더링되지 않는 문제를 수정했습니다',
   },
   ru: {
     '- [新增] 在安卓设备上添加了对 mediatek dimensity 9500 芯片的支持':
       '- [Новое] Добавлена поддержка чипа MediaTek Dimensity 9500 на Android-устройствах',
+    '- [新增] 我们为 APP 添加了最新的权重':
+      '- [Новое] В приложение добавлены новейшие веса модели',
+    '- [修复] 修复了推理过程中代码渲染失效的问题':
+      '- [Исправлено] Исправлена ошибка отображения кода во время инференса',
   },
 };
 
