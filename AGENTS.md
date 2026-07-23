@@ -76,7 +76,7 @@ https://github.com/RWKV-APP/app_website
 
 - flutter 前端仓库：`../rwkv_app`, 对应 github repo: https://github.com/RWKV-APP/RWKV_APP, 是名为 RWKV Chat 的全平台 App 的开源代码
 - cpp 后端推理引擎：`../rwkv_mobile` (可能为空), 本地目录名可能与上游 repo 名不完全一致; 可参考的上游 repo 是: https://github.com/MollySophia/rwkv-mobile, 它是多后端的 RWKV C++ 推理引擎
-- flutter_cpp 桥接层：`../rwkv_mobile_flutter`, 对应 github repo: https://github.com/MollySophia/rwkv_mobile_flutter, 是 rwkv_mobile 和 rwkv_app 之间的桥接层
+- flutter_cpp 桥接层：`../rwkv_mobile_flutter`, 对应 github repo: https://github.com/RWKV-APP/rwkv_mobile_flutter, 是 rwkv_mobile 和 rwkv_app 之间的桥接层
 - app 下载页面与 http 服务器后端 ：`./` (本项目)
 - 本地前端开发访问地址默认是: `http://localhost:3010`
 - 本地后端开发端口默认是: `3001`
