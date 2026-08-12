@@ -19,6 +19,29 @@ const HUGGING_FACE_HOSTS = new Set(['huggingface.co', 'www.huggingface.co']);
 const HUGGING_FACE_USER_AGENT = 'RWKV-App-Website/1.0';
 const HUGGING_FACE_TREE_PAGE_SIZE = 100;
 const HUGGING_FACE_MAX_TREE_PAGES = 20;
+const MODELSCOPE_USER_AGENT = HUGGING_FACE_USER_AGENT;
+
+interface ModelRepositoryMirror {
+  huggingFaceRepoId: string;
+  huggingFaceRevision: string;
+  modelScopeRepoId: string;
+  modelScopeRevision: string;
+}
+
+const MODEL_REPOSITORY_MIRRORS: ModelRepositoryMirror[] = [
+  {
+    huggingFaceRepoId: 'HaloWang/rwkv-weights',
+    huggingFaceRevision: 'main',
+    modelScopeRepoId: 'HaloWang1991/rwkv-weights',
+    modelScopeRevision: 'master',
+  },
+  {
+    huggingFaceRepoId: 'mollysama/rwkv-mobile-models',
+    huggingFaceRevision: 'main',
+    modelScopeRepoId: 'RWKV/rwkv-mobile-models',
+    modelScopeRevision: 'master',
+  },
+];
 
 interface HuggingFaceResolveTarget {
   repoId: string;
@@ -30,6 +53,10 @@ interface HuggingFaceTreeEntry {
   path?: string;
   type?: string;
   size?: number;
+  lfs?: {
+    oid?: string;
+    size?: number;
+  };
   lastCommit?: {
     date?: string;
   };
@@ -38,6 +65,25 @@ interface HuggingFaceTreeEntry {
 interface HuggingFaceFileMetadata {
   size: number;
   timestamp: number;
+  sha256: string | null;
+}
+
+interface ModelScopeResolveTarget {
+  repoId: string;
+  revision: string;
+  filePath: string;
+}
+
+interface ModelScopeFileMetadata {
+  size: number;
+  timestamp: number;
+  sha256: string;
+}
+
+interface ModelConfigLocation {
+  fileName: string;
+  sectionName: string;
+  modelIndex: number;
 }
 
 @Injectable()
@@ -421,7 +467,7 @@ export class RemoteConfigService {
 
     if (fileName === 'latest.json') {
       const warnings = this.validateAppConfig(parsed, fileName);
-      warnings.push(...(await this.syncAppConfigHuggingFaceMetadata(parsed, fileName)));
+      warnings.push(...(await this.syncAppConfigRepositoryMetadata(parsed, fileName)));
       const normalizedContent = `${JSON.stringify(parsed, null, 2)}\n`;
       return {
         type: REMOTE_CONFIG_TYPES.appConfig,
@@ -454,7 +500,7 @@ export class RemoteConfigService {
     }
 
     const warnings = this.validateAppConfig(parsed, fileName);
-    warnings.push(...(await this.syncAppConfigHuggingFaceMetadata(parsed, fileName)));
+    warnings.push(...(await this.syncAppConfigRepositoryMetadata(parsed, fileName)));
     const normalizedContent = `${JSON.stringify(parsed, null, 2)}\n`;
     return {
       type: REMOTE_CONFIG_TYPES.appConfig,
@@ -466,12 +512,13 @@ export class RemoteConfigService {
     };
   }
 
-  private async syncAppConfigHuggingFaceMetadata(
+  private async syncAppConfigRepositoryMetadata(
     parsed: Record<string, unknown>,
     fileName: string,
   ): Promise<string[]> {
-    const treeCache = new Map<string, Promise<HuggingFaceTreeEntry[]>>();
-    const metadataCache = new Map<string, Promise<HuggingFaceFileMetadata>>();
+    const huggingFaceTreeCache = new Map<string, Promise<HuggingFaceTreeEntry[]>>();
+    const huggingFaceMetadataCache = new Map<string, Promise<HuggingFaceFileMetadata>>();
+    const modelScopeMetadataCache = new Map<string, Promise<ModelScopeFileMetadata>>();
     let synchronizedModelCount = 0;
     const warnings: string[] = [];
 
@@ -499,45 +546,69 @@ export class RemoteConfigService {
         const rawUrl = model.url;
         if (typeof rawUrl !== 'string' || rawUrl.trim().length === 0) {
           throw new BadRequestException(
-            `Upload blocked: ${fileName} section "${sectionName}" model_config[${index}] is missing a Hugging Face resolve URL.`,
+            `Upload blocked: ${fileName} section "${sectionName}" model_config[${index}] is missing a Hugging Face resolve URL that can be mapped to ModelScope.`,
           );
         }
 
-        let metadata: HuggingFaceFileMetadata;
+        const normalizedUrl = rawUrl.trim();
+        const huggingFaceTarget = this.parseHuggingFaceResolveUrl(normalizedUrl);
+        if (!huggingFaceTarget) {
+          throw new BadRequestException(
+            `Upload blocked: ${fileName} section "${sectionName}" model_config[${index}] must use a Hugging Face resolve URL. Received: ${normalizedUrl}`,
+          );
+        }
+        const modelScopeTarget = this.resolveModelScopeTarget(huggingFaceTarget, {
+          fileName,
+          sectionName,
+          modelIndex: index,
+        });
+
+        let huggingFaceMetadata: HuggingFaceFileMetadata;
+        let modelScopeMetadata: ModelScopeFileMetadata;
         try {
-          metadata = await this.getHuggingFaceFileMetadata(rawUrl.trim(), {
-            fileName,
-            sectionName,
-            modelIndex: index,
-            treeCache,
-            metadataCache,
-          });
+          [huggingFaceMetadata, modelScopeMetadata] = await Promise.all([
+            this.getHuggingFaceFileMetadata(normalizedUrl, {
+              fileName,
+              sectionName,
+              modelIndex: index,
+              treeCache: huggingFaceTreeCache,
+              metadataCache: huggingFaceMetadataCache,
+            }),
+            this.getModelScopeFileMetadata(modelScopeTarget, {
+              fileName,
+              sectionName,
+              modelIndex: index,
+              metadataCache: modelScopeMetadataCache,
+            }),
+          ]);
         } catch (error) {
           if (error instanceof BadRequestException) {
             throw error;
           }
 
-          warnings.push(
-            `Skipped Hugging Face fileSize/date sync for ${fileName}: ${this.formatHuggingFaceSyncError(error)}. Existing fileSize/date values were kept.`,
+          throw new BadRequestException(
+            `Upload blocked: concurrent Hugging Face and ModelScope validation could not complete for ${fileName} section "${sectionName}" model_config[${index}]: ${this.formatRepositoryValidationError(error)}.`,
           );
-          if (synchronizedModelCount > 0) {
-            warnings.unshift(
-              `Synced Hugging Face fileSize/date for ${synchronizedModelCount} model entr${
-                synchronizedModelCount === 1 ? 'y' : 'ies'
-              }.`,
-            );
-          }
-          return warnings;
         }
 
+        this.assertMirroredFileMetadata(
+          normalizedUrl,
+          model,
+          huggingFaceTarget,
+          huggingFaceMetadata,
+          modelScopeTarget,
+          modelScopeMetadata,
+          { fileName, sectionName, modelIndex: index },
+        );
+
         let updated = false;
-        if (model.fileSize !== metadata.size) {
-          model.fileSize = metadata.size;
+        if (model.fileSize !== huggingFaceMetadata.size) {
+          model.fileSize = huggingFaceMetadata.size;
           updated = true;
         }
 
-        if (model.date !== metadata.timestamp) {
-          model.date = metadata.timestamp;
+        if (model.date !== huggingFaceMetadata.timestamp) {
+          model.date = huggingFaceMetadata.timestamp;
           updated = true;
         }
 
@@ -549,7 +620,7 @@ export class RemoteConfigService {
 
     if (synchronizedModelCount > 0) {
       warnings.unshift(
-        `Synced Hugging Face fileSize/date for ${synchronizedModelCount} model entr${
+        `Synced dual-source-verified fileSize and Hugging Face date for ${synchronizedModelCount} model entr${
           synchronizedModelCount === 1 ? 'y' : 'ies'
         }.`,
       );
@@ -558,7 +629,7 @@ export class RemoteConfigService {
     return warnings;
   }
 
-  private formatHuggingFaceSyncError(error: unknown): string {
+  private formatRepositoryValidationError(error: unknown): string {
     if (axios.isAxiosError(error)) {
       const details = [error.code, error.response?.status ? `HTTP ${error.response.status}` : '']
         .filter(Boolean)
@@ -573,6 +644,179 @@ export class RemoteConfigService {
     return 'unknown metadata request error';
   }
 
+  private resolveModelScopeTarget(
+    huggingFaceTarget: HuggingFaceResolveTarget,
+    location: ModelConfigLocation,
+  ): ModelScopeResolveTarget {
+    const mirror = MODEL_REPOSITORY_MIRRORS.find(
+      (candidate) =>
+        candidate.huggingFaceRepoId.toLowerCase() === huggingFaceTarget.repoId.toLowerCase() &&
+        candidate.huggingFaceRevision === huggingFaceTarget.revision,
+    );
+
+    if (!mirror) {
+      const supportedRepositories = MODEL_REPOSITORY_MIRRORS.map(
+        (candidate) =>
+          `${candidate.huggingFaceRepoId}@${candidate.huggingFaceRevision} -> ${candidate.modelScopeRepoId}@${candidate.modelScopeRevision}`,
+      ).join(', ');
+      throw new BadRequestException(
+        `Upload blocked: ${location.fileName} section "${location.sectionName}" model_config[${location.modelIndex}] uses ${huggingFaceTarget.repoId}@${huggingFaceTarget.revision}, which has no approved ModelScope mirror. Supported mappings: ${supportedRepositories}.`,
+      );
+    }
+
+    return {
+      repoId: mirror.modelScopeRepoId,
+      revision: mirror.modelScopeRevision,
+      filePath: huggingFaceTarget.filePath,
+    };
+  }
+
+  private assertMirroredFileMetadata(
+    rawUrl: string,
+    model: Record<string, unknown>,
+    huggingFaceTarget: HuggingFaceResolveTarget,
+    huggingFaceMetadata: HuggingFaceFileMetadata,
+    modelScopeTarget: ModelScopeResolveTarget,
+    modelScopeMetadata: ModelScopeFileMetadata,
+    location: ModelConfigLocation,
+  ): void {
+    const modelScopeUrl = this.buildModelScopeResolveUrl(modelScopeTarget);
+    if (huggingFaceMetadata.size !== modelScopeMetadata.size) {
+      throw new BadRequestException(
+        `Upload blocked: ${location.fileName} section "${location.sectionName}" model_config[${location.modelIndex}] has different file sizes on Hugging Face and ModelScope (${huggingFaceMetadata.size} vs ${modelScopeMetadata.size}). Hugging Face: ${rawUrl}; ModelScope: ${modelScopeUrl}`,
+      );
+    }
+
+    if (!huggingFaceMetadata.sha256) {
+      throw new BadRequestException(
+        `Upload blocked: Hugging Face did not return a SHA-256 digest for ${huggingFaceTarget.repoId}@${huggingFaceTarget.revision}/${huggingFaceTarget.filePath}.`,
+      );
+    }
+
+    if (huggingFaceMetadata.sha256 !== modelScopeMetadata.sha256) {
+      throw new BadRequestException(
+        `Upload blocked: ${location.fileName} section "${location.sectionName}" model_config[${location.modelIndex}] has different SHA-256 digests on Hugging Face and ModelScope (${huggingFaceMetadata.sha256} vs ${modelScopeMetadata.sha256}).`,
+      );
+    }
+
+    if (model.sha256 !== undefined) {
+      const catalogSha256 = this.normalizeSha256(model.sha256);
+      if (!catalogSha256) {
+        throw new BadRequestException(
+          `Upload blocked: ${location.fileName} section "${location.sectionName}" model_config[${location.modelIndex}] has an invalid sha256 value.`,
+        );
+      }
+      if (catalogSha256 !== huggingFaceMetadata.sha256) {
+        throw new BadRequestException(
+          `Upload blocked: ${location.fileName} section "${location.sectionName}" model_config[${location.modelIndex}] sha256 does not match the byte-identical Hugging Face and ModelScope files.`,
+        );
+      }
+    }
+  }
+
+  private async getModelScopeFileMetadata(
+    target: ModelScopeResolveTarget,
+    input: ModelConfigLocation & {
+      metadataCache: Map<string, Promise<ModelScopeFileMetadata>>;
+    },
+  ): Promise<ModelScopeFileMetadata> {
+    const cacheKey = `${target.repoId}@${target.revision}/${target.filePath}`;
+    let cachedMetadata = input.metadataCache.get(cacheKey);
+    if (cachedMetadata === undefined) {
+      cachedMetadata = this.resolveModelScopeFileMetadata(target, input);
+      input.metadataCache.set(cacheKey, cachedMetadata);
+    }
+
+    return cachedMetadata;
+  }
+
+  private async resolveModelScopeFileMetadata(
+    target: ModelScopeResolveTarget,
+    location: ModelConfigLocation,
+  ): Promise<ModelScopeFileMetadata> {
+    const resolveUrl = this.buildModelScopeResolveUrl(target);
+    const response = await axios.get<ArrayBuffer>(resolveUrl, {
+      headers: {
+        'User-Agent': MODELSCOPE_USER_AGENT,
+        Range: 'bytes=0-0',
+      },
+      timeout: 30000,
+      maxRedirects: 5,
+      maxContentLength: 1024,
+      maxBodyLength: 1024,
+      responseType: 'arraybuffer',
+      validateStatus: () => true,
+    });
+
+    if (response.status === 404) {
+      throw new BadRequestException(
+        `Upload blocked: ${location.fileName} section "${location.sectionName}" model_config[${location.modelIndex}] points to a non-existent ModelScope file: ${resolveUrl}`,
+      );
+    }
+
+    if (response.status !== 206) {
+      throw new BadRequestException(
+        `Upload blocked: ModelScope validation failed with status ${response.status} while checking ${target.repoId}@${target.revision}/${target.filePath}.`,
+      );
+    }
+
+    const contentRange = this.readHeaderValue(response.headers['content-range']);
+    const totalSizeMatch = typeof contentRange === 'string' ? contentRange.match(/\/(\d+)$/) : null;
+    const size = totalSizeMatch ? Number.parseInt(totalSizeMatch[1], 10) : 0;
+    if (!Number.isFinite(size) || size <= 0) {
+      throw new BadRequestException(
+        `Upload blocked: ModelScope did not return a usable file size for ${resolveUrl}.`,
+      );
+    }
+
+    const sha256 = this.normalizeSha256(this.readHeaderValue(response.headers['x-linked-etag']));
+    if (!sha256) {
+      throw new BadRequestException(
+        `Upload blocked: ModelScope did not return a SHA-256 digest for ${resolveUrl}.`,
+      );
+    }
+
+    const lastModified = this.readHeaderValue(response.headers['last-modified']);
+    return {
+      size,
+      timestamp: this.parseDateToUnixTimestamp(lastModified),
+      sha256,
+    };
+  }
+
+  private buildModelScopeResolveUrl(target: ModelScopeResolveTarget): string {
+    const filePath = target.filePath
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+    return `${this.getModelScopeBaseEndpoint()}/models/${target.repoId}/resolve/${encodeURIComponent(target.revision)}/${filePath}`;
+  }
+
+  private normalizeSha256(value: unknown): string | null {
+    if (typeof value !== 'string') {
+      return null;
+    }
+
+    const normalized = value.trim().replace(/^W\//i, '').replace(/^"|"$/g, '').toLowerCase();
+    return /^[a-f0-9]{64}$/.test(normalized) ? normalized : null;
+  }
+
+  private readHeaderValue(value: unknown): string | undefined {
+    if (typeof value === 'string') {
+      return value;
+    }
+
+    if (typeof value === 'number') {
+      return value.toString();
+    }
+
+    if (Array.isArray(value)) {
+      return this.readHeaderValue(value[0]);
+    }
+
+    return undefined;
+  }
+
   private async getHuggingFaceFileMetadata(
     rawUrl: string,
     input: {
@@ -585,7 +829,7 @@ export class RemoteConfigService {
   ): Promise<HuggingFaceFileMetadata> {
     const cacheKey = rawUrl;
     let cachedMetadata = input.metadataCache.get(cacheKey);
-    if (!cachedMetadata) {
+    if (cachedMetadata === undefined) {
       cachedMetadata = this.resolveHuggingFaceFileMetadata(rawUrl, input);
       input.metadataCache.set(cacheKey, cachedMetadata);
     }
@@ -622,14 +866,18 @@ export class RemoteConfigService {
 
     let size = typeof exactMatch.size === 'number' ? exactMatch.size : 0;
     let timestamp = this.parseDateToUnixTimestamp(exactMatch.lastCommit?.date);
+    let sha256 = this.normalizeSha256(exactMatch.lfs?.oid);
 
-    if (size <= 0 || timestamp <= 0) {
+    if (size <= 0 || timestamp <= 0 || !sha256) {
       const fallbackMetadata = await this.fetchHuggingFaceHeadMetadata(target);
       if (size <= 0) {
         size = fallbackMetadata.size;
       }
       if (timestamp <= 0) {
         timestamp = fallbackMetadata.timestamp;
+      }
+      if (!sha256) {
+        sha256 = fallbackMetadata.sha256;
       }
     }
 
@@ -645,7 +893,7 @@ export class RemoteConfigService {
       );
     }
 
-    return { size, timestamp };
+    return { size, timestamp, sha256 };
   }
 
   private async getOrFetchHuggingFaceTreeEntries(
@@ -658,7 +906,7 @@ export class RemoteConfigService {
     const cacheKey = `${target.repoId}@${target.revision}:${directoryPath}`;
 
     let cachedEntries = treeCache.get(cacheKey);
-    if (!cachedEntries) {
+    if (cachedEntries === undefined) {
       cachedEntries = this.fetchHuggingFaceTreeEntries(
         target.repoId,
         target.revision,
@@ -720,7 +968,9 @@ export class RemoteConfigService {
 
       entries.push(...(response.data as HuggingFaceTreeEntry[]));
 
-      const nextCursor = this.extractHuggingFaceTreeNextCursor(response.headers?.link);
+      const nextCursor = this.extractHuggingFaceTreeNextCursor(
+        this.readHeaderValue(response.headers?.link),
+      );
       if (!nextCursor) {
         return entries;
       }
@@ -736,15 +986,12 @@ export class RemoteConfigService {
     return entries;
   }
 
-  private extractHuggingFaceTreeNextCursor(
-    linkHeader: string | string[] | undefined,
-  ): string | null {
-    const normalizedLinkHeader = Array.isArray(linkHeader) ? linkHeader.join(',') : linkHeader;
-    if (!normalizedLinkHeader) {
+  private extractHuggingFaceTreeNextCursor(linkHeader: string | undefined): string | null {
+    if (!linkHeader) {
       return null;
     }
 
-    const nextLinkMatch = normalizedLinkHeader.match(/<([^>]+)>;\s*rel="next"/i);
+    const nextLinkMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/i);
     if (!nextLinkMatch) {
       return null;
     }
@@ -768,25 +1015,25 @@ export class RemoteConfigService {
     const response = await axios.head(resolveUrl, {
       headers: this.buildHuggingFaceHeaders(),
       timeout: 30000,
-      maxRedirects: 5,
+      maxRedirects: 0,
       validateStatus: () => true,
     });
 
-    if (response.status !== 200) {
-      return { size: 0, timestamp: 0 };
+    if (![200, 302, 307].includes(response.status)) {
+      return { size: 0, timestamp: 0, sha256: null };
     }
 
-    const rawContentLength = response.headers['content-length'];
-    const contentLength = Array.isArray(rawContentLength) ? rawContentLength[0] : rawContentLength;
-    const parsedSize = contentLength ? Number.parseInt(contentLength, 10) : 0;
+    const linkedSize = this.readHeaderValue(response.headers['x-linked-size']);
+    const contentLength = this.readHeaderValue(response.headers['content-length']);
+    const parsedSize = Number.parseInt(linkedSize || contentLength || '0', 10);
 
-    const rawLastModified = response.headers['last-modified'];
-    const lastModified = Array.isArray(rawLastModified) ? rawLastModified[0] : rawLastModified;
+    const lastModified = this.readHeaderValue(response.headers['last-modified']);
     const parsedTimestamp = this.parseDateToUnixTimestamp(lastModified);
 
     return {
       size: Number.isFinite(parsedSize) ? parsedSize : 0,
       timestamp: parsedTimestamp,
+      sha256: this.normalizeSha256(this.readHeaderValue(response.headers['x-linked-etag'])),
     };
   }
 
@@ -852,6 +1099,10 @@ export class RemoteConfigService {
 
   private getHuggingFaceBaseEndpoint(): string {
     return (Config.huggingface.endpoint || 'https://huggingface.co').replace(/\/$/, '');
+  }
+
+  private getModelScopeBaseEndpoint(): string {
+    return (Config.modelscope.endpoint || 'https://modelscope.cn').replace(/\/$/, '');
   }
 
   private parseDateToUnixTimestamp(rawDate: string | undefined): number {

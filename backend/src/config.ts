@@ -9,6 +9,12 @@ export const Config = {
     token: getEnvValue('HF_TOKEN'),
     endpoint: getEnvValue('HF_ENDPOINT', 'https://huggingface.co'),
   },
+  modelscope: {
+    endpoint: getEnvValue('MODELSCOPE_ENDPOINT', 'https://modelscope.cn'),
+    repoId: getEnvValue('MODELSCOPE_REPO_ID', 'HaloWang1991/rwkv-chat'),
+    revision: getEnvValue('MODELSCOPE_REVISION', 'master'),
+    token: getEnvValue('MODELSCOPE_API_TOKEN'),
+  },
   github: {
     repo: getEnvValue('GITHUB_REPO', 'RWKV-APP/RWKV_APP'),
     token: getEnvValue('GITHUB_TOKEN'),

@@ -469,6 +469,7 @@ export default function Home() {
     if (selectedPlatform === 'android') {
       const map: Partial<Record<DownloadSource, DistributionType>> = {
         HF: DistributionType.androidHF,
+        MS: DistributionType.androidMS,
         AF: DistributionType.androidAF,
         GR: DistributionType.androidGR,
         HFM: DistributionType.androidHFM,
@@ -481,6 +482,7 @@ export default function Home() {
     if (selectedPlatform === 'macos') {
       const map: Partial<Record<DownloadSource, DistributionType>> = {
         HF: DistributionType.macosHF,
+        MS: DistributionType.macosMS,
         AF: DistributionType.macosAF,
         GR: DistributionType.macosGR,
         HFM: DistributionType.macosHFM,
@@ -499,12 +501,14 @@ export default function Home() {
           ? winFormat === 'zip'
             ? {
                 HF: DistributionType.winArm64ZipHF,
+                MS: DistributionType.winArm64ZipMS,
                 AF: DistributionType.winArm64ZipAF,
                 GR: DistributionType.winArm64ZipGR,
                 HFM: DistributionType.winArm64ZipHFM,
               }
             : {
                 HF: DistributionType.winArm64HF,
+                MS: DistributionType.winArm64MS,
                 AF: DistributionType.winArm64AF,
                 GR: DistributionType.winArm64GR,
                 HFM: DistributionType.winArm64HFM,
@@ -512,12 +516,14 @@ export default function Home() {
           : winFormat === 'zip'
             ? {
                 HF: DistributionType.winZipHF,
+                MS: DistributionType.winZipMS,
                 AF: DistributionType.winZipAF,
                 GR: DistributionType.winZipGR,
                 HFM: DistributionType.winZipHFM,
               }
             : {
                 HF: DistributionType.winHF,
+                MS: DistributionType.winMS,
                 AF: DistributionType.winAF,
                 GR: DistributionType.winGR,
                 HFM: DistributionType.winHFM,
@@ -579,7 +585,7 @@ export default function Home() {
       return ['TestFlight'];
     }
 
-    return prefersChinaDownloadSources ? ['AF', 'HFM'] : ['HF', 'GR'];
+    return prefersChinaDownloadSources ? ['MS', 'AF', 'HFM'] : ['HF', 'GR'];
   };
 
   const getFallbackSourceOrder = (): DownloadSource[] => {
@@ -592,10 +598,12 @@ export default function Home() {
     }
 
     if (selectedPlatform === 'android') {
-      return prefersChinaDownloadSources ? ['Pgyer', 'HF', 'GR'] : ['AF', 'HFM', 'Pgyer'];
+      return prefersChinaDownloadSources
+        ? ['Pgyer', 'HF', 'GR']
+        : ['MS', 'AF', 'HFM', 'Pgyer'];
     }
 
-    return prefersChinaDownloadSources ? ['HF', 'GR'] : ['AF', 'HFM'];
+    return prefersChinaDownloadSources ? ['HF', 'GR'] : ['MS', 'AF', 'HFM'];
   };
 
   const getHighestVersionSource = (sources: DownloadSource[]): DownloadSource | null => {
@@ -650,6 +658,7 @@ export default function Home() {
     if (selectedPlatform === 'android') {
       return prefersChinaDownloadSources
         ? [
+            { key: 'MS', label: 'ModelScope', desc: homeCopy.sourceDescFastInChina },
             { key: 'AF', label: 'AI FastLab', desc: homeCopy.sourceDescFastInChina },
             { key: 'HFM', label: 'HF Mirror', desc: homeCopy.sourceDescMirrorForChina },
             { key: 'Pgyer', label: 'Pgyer', desc: homeCopy.sourceDescDistributionPlatform },
@@ -660,6 +669,7 @@ export default function Home() {
         : [
             { key: 'HF', label: 'HuggingFace', desc: homeCopy.sourceDescPrimarySource },
             { key: 'GR', label: 'GitHub Release', desc: homeCopy.sourceDescAlternativeSource },
+            { key: 'MS', label: 'ModelScope', desc: homeCopy.sourceDescMainlandChina },
             { key: 'AF', label: 'AI FastLab', desc: homeCopy.sourceDescMainlandChina },
             { key: 'HFM', label: 'HF Mirror', desc: homeCopy.sourceDescMirrorForChina },
             { key: 'Pgyer', label: 'Pgyer', desc: homeCopy.sourceDescDistributionPlatform },
@@ -667,9 +677,10 @@ export default function Home() {
           ];
     }
 
-    // macOS, Linux, Windows all share HF/AF/GR/HFM
+    // macOS, Linux, Windows share the same direct-download providers.
     return prefersChinaDownloadSources
       ? [
+          { key: 'MS', label: 'ModelScope', desc: homeCopy.sourceDescFastInChina },
           { key: 'AF', label: 'AI FastLab', desc: homeCopy.sourceDescFastInChina },
           { key: 'HFM', label: 'HF Mirror', desc: homeCopy.sourceDescMirrorForChina },
           { key: 'HF', label: 'HuggingFace', desc: homeCopy.sourceDescGlobalSource },
@@ -678,6 +689,7 @@ export default function Home() {
       : [
           { key: 'HF', label: 'HuggingFace', desc: homeCopy.sourceDescPrimarySource },
           { key: 'GR', label: 'GitHub Release', desc: homeCopy.sourceDescAlternativeSource },
+          { key: 'MS', label: 'ModelScope', desc: homeCopy.sourceDescMainlandChina },
           { key: 'AF', label: 'AI FastLab', desc: homeCopy.sourceDescMainlandChina },
           { key: 'HFM', label: 'HF Mirror', desc: homeCopy.sourceDescMirrorForChina },
         ];

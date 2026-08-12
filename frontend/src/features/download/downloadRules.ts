@@ -10,6 +10,7 @@ export type WinFormat = 'installer' | 'zip';
 export type LinuxFormat = 'appimage' | 'tarGz';
 export type DownloadSource =
   | 'HF'
+  | 'MS'
   | 'AF'
   | 'GR'
   | 'HFM'
@@ -25,7 +26,7 @@ export interface SourceOption {
   recommended?: boolean;
 }
 
-export const LINUX_SOURCE_KEYS: DownloadSource[] = ['HF', 'AF', 'GR', 'HFM'];
+export const LINUX_SOURCE_KEYS: DownloadSource[] = ['HF', 'MS', 'AF', 'GR', 'HFM'];
 
 export const LINUX_DISTRIBUTION_TYPES: Record<
   LinuxFormat,
@@ -33,12 +34,14 @@ export const LINUX_DISTRIBUTION_TYPES: Record<
 > = {
   appimage: {
     HF: DistributionType.linuxAppImageHF,
+    MS: DistributionType.linuxAppImageMS,
     AF: DistributionType.linuxAppImageAF,
     GR: DistributionType.linuxAppImageGR,
     HFM: DistributionType.linuxAppImageHFM,
   },
   tarGz: {
     HF: DistributionType.linuxHF,
+    MS: DistributionType.linuxMS,
     AF: DistributionType.linuxAF,
     GR: DistributionType.linuxGR,
     HFM: DistributionType.linuxHFM,

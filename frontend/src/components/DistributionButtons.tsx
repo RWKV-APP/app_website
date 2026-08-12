@@ -37,25 +37,30 @@ function PlatformIcon({ type }: { type: DistributionButtonConfig['iconType'] }) 
 const distributionConfigs: DistributionButtonConfig[] = [
   // macOS
   { type: DistributionType.macosHF, label: 'macOS (HuggingFace)', iconType: 'apple' },
+  { type: DistributionType.macosMS, label: 'macOS (ModelScope)', iconType: 'apple' },
   { type: DistributionType.macosAF, label: 'macOS (Aifasthub)', iconType: 'apple' },
   { type: DistributionType.macosGR, label: 'macOS (GitHub Release)', iconType: 'apple' },
   { type: DistributionType.macosHFM, label: 'macOS (HF-Mirror)', iconType: 'apple' },
   // Linux
   { type: DistributionType.linuxHF, label: 'Linux (HuggingFace)', iconType: 'linux' },
+  { type: DistributionType.linuxMS, label: 'Linux (ModelScope)', iconType: 'linux' },
   { type: DistributionType.linuxAF, label: 'Linux (Aifasthub)', iconType: 'linux' },
   { type: DistributionType.linuxGR, label: 'Linux (GitHub Release)', iconType: 'linux' },
   { type: DistributionType.linuxHFM, label: 'Linux (HF-Mirror)', iconType: 'linux' },
   { type: DistributionType.linuxAppImageHF, label: 'Linux AppImage (HuggingFace)', iconType: 'linux' },
+  { type: DistributionType.linuxAppImageMS, label: 'Linux AppImage (ModelScope)', iconType: 'linux' },
   { type: DistributionType.linuxAppImageAF, label: 'Linux AppImage (Aifasthub)', iconType: 'linux' },
   { type: DistributionType.linuxAppImageGR, label: 'Linux AppImage (GitHub Release)', iconType: 'linux' },
   { type: DistributionType.linuxAppImageHFM, label: 'Linux AppImage (HF-Mirror)', iconType: 'linux' },
   // Windows Installer
   { type: DistributionType.winHF, label: 'Windows Installer (HuggingFace)', iconType: 'windows' },
+  { type: DistributionType.winMS, label: 'Windows Installer (ModelScope)', iconType: 'windows' },
   { type: DistributionType.winAF, label: 'Windows Installer (Aifasthub)', iconType: 'windows' },
   { type: DistributionType.winGR, label: 'Windows Installer (GitHub Release)', iconType: 'windows' },
   { type: DistributionType.winHFM, label: 'Windows Installer (HF-Mirror)', iconType: 'windows' },
   // Windows Zip
   { type: DistributionType.winZipHF, label: 'Windows Zip (HuggingFace)', iconType: 'archive' },
+  { type: DistributionType.winZipMS, label: 'Windows Zip (ModelScope)', iconType: 'archive' },
   { type: DistributionType.winZipAF, label: 'Windows Zip (Aifasthub)', iconType: 'archive' },
   { type: DistributionType.winZipGR, label: 'Windows Zip (GitHub Release)', iconType: 'archive' },
   { type: DistributionType.winZipHFM, label: 'Windows Zip (HF-Mirror)', iconType: 'archive' },
@@ -64,6 +69,7 @@ const distributionConfigs: DistributionButtonConfig[] = [
   { type: DistributionType.iOSAS, label: 'iOS App Store', iconType: 'phone' },
   // Android
   { type: DistributionType.androidHF, label: 'Android APK (HuggingFace)', iconType: 'android' },
+  { type: DistributionType.androidMS, label: 'Android APK (ModelScope)', iconType: 'android' },
   { type: DistributionType.androidAF, label: 'Android APK (Aifasthub)', iconType: 'android' },
   { type: DistributionType.androidGR, label: 'Android APK (GitHub Release)', iconType: 'android' },
   { type: DistributionType.androidHFM, label: 'Android APK (HF-Mirror)', iconType: 'android' },

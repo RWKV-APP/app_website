@@ -33,6 +33,23 @@ interface PgyerAppInfoResponse {
   };
 }
 
+interface DatasetTreeEntry {
+  path?: string;
+  Path?: string;
+  type?: string;
+  Type?: string;
+  size?: number;
+  Size?: number;
+}
+
+interface ModelScopeDatasetTreeResponse {
+  Data?: {
+    Files?: DatasetTreeEntry[];
+    TotalCount?: number;
+  };
+  TotalCount?: number;
+}
+
 @Injectable()
 export class DistributionService implements OnModuleInit {
   private readonly logger = new Logger(DistributionService.name);
@@ -147,36 +164,44 @@ export class DistributionService implements OnModuleInit {
 
   private readonly distributionCheckers: Record<DistributionType, () => Promise<void>> = {
     [DistributionType.macosHF]: () => this.checkMacosHF(),
+    [DistributionType.macosMS]: () => this.checkMacosMS(),
     [DistributionType.macosAF]: () => this.checkMacosAF(),
     [DistributionType.macosGR]: () => this.checkMacosGR(),
     [DistributionType.macosHFM]: () => this.checkMacosHFM(),
     [DistributionType.linuxHF]: () => this.checkLinuxHF(),
+    [DistributionType.linuxMS]: () => this.checkLinuxMS(),
     [DistributionType.linuxAF]: () => this.checkLinuxAF(),
     [DistributionType.linuxGR]: () => this.checkLinuxGR(),
     [DistributionType.linuxHFM]: () => this.checkLinuxHFM(),
     [DistributionType.linuxAppImageHF]: () => this.checkLinuxAppImageHF(),
+    [DistributionType.linuxAppImageMS]: () => this.checkLinuxAppImageMS(),
     [DistributionType.linuxAppImageAF]: () => this.checkLinuxAppImageAF(),
     [DistributionType.linuxAppImageGR]: () => this.checkLinuxAppImageGR(),
     [DistributionType.linuxAppImageHFM]: () => this.checkLinuxAppImageHFM(),
     [DistributionType.winHF]: () => this.checkWinHF(),
+    [DistributionType.winMS]: () => this.checkWinMS(),
     [DistributionType.winAF]: () => this.checkWinAF(),
     [DistributionType.winGR]: () => this.checkWinGR(),
     [DistributionType.winHFM]: () => this.checkWinHFM(),
     [DistributionType.winZipHF]: () => this.checkWinZipHF(),
+    [DistributionType.winZipMS]: () => this.checkWinZipMS(),
     [DistributionType.winZipAF]: () => this.checkWinZipAF(),
     [DistributionType.winZipGR]: () => this.checkWinZipGR(),
     [DistributionType.winZipHFM]: () => this.checkWinZipHFM(),
     [DistributionType.winArm64HF]: () => this.checkWinArm64HF(),
+    [DistributionType.winArm64MS]: () => this.checkWinArm64MS(),
     [DistributionType.winArm64AF]: () => this.checkWinArm64AF(),
     [DistributionType.winArm64GR]: () => this.checkWinArm64GR(),
     [DistributionType.winArm64HFM]: () => this.checkWinArm64HFM(),
     [DistributionType.winArm64ZipHF]: () => this.checkWinArm64ZipHF(),
+    [DistributionType.winArm64ZipMS]: () => this.checkWinArm64ZipMS(),
     [DistributionType.winArm64ZipAF]: () => this.checkWinArm64ZipAF(),
     [DistributionType.winArm64ZipGR]: () => this.checkWinArm64ZipGR(),
     [DistributionType.winArm64ZipHFM]: () => this.checkWinArm64ZipHFM(),
     [DistributionType.iOSTF]: () => this.checkIOSTF(),
     [DistributionType.iOSAS]: () => this.checkIOSAS(),
     [DistributionType.androidHF]: () => this.checkAndroidHF(),
+    [DistributionType.androidMS]: () => this.checkAndroidMS(),
     [DistributionType.androidAF]: () => this.checkAndroidAF(),
     [DistributionType.androidGR]: () => this.checkAndroidGR(),
     [DistributionType.androidHFM]: () => this.checkAndroidHFM(),
@@ -225,6 +250,28 @@ export class DistributionService implements OnModuleInit {
     });
   }
 
+  // ModelScope mirrors the same artifact identity and platform paths as Hugging Face.
+  private async checkModelScopeDistribution(options: {
+    type: DistributionType;
+    folderPath: string;
+    fileExtension: string;
+  }) {
+    const { repoId, endpoint, revision, token } = Config.modelscope;
+    if (!repoId) {
+      this.logger.warn(`MODELSCOPE_REPO_ID not configured, skipping ${options.type}`);
+      return;
+    }
+
+    await this.checkDatasetTreeDistribution({
+      ...options,
+      repoId,
+      baseEndpoint: endpoint,
+      authorizationHeader: token ? `Bearer ${token}` : undefined,
+      revision,
+      provider: 'modelscope',
+    });
+  }
+
   private async checkDatasetTreeDistribution(options: {
     type: DistributionType;
     folderPath: string;
@@ -233,6 +280,8 @@ export class DistributionService implements OnModuleInit {
     baseEndpoint: string;
     authorizationHeader?: string;
     appendDownloadQuery?: boolean;
+    revision?: string;
+    provider?: 'huggingface' | 'modelscope';
   }) {
     const {
       type,
@@ -242,24 +291,43 @@ export class DistributionService implements OnModuleInit {
       baseEndpoint,
       authorizationHeader,
       appendDownloadQuery = false,
+      revision = 'main',
+      provider = 'huggingface',
     } = options;
 
     try {
-      const treeEntries = await this.fetchDatasetTreeEntriesWithFallback({
-        repoId,
-        folderPath,
-        baseEndpoint,
-        authorizationHeader,
-      });
+      const treeEntries =
+        provider === 'modelscope'
+          ? await this.fetchModelScopeDatasetTreeEntries({
+              repoId,
+              revision,
+              baseEndpoint,
+              authorizationHeader,
+            })
+          : await this.fetchDatasetTreeEntriesWithFallback({
+              repoId,
+              folderPath,
+              baseEndpoint,
+              authorizationHeader,
+            });
 
-      if (treeEntries.length === 0) {
+      const folderPrefix = `${folderPath.replace(/\/+$/, '')}/`;
+      const scopedTreeEntries =
+        provider === 'modelscope'
+          ? treeEntries.filter((file) => file.path?.startsWith(folderPrefix))
+          : treeEntries;
+
+      if (scopedTreeEntries.length === 0) {
         this.logger.warn(`No files found in ${folderPath} for ${type}`);
         return;
       }
 
-      const recentFiles = treeEntries
-        .filter((file: any) => file.path && file.path.endsWith(fileExtension))
-        .map((file: any) => {
+      const recentFiles = scopedTreeEntries
+        .filter(
+          (file): file is DatasetTreeEntry & { path: string } =>
+            typeof file.path === 'string' && file.path.endsWith(fileExtension),
+        )
+        .map((file) => {
           const fileName = file.path.split('/').pop() || '';
           const metadata = this.parseDistributionFileMetadata(fileName);
 
@@ -308,7 +376,11 @@ export class DistributionService implements OnModuleInit {
 
       let savedCount = 0;
       for (const file of recentFiles) {
-        const downloadUrl = `${baseEndpoint}/datasets/${repoId}/resolve/main/${file.filePath}${appendDownloadQuery ? '?download=true' : ''}`;
+        const encodedFilePath = file.filePath
+          .split('/')
+          .map((segment) => encodeURIComponent(segment))
+          .join('/');
+        const downloadUrl = `${baseEndpoint.replace(/\/+$/, '')}/datasets/${repoId}/resolve/${encodeURIComponent(revision)}/${encodedFilePath}${appendDownloadQuery ? '?download=true' : ''}`;
 
         await this.saveDistribution({
           type,
@@ -323,7 +395,7 @@ export class DistributionService implements OnModuleInit {
       }
 
       this.logger.log(
-        `✅ Processed ${savedCount} latest file(s) for ${type} from ${treeEntries.length} tree entr${treeEntries.length === 1 ? 'y' : 'ies'}`,
+        `✅ Processed ${savedCount} latest file(s) for ${type} from ${scopedTreeEntries.length} tree entr${scopedTreeEntries.length === 1 ? 'y' : 'ies'}`,
       );
     } catch (error: any) {
       if (error.response?.status === 404) {
@@ -334,12 +406,83 @@ export class DistributionService implements OnModuleInit {
     }
   }
 
+  private fetchModelScopeDatasetTreeEntries(options: {
+    repoId: string;
+    revision: string;
+    baseEndpoint: string;
+    authorizationHeader?: string;
+  }): Promise<DatasetTreeEntry[]> {
+    const cacheKey = JSON.stringify([
+      'modelscope-dataset-tree',
+      options.baseEndpoint,
+      options.repoId,
+      options.revision,
+      options.authorizationHeader ? 'authenticated' : 'anonymous',
+    ]);
+    return this.memoizeRefreshRequest(cacheKey, () =>
+      this.fetchModelScopeDatasetTreeEntriesUncached(options),
+    );
+  }
+
+  private async fetchModelScopeDatasetTreeEntriesUncached(options: {
+    repoId: string;
+    revision: string;
+    baseEndpoint: string;
+    authorizationHeader?: string;
+  }): Promise<DatasetTreeEntry[]> {
+    const entries: DatasetTreeEntry[] = [];
+    const apiUrl = `${options.baseEndpoint.replace(/\/+$/, '')}/api/v1/datasets/${options.repoId}/repo/tree`;
+
+    for (let page = 1; page <= this.maxDatasetTreePages; page++) {
+      const headers: Record<string, string> = {};
+      if (options.authorizationHeader) {
+        const token = options.authorizationHeader.replace(/^Bearer\s+/i, '');
+        headers.Authorization = options.authorizationHeader;
+        headers.Cookie = `m_session_id=${token}`;
+      }
+
+      const response = await axios.get<ModelScopeDatasetTreeResponse>(apiUrl, {
+        headers,
+        params: {
+          Revision: options.revision,
+          Recursive: 'True',
+          PageNumber: page,
+          PageSize: this.datasetTreePageSize,
+        },
+        timeout: 30000,
+      });
+      const files = response.data?.Data?.Files;
+      if (!Array.isArray(files)) {
+        throw new Error('ModelScope dataset tree response did not contain Data.Files');
+      }
+
+      entries.push(
+        ...files.map((file) => ({
+          ...file,
+          path: file.path || file.Path,
+        })),
+      );
+
+      const totalCount = Number(
+        response.data?.Data?.TotalCount ?? response.data?.TotalCount ?? entries.length,
+      );
+      if (files.length < this.datasetTreePageSize || entries.length >= totalCount) {
+        return entries;
+      }
+    }
+
+    this.logger.warn(
+      `Stopped ModelScope dataset tree pagination after ${this.maxDatasetTreePages} pages for ${options.repoId}`,
+    );
+    return entries;
+  }
+
   private async fetchDatasetTreeEntriesWithFallback(options: {
     repoId: string;
     folderPath: string;
     baseEndpoint: string;
     authorizationHeader?: string;
-  }): Promise<any[]> {
+  }): Promise<DatasetTreeEntry[]> {
     try {
       return await this.fetchDatasetTreeEntries(options);
     } catch (error: any) {
@@ -369,7 +512,7 @@ export class DistributionService implements OnModuleInit {
     folderPath: string;
     baseEndpoint: string;
     authorizationHeader?: string;
-  }): Promise<any[]> {
+  }): Promise<DatasetTreeEntry[]> {
     const cacheKey = JSON.stringify([
       'dataset-tree',
       options.baseEndpoint,
@@ -388,9 +531,9 @@ export class DistributionService implements OnModuleInit {
     folderPath: string;
     baseEndpoint: string;
     authorizationHeader?: string;
-  }): Promise<any[]> {
+  }): Promise<DatasetTreeEntry[]> {
     const { repoId, folderPath, baseEndpoint, authorizationHeader } = options;
-    const entries: any[] = [];
+    const entries: DatasetTreeEntry[] = [];
     const seenCursors = new Set<string>();
     let cursor: string | null = null;
 
@@ -416,7 +559,7 @@ export class DistributionService implements OnModuleInit {
         break;
       }
 
-      entries.push(...response.data);
+      entries.push(...(response.data as DatasetTreeEntry[]));
 
       const nextCursor = this.extractDatasetTreeNextCursor(response.headers?.link);
       if (!nextCursor) {
@@ -728,6 +871,14 @@ export class DistributionService implements OnModuleInit {
     });
   }
 
+  private async checkMacosMS() {
+    await this.checkModelScopeDistribution({
+      type: DistributionType.macosMS,
+      folderPath: 'macos-universal',
+      fileExtension: '.dmg',
+    });
+  }
+
   private async checkMacosAF() {
     await this.checkAifasthubDistribution({
       type: DistributionType.macosAF,
@@ -762,6 +913,14 @@ export class DistributionService implements OnModuleInit {
     });
   }
 
+  private async checkLinuxMS() {
+    await this.checkModelScopeDistribution({
+      type: DistributionType.linuxMS,
+      folderPath: 'linux-x64',
+      fileExtension: '.tar.gz',
+    });
+  }
+
   private async checkLinuxAF() {
     await this.checkAifasthubDistribution({
       type: DistributionType.linuxAF,
@@ -790,6 +949,14 @@ export class DistributionService implements OnModuleInit {
   private async checkLinuxAppImageHF() {
     await this.checkHuggingFaceDistribution({
       type: DistributionType.linuxAppImageHF,
+      folderPath: 'linux-x64',
+      fileExtension: '.AppImage',
+    });
+  }
+
+  private async checkLinuxAppImageMS() {
+    await this.checkModelScopeDistribution({
+      type: DistributionType.linuxAppImageMS,
       folderPath: 'linux-x64',
       fileExtension: '.AppImage',
     });
@@ -829,6 +996,14 @@ export class DistributionService implements OnModuleInit {
     });
   }
 
+  private async checkWinMS() {
+    await this.checkModelScopeDistribution({
+      type: DistributionType.winMS,
+      folderPath: 'windows-x64-installer',
+      fileExtension: '.exe',
+    });
+  }
+
   private async checkWinAF() {
     await this.checkAifasthubDistribution({
       type: DistributionType.winAF,
@@ -858,6 +1033,14 @@ export class DistributionService implements OnModuleInit {
   private async checkWinZipHF() {
     await this.checkHuggingFaceDistribution({
       type: DistributionType.winZipHF,
+      folderPath: 'windows-x64',
+      fileExtension: '.zip',
+    });
+  }
+
+  private async checkWinZipMS() {
+    await this.checkModelScopeDistribution({
+      type: DistributionType.winZipMS,
       folderPath: 'windows-x64',
       fileExtension: '.zip',
     });
@@ -897,6 +1080,14 @@ export class DistributionService implements OnModuleInit {
     });
   }
 
+  private async checkWinArm64MS() {
+    await this.checkModelScopeDistribution({
+      type: DistributionType.winArm64MS,
+      folderPath: 'windows-arm64-installer',
+      fileExtension: '.exe',
+    });
+  }
+
   private async checkWinArm64AF() {
     await this.checkAifasthubDistribution({
       type: DistributionType.winArm64AF,
@@ -926,6 +1117,14 @@ export class DistributionService implements OnModuleInit {
   private async checkWinArm64ZipHF() {
     await this.checkHuggingFaceDistribution({
       type: DistributionType.winArm64ZipHF,
+      folderPath: 'windows-arm64',
+      fileExtension: '.zip',
+    });
+  }
+
+  private async checkWinArm64ZipMS() {
+    await this.checkModelScopeDistribution({
+      type: DistributionType.winArm64ZipMS,
       folderPath: 'windows-arm64',
       fileExtension: '.zip',
     });
@@ -1003,6 +1202,14 @@ export class DistributionService implements OnModuleInit {
   private async checkAndroidHF() {
     await this.checkHuggingFaceDistribution({
       type: DistributionType.androidHF,
+      folderPath: 'android-arm64',
+      fileExtension: '.apk',
+    });
+  }
+
+  private async checkAndroidMS() {
+    await this.checkModelScopeDistribution({
+      type: DistributionType.androidMS,
       folderPath: 'android-arm64',
       fileExtension: '.apk',
     });
