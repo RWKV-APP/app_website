@@ -14,7 +14,8 @@ function gitLines(args) {
   }
 }
 
-const addedSpecFiles = new Set([
+const forbiddenSpecFiles = new Set([
+  ...gitLines(['ls-files', '--cached', '--', '*.spec.ts']),
   ...gitLines(['diff', '--name-only', '--diff-filter=A', '--', '*.spec.ts']),
   ...gitLines([
     'diff',
@@ -27,9 +28,9 @@ const addedSpecFiles = new Set([
   ...gitLines(['ls-files', '--others', '--exclude-standard', '--', '*.spec.ts'])
 ])
 
-if (addedSpecFiles.size > 0) {
-  console.error('New *.spec.ts files are not allowed in this repository:')
-  for (const filePath of [...addedSpecFiles].sort()) {
+if (forbiddenSpecFiles.size > 0) {
+  console.error('*.spec.ts files are not allowed in this repository:')
+  for (const filePath of [...forbiddenSpecFiles].sort()) {
     console.error(`- ${filePath}`)
   }
   process.exit(1)

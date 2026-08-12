@@ -69,7 +69,7 @@ Do not add a second API base URL helper inside pages. Add API calls to `frontend
 
 - Do not commit real `.env`, `.env.local`, tokens, passwords, private keys, or server-local secrets.
 - Only example env files should be tracked, such as `backend/.env.example` and `frontend/.env.local.example`.
-- Do not add new `*.spec.ts` files. `pnpm check:no-new-specs` guards against newly added spec files.
+- Keep the repository free of `*.spec.ts` files. Do not add, restore, or commit them; `.gitignore` and `pnpm check:no-specs` enforce this Git boundary.
 - For `/evals` and `/admin` pages, do not constrain the main UI shell to narrow `1200px`-style desktop containers.
 
 ## Local Runtime

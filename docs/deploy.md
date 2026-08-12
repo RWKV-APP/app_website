@@ -13,7 +13,8 @@ Publish the current `app_website` state to production while keeping release note
 - Confirm the environment first: print `✅ os: _OS_NAME_, user: _USER_NAME_`.
 - Work from `/Users/wangce/docs/repo/app_website` unless the user explicitly gives another checkout.
 - Do not write secrets to tracked files.
-- Do not add new `*.spec.ts` files.
+- Keep the repository free of `*.spec.ts` files. Do not add, restore, or commit
+  them; `.gitignore` and `pnpm check:no-specs` enforce this Git boundary.
 - Treat `backend/data/release-notes/zh-Hans/` as the release-note source of truth.
 
 ## Steps
