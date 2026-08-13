@@ -7,3 +7,4 @@ export { ReleaseNotesLink } from './ReleaseNotesLink';
 export { WeChatOpenBrowserNotice } from './WeChatOpenBrowserNotice';
 export { EvalLink } from './EvalLink';
 export { DistributionButtons } from './DistributionButtons';
+export { RuntimeShowcase } from './RuntimeShowcase';

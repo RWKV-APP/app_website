@@ -12,6 +12,13 @@ const targetLocales = ['zh-Hant', 'en', 'ja', 'ko', 'ru'];
 
 const manualTranslations = {
   'zh-Hant': {
+    '- [新增] 新增 RWKV7-G1i 模型支持，可在 Android、iOS、macOS、Windows 和 Linux 上使用兼容模型':
+      '- [新增] 新增 RWKV7-G1i 模型支援，可在 Android、iOS、macOS、Windows 和 Linux 上使用相容模型',
+    '- [新增] 新增 primitive-bench 测试页面': '- [新增] 新增 primitive-bench 測試頁面',
+    '- [优化] 优化 G1h 及更新模型的快速思考模式兼容性':
+      '- [優化] 優化 G1h 及更新模型的快速思考模式相容性',
+    '- [修复] 修复分享会话长图时顶部图标偶发缺失的问题':
+      '- [修復] 修復分享會話長圖時頂部圖示偶爾缺失的問題',
     '- [新增] 在安卓设备上添加了对 mediatek dimensity 9500 芯片的支持':
       '- [新增] 在 Android 設備上新增了對 MediaTek Dimensity 9500 晶片的支援',
     '- [新增] 我们为 APP 添加了最新的权重': '- [新增] 我們為 APP 新增了最新的模型權重',
@@ -24,6 +31,13 @@ const manualTranslations = {
       '- [修復] 修復了在部分特殊情況下 RWKV 回覆渲染異常的問題',
   },
   en: {
+    '- [新增] 新增 RWKV7-G1i 模型支持，可在 Android、iOS、macOS、Windows 和 Linux 上使用兼容模型':
+      '- [New] Added RWKV7-G1i model support, with compatible models available on Android, iOS, macOS, Windows, and Linux',
+    '- [新增] 新增 primitive-bench 测试页面': '- [New] Added the primitive-bench test page',
+    '- [优化] 优化 G1h 及更新模型的快速思考模式兼容性':
+      '- [Improved] Improved fast-thinking mode compatibility for G1h and newer models',
+    '- [修复] 修复分享会话长图时顶部图标偶发缺失的问题':
+      '- [Fix] Fixed an issue where the top icon could occasionally be missing when sharing conversations as long images',
     '- [新增] 在安卓设备上添加了对 mediatek dimensity 9500 芯片的支持':
       '- [New] Added support for the MediaTek Dimensity 9500 chip on Android devices',
     '- [新增] 我们为 APP 添加了最新的权重': '- [New] Added the latest model weights to the app',
@@ -37,6 +51,14 @@ const manualTranslations = {
       '- [Fix] Fixed RWKV response rendering issues in certain edge cases',
   },
   ja: {
+    '- [新增] 新增 RWKV7-G1i 模型支持，可在 Android、iOS、macOS、Windows 和 Linux 上使用兼容模型':
+      '- [新規] RWKV7-G1i モデルに対応し、Android、iOS、macOS、Windows、Linux で互換モデルを利用できるようになりました',
+    '- [新增] 新增 primitive-bench 测试页面':
+      '- [新規] primitive-bench テストページを追加しました',
+    '- [优化] 优化 G1h 及更新模型的快速思考模式兼容性':
+      '- [改善] G1h 以降のモデルにおける高速思考モードの互換性を改善しました',
+    '- [修复] 修复分享会话长图时顶部图标偶发缺失的问题':
+      '- [修正] 会話を長い画像として共有する際に上部のアイコンが表示されないことがある問題を修正しました',
     '- [新增] 在安卓设备上添加了对 mediatek dimensity 9500 芯片的支持':
       '- [新規] Android デバイスで MediaTek Dimensity 9500 チップに対応しました',
     '- [新增] 我们为 APP 添加了最新的权重':
@@ -51,6 +73,14 @@ const manualTranslations = {
       '- [修正] 一部の特殊な状況で RWKV の応答が正しくレンダリングされない問題を修正しました',
   },
   ko: {
+    '- [新增] 新增 RWKV7-G1i 模型支持，可在 Android、iOS、macOS、Windows 和 Linux 上使用兼容模型':
+      '- [신규] RWKV7-G1i 모델 지원을 추가하여 Android, iOS, macOS, Windows 및 Linux에서 호환 모델을 사용할 수 있습니다',
+    '- [新增] 新增 primitive-bench 测试页面':
+      '- [신규] primitive-bench 테스트 페이지를 추가했습니다',
+    '- [优化] 优化 G1h 及更新模型的快速思考模式兼容性':
+      '- [개선] G1h 및 이후 모델의 빠른 사고 모드 호환성을 개선했습니다',
+    '- [修复] 修复分享会话长图时顶部图标偶发缺失的问题':
+      '- [수정] 대화를 긴 이미지로 공유할 때 상단 아이콘이 간헐적으로 누락되는 문제를 수정했습니다',
     '- [新增] 在安卓设备上添加了对 mediatek dimensity 9500 芯片的支持':
       '- [신규] Android 기기에서 MediaTek Dimensity 9500 칩 지원을 추가했습니다',
     '- [新增] 我们为 APP 添加了最新的权重': '- [신규] 앱에 최신 모델 가중치를 추가했습니다',
@@ -64,6 +94,14 @@ const manualTranslations = {
       '- [수정] 일부 특수한 상황에서 RWKV 응답이 비정상적으로 렌더링되는 문제를 수정했습니다',
   },
   ru: {
+    '- [新增] 新增 RWKV7-G1i 模型支持，可在 Android、iOS、macOS、Windows 和 Linux 上使用兼容模型':
+      '- [Новое] Добавлена поддержка моделей RWKV7-G1i: совместимые модели доступны на Android, iOS, macOS, Windows и Linux',
+    '- [新增] 新增 primitive-bench 测试页面':
+      '- [Новое] Добавлена тестовая страница primitive-bench',
+    '- [优化] 优化 G1h 及更新模型的快速思考模式兼容性':
+      '- [Улучшено] Улучшена совместимость режима быстрого мышления с G1h и более новыми моделями',
+    '- [修复] 修复分享会话长图时顶部图标偶发缺失的问题':
+      '- [Исправлено] Исправлена проблема, из-за которой при публикации диалога в виде длинного изображения иногда отсутствовал верхний значок',
     '- [新增] 在安卓设备上添加了对 mediatek dimensity 9500 芯片的支持':
       '- [Новое] Добавлена поддержка чипа MediaTek Dimensity 9500 на Android-устройствах',
     '- [新增] 我们为 APP 添加了最新的权重':

@@ -23,6 +23,7 @@ import {
   GitHubLink,
   ReleaseNotesLink,
   WeChatOpenBrowserNotice,
+  RuntimeShowcase,
 } from '@/components';
 import {
   areLatestDistributionsEqual,
@@ -1056,6 +1057,8 @@ export default function Home() {
           )}
         </div>
       </div>
+
+      <RuntimeShowcase locale={locale} theme={theme} />
 
       {/* Features Section — surface background band */}
       <section className={styles.sectionBand}>

@@ -27,6 +27,15 @@ export interface HomePageCopy {
   switchDownloadSource: string;
   hideOtherSources: string;
   recommendedLabel: string;
+  showcaseTitle: string;
+  showcaseDescription: string;
+  showcaseCaptureMeta: string;
+  showcaseNormalTitle: string;
+  showcaseNormalDescription: string;
+  showcaseNormalAlt: string;
+  showcaseConcurrentTitle: string;
+  showcaseConcurrentDescription: string;
+  showcaseConcurrentAlt: string;
 }
 
 const homepageCopy: Record<Locale, HomePageCopy> = {
@@ -57,6 +66,16 @@ const homepageCopy: Record<Locale, HomePageCopy> = {
     switchDownloadSource: '切换其他下载源',
     hideOtherSources: '收起其他下载源',
     recommendedLabel: '推荐',
+    showcaseTitle: '看看它如何在本地运行',
+    showcaseDescription:
+      '真实设备上的 RWKV Chat 运行界面。截图会匹配当前页面的明暗主题，并提供中文或英文界面。',
+    showcaseCaptureMeta: 'RWKV Chat 4.7.0 · 真实应用截图 · 简体中文界面',
+    showcaseNormalTitle: '日常对话',
+    showcaseNormalDescription: '使用 G1i 在设备本地逐字生成，不必把对话发送到云端。',
+    showcaseNormalAlt: 'RWKV Chat 使用 G1i 在本地进行日常对话的界面',
+    showcaseConcurrentTitle: 'G1i 高并发',
+    showcaseConcurrentDescription: '多路任务在设备本地同时实时输出，进度清楚可见。',
+    showcaseConcurrentAlt: 'RWKV Chat 使用本地 G1i 进行多路高并发实时输出的界面',
   },
   'zh-TW': {
     heroTitle: '下載 RWKV Chat',
@@ -85,6 +104,16 @@ const homepageCopy: Record<Locale, HomePageCopy> = {
     switchDownloadSource: '切換其他下載源',
     hideOtherSources: '收起其他下載源',
     recommendedLabel: '推薦',
+    showcaseTitle: '看看它如何在本機執行',
+    showcaseDescription:
+      '真實裝置上的 RWKV Chat 執行介面。截圖會配合目前頁面的明暗主題，並提供中文或英文介面。',
+    showcaseCaptureMeta: 'RWKV Chat 4.7.0 · 真實應用截圖 · 簡體中文介面',
+    showcaseNormalTitle: '日常對話',
+    showcaseNormalDescription: '使用 G1i 在裝置本機逐字生成，對話不必傳送到雲端。',
+    showcaseNormalAlt: 'RWKV Chat 使用 G1i 在本機進行日常對話的介面',
+    showcaseConcurrentTitle: 'G1i 高併發',
+    showcaseConcurrentDescription: '多路任務在裝置本機同時即時輸出，進度清楚可見。',
+    showcaseConcurrentAlt: 'RWKV Chat 使用本機 G1i 進行多路高併發即時輸出的介面',
   },
   ja: {
     heroTitle: 'RWKV Chat をダウンロード',
@@ -113,6 +142,18 @@ const homepageCopy: Record<Locale, HomePageCopy> = {
     switchDownloadSource: '他のダウンロード元に切り替え',
     hideOtherSources: '他のダウンロード元を隠す',
     recommendedLabel: 'おすすめ',
+    showcaseTitle: '端末上で動く様子を見る',
+    showcaseDescription:
+      '実機で動作する RWKV Chat の画面です。スクリーンショットは現在の明暗テーマに合わせ、中国語または英語の UI を表示します。',
+    showcaseCaptureMeta: 'RWKV Chat 4.7.0 · 実機アプリ画面 · 英語 UI',
+    showcaseNormalTitle: '普段のチャット',
+    showcaseNormalDescription:
+      'G1i が端末上で逐次生成するため、会話をクラウドへ送る必要はありません。',
+    showcaseNormalAlt: 'RWKV Chat が G1i を使って端末上で日常会話を生成している画面',
+    showcaseConcurrentTitle: 'G1i 高並列処理',
+    showcaseConcurrentDescription:
+      '複数のタスクを端末上で同時にリアルタイム出力し、進行状況も確認できます。',
+    showcaseConcurrentAlt: 'RWKV Chat がローカルの G1i で複数タスクを同時出力している画面',
   },
   ko: {
     heroTitle: 'RWKV Chat 다운로드',
@@ -141,6 +182,18 @@ const homepageCopy: Record<Locale, HomePageCopy> = {
     switchDownloadSource: '다른 다운로드 소스 선택',
     hideOtherSources: '다른 다운로드 소스 숨기기',
     recommendedLabel: '추천',
+    showcaseTitle: '기기에서 실행되는 모습을 확인하세요',
+    showcaseDescription:
+      '실제 기기에서 실행 중인 RWKV Chat 화면입니다. 스크린샷은 현재 밝기 테마에 맞추며 중국어 또는 영어 UI를 제공합니다.',
+    showcaseCaptureMeta: 'RWKV Chat 4.7.0 · 실제 앱 화면 · 영어 UI',
+    showcaseNormalTitle: '일상 대화',
+    showcaseNormalDescription:
+      'G1i가 기기에서 순차 생성하므로 대화를 클라우드로 보낼 필요가 없습니다.',
+    showcaseNormalAlt: 'RWKV Chat이 G1i로 기기에서 일상 대화를 생성하는 화면',
+    showcaseConcurrentTitle: 'G1i 고동시성',
+    showcaseConcurrentDescription:
+      '여러 작업이 기기에서 동시에 실시간으로 출력되며 진행 상황도 명확히 확인됩니다.',
+    showcaseConcurrentAlt: 'RWKV Chat이 로컬 G1i로 여러 작업을 동시에 실시간 출력하는 화면',
   },
   en: {
     heroTitle: 'Download RWKV Chat',
@@ -169,6 +222,19 @@ const homepageCopy: Record<Locale, HomePageCopy> = {
     switchDownloadSource: 'Switch download source',
     hideOtherSources: 'Hide other sources',
     recommendedLabel: 'Recommended',
+    showcaseTitle: 'See it running on your device',
+    showcaseDescription:
+      'Real RWKV Chat sessions captured on-device. Screenshots follow the active light or dark theme, with Chinese or English UI available.',
+    showcaseCaptureMeta: 'RWKV Chat 4.7.0 · Real app capture · English UI',
+    showcaseNormalTitle: 'Everyday chat',
+    showcaseNormalDescription:
+      'G1i generates each response on-device, without sending the conversation to the cloud.',
+    showcaseNormalAlt: 'RWKV Chat using G1i for an everyday on-device conversation',
+    showcaseConcurrentTitle: 'G1i high concurrency',
+    showcaseConcurrentDescription:
+      'Multiple tasks stream in real time at once, all running locally with visible progress.',
+    showcaseConcurrentAlt:
+      'RWKV Chat streaming multiple concurrent tasks in real time with local G1i',
   },
   ru: {
     heroTitle: 'Скачать RWKV Chat',
@@ -197,6 +263,18 @@ const homepageCopy: Record<Locale, HomePageCopy> = {
     switchDownloadSource: 'Сменить источник загрузки',
     hideOtherSources: 'Скрыть другие источники',
     recommendedLabel: 'Рекомендуем',
+    showcaseTitle: 'Посмотрите, как приложение работает на устройстве',
+    showcaseDescription:
+      'Настоящие сеансы RWKV Chat на реальном устройстве. Снимки соответствуют светлой или тёмной теме и показывают интерфейс на китайском или английском.',
+    showcaseCaptureMeta: 'RWKV Chat 4.7.0 · Реальный снимок приложения · Интерфейс на английском',
+    showcaseNormalTitle: 'Обычный диалог',
+    showcaseNormalDescription:
+      'G1i генерирует ответ на устройстве, не отправляя переписку в облако.',
+    showcaseNormalAlt: 'Обычный диалог в RWKV Chat с локальной генерацией G1i',
+    showcaseConcurrentTitle: 'Высокая параллельность G1i',
+    showcaseConcurrentDescription:
+      'Несколько задач одновременно выводят результат в реальном времени, локально и с видимым прогрессом.',
+    showcaseConcurrentAlt: 'RWKV Chat одновременно выводит несколько задач с помощью локальной G1i',
   },
 };
 
