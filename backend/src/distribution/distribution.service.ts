@@ -490,16 +490,35 @@ export class DistributionService implements OnModuleInit {
         throw error;
       }
 
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(
-        `Falling back to HF Mirror tree API for ${options.folderPath} because HuggingFace tree API failed: ${message}`,
-      );
+      const primaryMessage = error instanceof Error ? error.message : String(error);
+      const fallbackEndpoints = [
+        { label: 'AIFastHub', endpoint: 'https://aifasthub.com' },
+        { label: 'HF Mirror', endpoint: 'https://hf-mirror.com' },
+      ];
+      let lastError: unknown = error;
 
-      return this.fetchDatasetTreeEntries({
-        ...options,
-        baseEndpoint: 'https://hf-mirror.com',
-        authorizationHeader: undefined,
-      });
+      for (const fallback of fallbackEndpoints) {
+        this.logger.warn(
+          `Falling back to ${fallback.label} tree API for ${options.folderPath} because HuggingFace tree API failed: ${primaryMessage}`,
+        );
+
+        try {
+          return await this.fetchDatasetTreeEntries({
+            ...options,
+            baseEndpoint: fallback.endpoint,
+            authorizationHeader: undefined,
+          });
+        } catch (fallbackError: unknown) {
+          lastError = fallbackError;
+          const fallbackMessage =
+            fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+          this.logger.warn(
+            `${fallback.label} tree API also failed for ${options.folderPath}: ${fallbackMessage}`,
+          );
+        }
+      }
+
+      throw lastError;
     }
   }
 
