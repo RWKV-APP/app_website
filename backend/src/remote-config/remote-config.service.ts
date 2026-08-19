@@ -16,10 +16,14 @@ import {
 } from '../types/remote-config';
 
 const HUGGING_FACE_HOSTS = new Set(['huggingface.co', 'www.huggingface.co']);
+const MODELSCOPE_HOSTS = new Set(['modelscope.cn', 'www.modelscope.cn']);
 const HUGGING_FACE_USER_AGENT = 'RWKV-App-Website/1.0';
 const HUGGING_FACE_TREE_PAGE_SIZE = 100;
 const HUGGING_FACE_MAX_TREE_PAGES = 20;
 const MODELSCOPE_USER_AGENT = HUGGING_FACE_USER_AGENT;
+const TEMPORARY_MODELSCOPE_REPO_ID = 'HaloWang1991/rwkv-weights-tmp';
+const TEMPORARY_MODELSCOPE_PATH_PREFIX = 'artifacts/';
+const IMMUTABLE_GIT_REVISION_PATTERN = /^[a-f0-9]{40}$/i;
 
 interface ModelRepositoryMirror {
   huggingFaceRepoId: string;
@@ -519,7 +523,8 @@ export class RemoteConfigService {
     const huggingFaceTreeCache = new Map<string, Promise<HuggingFaceTreeEntry[]>>();
     const huggingFaceMetadataCache = new Map<string, Promise<HuggingFaceFileMetadata>>();
     const modelScopeMetadataCache = new Map<string, Promise<ModelScopeFileMetadata>>();
-    let synchronizedModelCount = 0;
+    let synchronizedDualSourceModelCount = 0;
+    let synchronizedTemporaryModelCount = 0;
     const warnings: string[] = [];
 
     for (const sectionName of APP_CONFIG_SECTIONS.filter((section) => section in parsed)) {
@@ -551,6 +556,25 @@ export class RemoteConfigService {
         }
 
         const normalizedUrl = rawUrl.trim();
+        const temporaryModelScopeTarget = this.parseModelScopeResolveUrl(normalizedUrl);
+        if (temporaryModelScopeTarget) {
+          const location = { fileName, sectionName, modelIndex: index };
+          this.assertTemporaryModelScopeCatalogRow(model, temporaryModelScopeTarget, location);
+          const modelScopeMetadata = await this.getModelScopeFileMetadata(
+            temporaryModelScopeTarget,
+            {
+              ...location,
+              metadataCache: modelScopeMetadataCache,
+            },
+          );
+          this.assertTemporaryModelScopeMetadata(model, modelScopeMetadata, location);
+          if (modelScopeMetadata.timestamp > 0 && model.date !== modelScopeMetadata.timestamp) {
+            model.date = modelScopeMetadata.timestamp;
+            synchronizedTemporaryModelCount++;
+          }
+          continue;
+        }
+
         const huggingFaceTarget = this.parseHuggingFaceResolveUrl(normalizedUrl);
         if (!huggingFaceTarget) {
           throw new BadRequestException(
@@ -613,15 +637,22 @@ export class RemoteConfigService {
         }
 
         if (updated) {
-          synchronizedModelCount++;
+          synchronizedDualSourceModelCount++;
         }
       }
     }
 
-    if (synchronizedModelCount > 0) {
+    if (synchronizedDualSourceModelCount > 0) {
       warnings.unshift(
-        `Synced dual-source-verified fileSize and Hugging Face date for ${synchronizedModelCount} model entr${
-          synchronizedModelCount === 1 ? 'y' : 'ies'
+        `Synced dual-source-verified fileSize and Hugging Face date for ${synchronizedDualSourceModelCount} model entr${
+          synchronizedDualSourceModelCount === 1 ? 'y' : 'ies'
+        }.`,
+      );
+    }
+    if (synchronizedTemporaryModelCount > 0) {
+      warnings.unshift(
+        `Synced immutable ModelScope TMP date for ${synchronizedTemporaryModelCount} model entr${
+          synchronizedTemporaryModelCount === 1 ? 'y' : 'ies'
         }.`,
       );
     }
@@ -714,6 +745,52 @@ export class RemoteConfigService {
     }
   }
 
+  private assertTemporaryModelScopeCatalogRow(
+    model: Record<string, unknown>,
+    target: ModelScopeResolveTarget,
+    location: ModelConfigLocation,
+  ): void {
+    if (
+      target.repoId !== TEMPORARY_MODELSCOPE_REPO_ID ||
+      !IMMUTABLE_GIT_REVISION_PATTERN.test(target.revision) ||
+      !target.filePath.startsWith(TEMPORARY_MODELSCOPE_PATH_PREFIX)
+    ) {
+      throw new BadRequestException(
+        `Upload blocked: ${location.fileName} section "${location.sectionName}" model_config[${location.modelIndex}] may use a ModelScope-only URL only from ${TEMPORARY_MODELSCOPE_REPO_ID}, at a 40-hex immutable revision, under ${TEMPORARY_MODELSCOPE_PATH_PREFIX}.`,
+      );
+    }
+
+    const availableIn = model.availableIn;
+    if (
+      !Array.isArray(availableIn) ||
+      availableIn.length !== 1 ||
+      availableIn[0] !== 'modelscope'
+    ) {
+      throw new BadRequestException(
+        `Upload blocked: ${location.fileName} section "${location.sectionName}" model_config[${location.modelIndex}] must declare availableIn: ["modelscope"] for a ModelScope-only TMP artifact.`,
+      );
+    }
+  }
+
+  private assertTemporaryModelScopeMetadata(
+    model: Record<string, unknown>,
+    metadata: ModelScopeFileMetadata,
+    location: ModelConfigLocation,
+  ): void {
+    if (model.fileSize !== metadata.size) {
+      throw new BadRequestException(
+        `Upload blocked: ${location.fileName} section "${location.sectionName}" model_config[${location.modelIndex}] fileSize does not match the immutable ModelScope TMP object (${String(model.fileSize)} vs ${metadata.size}).`,
+      );
+    }
+
+    const catalogSha256 = this.normalizeSha256(model.sha256);
+    if (!catalogSha256 || catalogSha256 !== metadata.sha256) {
+      throw new BadRequestException(
+        `Upload blocked: ${location.fileName} section "${location.sectionName}" model_config[${location.modelIndex}] sha256 does not match the immutable ModelScope TMP object.`,
+      );
+    }
+  }
+
   private async getModelScopeFileMetadata(
     target: ModelScopeResolveTarget,
     input: ModelConfigLocation & {
@@ -790,6 +867,54 @@ export class RemoteConfigService {
       .map((segment) => encodeURIComponent(segment))
       .join('/');
     return `${this.getModelScopeBaseEndpoint()}/models/${target.repoId}/resolve/${encodeURIComponent(target.revision)}/${filePath}`;
+  }
+
+  private parseModelScopeResolveUrl(rawUrl: string): ModelScopeResolveTarget | null {
+    const trimmedUrl = rawUrl.trim();
+    if (!/^https:\/\//i.test(trimmedUrl)) {
+      return null;
+    }
+
+    try {
+      const parsedUrl = new URL(trimmedUrl);
+      if (
+        parsedUrl.protocol !== 'https:' ||
+        !MODELSCOPE_HOSTS.has(parsedUrl.hostname) ||
+        parsedUrl.port ||
+        parsedUrl.username ||
+        parsedUrl.password ||
+        parsedUrl.search ||
+        parsedUrl.hash
+      ) {
+        return null;
+      }
+
+      const decodedSegments = parsedUrl.pathname
+        .replace(/^\/+/, '')
+        .split('/')
+        .map((segment) => decodeURIComponent(segment));
+      if (decodedSegments.some((segment) => !segment || segment === '.' || segment === '..')) {
+        return null;
+      }
+      if (
+        decodedSegments.length < 6 ||
+        decodedSegments[0] !== 'models' ||
+        decodedSegments[3] !== 'resolve'
+      ) {
+        return null;
+      }
+
+      const repoId = `${decodedSegments[1]}/${decodedSegments[2]}`;
+      const revision = decodedSegments[4];
+      const filePath = decodedSegments.slice(5).join('/');
+      if (!revision || !filePath) {
+        return null;
+      }
+
+      return { repoId, revision, filePath };
+    } catch {
+      return null;
+    }
   }
 
   private normalizeSha256(value: unknown): string | null {
