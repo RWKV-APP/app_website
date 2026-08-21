@@ -1,6 +1,6 @@
 .section {
   width: 100vw;
-  padding: clamp(4rem, 8vw, 6.5rem) 1.25rem;
+  padding: clamp(0.75rem, 2vw, 1.25rem);
   overflow: hidden;
   background: var(--color-background);
   border-block: 1px solid var(--color-border);
@@ -9,43 +9,6 @@
 .inner {
   width: min(100%, 1120px);
   margin: 0 auto;
-}
-
-.headingRow {
-  margin-bottom: clamp(2rem, 5vw, 3.5rem);
-}
-
-.intro {
-  max-width: 680px;
-  text-align: left;
-}
-
-.title {
-  max-width: 16ch;
-  margin: 0;
-  color: var(--color-foreground);
-  font-size: clamp(1.875rem, 4vw, 3.25rem);
-  font-weight: 700;
-  line-height: 1.06;
-  letter-spacing: -0.035em;
-  text-wrap: balance;
-}
-
-.description {
-  max-width: 64ch;
-  margin: 1rem 0 0;
-  color: var(--color-secondary-text);
-  font-size: clamp(1rem, 1.5vw, 1.125rem);
-  line-height: 1.6;
-  text-wrap: pretty;
-}
-
-.captureMeta {
-  margin: 0.75rem 0 0;
-  color: var(--color-foreground);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  line-height: 1.5;
 }
 
 .stage {
@@ -127,9 +90,5 @@
 @media (max-width: 360px) {
   .section {
     padding-inline: 0.75rem;
-  }
-
-  .title {
-    font-size: 1.75rem;
   }
 }

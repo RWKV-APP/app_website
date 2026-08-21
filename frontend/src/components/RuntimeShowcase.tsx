@@ -66,18 +66,8 @@ export function RuntimeShowcase({ locale, theme }: RuntimeShowcaseProps) {
   }, [locale, theme]);
 
   return (
-    <section className={styles.section} aria-labelledby="runtime-showcase-title">
+    <section className={styles.section}>
       <div className={styles.inner}>
-        <div className={styles.headingRow}>
-          <div className={styles.intro}>
-            <h2 id="runtime-showcase-title" className={styles.title}>
-              {copy.showcaseTitle}
-            </h2>
-            <p className={styles.description}>{copy.showcaseDescription}</p>
-            <p className={styles.captureMeta}>{copy.showcaseCaptureMeta}</p>
-          </div>
-        </div>
-
         <div className={styles.stage} aria-busy={resolvedTheme === null || device === null}>
           <figure className={styles.scene}>
             <div className={styles.imageFrame}>
