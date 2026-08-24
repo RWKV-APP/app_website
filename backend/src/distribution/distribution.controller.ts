@@ -7,8 +7,8 @@ type DistributionMap = Record<string, DistributionRecord | null>;
 const APP_DOWNLOAD_LANDING_URL = 'https://rwkv.halowang.cloud/';
 const APP_LATEST_VERSION_FALLBACK = '4.7.2';
 const APP_LATEST_BUILD_FALLBACK = 754;
-const IOS_LATEST_VERSION_FALLBACK = '4.7.0';
-const IOS_LATEST_BUILD_FALLBACK = 752;
+const IOS_LATEST_VERSION_FALLBACK = '4.7.2';
+const IOS_LATEST_BUILD_FALLBACK = 754;
 const IOS_DISTRIBUTION_KEYS = new Set(['iOSTF', 'iOSAS']);
 
 interface DistributionRecord {
