@@ -14,7 +14,7 @@ interface RuntimeShowcaseProps {
   theme: Theme;
 }
 
-const SHOWCASE_ROOT = '/images/showcase/rwkv-chat/4.7.0';
+const SHOWCASE_ROOT = '/images/showcase/rwkv-chat/4.7.2';
 const MOBILE_SHOWCASE_QUERY = '(max-width: 734px)';
 
 function getCaptureLocale(locale: Locale): CaptureLocale {
@@ -35,8 +35,8 @@ export function RuntimeShowcase({ locale, theme }: RuntimeShowcaseProps) {
   const [resolvedTheme, setResolvedTheme] = useState<Theme | null>(null);
   const copy = getHomePageCopy(locale);
   const captureLocale = getCaptureLocale(locale);
-  const imageWidth = device === 'mobile' ? 1200 : 800;
-  const imageHeight = device === 'mobile' ? 2500 : 600;
+  const imageWidth = device === 'mobile' ? 1134 : 2330;
+  const imageHeight = device === 'mobile' ? 1994 : 2584;
   const imageBase =
     resolvedTheme && device ? `${SHOWCASE_ROOT}/${device}-${captureLocale}-${resolvedTheme}` : null;
 
@@ -67,60 +67,56 @@ export function RuntimeShowcase({ locale, theme }: RuntimeShowcaseProps) {
 
   return (
     <section className={styles.section}>
-      <div className={styles.inner}>
-        <div className={styles.stage} aria-busy={resolvedTheme === null || device === null}>
-          <figure className={styles.scene}>
-            <div className={styles.imageFrame}>
-              {imageBase && (
-                <Image
-                  key={`${imageBase}-normal`}
-                  src={`${imageBase}-normal.webp`}
-                  alt={copy.showcaseNormalAlt}
-                  width={imageWidth}
-                  height={imageHeight}
-                  sizes={
-                    device === 'desktop'
-                      ? '(max-width: 734px) calc(100vw - 40px), 460px'
-                      : '(max-width: 734px) calc(100vw - 40px), 340px'
-                  }
-                  className={styles.screenshot}
-                  decoding="async"
-                  loading="eager"
-                />
-              )}
-            </div>
-            <figcaption className={styles.caption}>
-              <strong>{copy.showcaseNormalTitle}</strong>
-              <span>{copy.showcaseNormalDescription}</span>
-            </figcaption>
-          </figure>
+      <div className={styles.inner} aria-busy={resolvedTheme === null || device === null}>
+        <figure className={styles.scene}>
+          <div className={styles.imageFrame}>
+            {imageBase && (
+              <Image
+                key={`${imageBase}-normal`}
+                src={`${imageBase}-normal.webp`}
+                alt={copy.showcaseNormalAlt}
+                width={imageWidth}
+                height={imageHeight}
+                sizes={
+                  device === 'desktop'
+                    ? '(max-width: 734px) calc(100vw - 40px), 460px'
+                    : '(max-width: 734px) calc(100vw - 40px), 340px'
+                }
+                className={styles.screenshot}
+                decoding="async"
+                priority
+              />
+            )}
+          </div>
+          <figcaption className={styles.caption}>
+            <strong>{copy.showcaseNormalTitle}</strong>
+          </figcaption>
+        </figure>
 
-          <figure className={styles.scene}>
-            <div className={styles.imageFrame}>
-              {imageBase && (
-                <Image
-                  key={`${imageBase}-g1i-concurrent`}
-                  src={`${imageBase}-g1i-concurrent.webp`}
-                  alt={copy.showcaseConcurrentAlt}
-                  width={imageWidth}
-                  height={imageHeight}
-                  sizes={
-                    device === 'desktop'
-                      ? '(max-width: 734px) calc(100vw - 40px), 460px'
-                      : '(max-width: 734px) calc(100vw - 40px), 340px'
-                  }
-                  className={styles.screenshot}
-                  decoding="async"
-                  loading="lazy"
-                />
-              )}
-            </div>
-            <figcaption className={styles.caption}>
-              <strong>{copy.showcaseConcurrentTitle}</strong>
-              <span>{copy.showcaseConcurrentDescription}</span>
-            </figcaption>
-          </figure>
-        </div>
+        <figure className={styles.scene}>
+          <div className={styles.imageFrame}>
+            {imageBase && (
+              <Image
+                key={`${imageBase}-g1i-concurrent`}
+                src={`${imageBase}-g1i-concurrent.webp`}
+                alt={copy.showcaseConcurrentAlt}
+                width={imageWidth}
+                height={imageHeight}
+                sizes={
+                  device === 'desktop'
+                    ? '(max-width: 734px) calc(100vw - 40px), 460px'
+                    : '(max-width: 734px) calc(100vw - 40px), 340px'
+                }
+                className={styles.screenshot}
+                decoding="async"
+                loading="lazy"
+              />
+            )}
+          </div>
+          <figcaption className={styles.caption}>
+            <strong>{copy.showcaseConcurrentTitle}</strong>
+          </figcaption>
+        </figure>
       </div>
     </section>
   );

@@ -28,10 +28,8 @@ export interface HomePageCopy {
   hideOtherSources: string;
   recommendedLabel: string;
   showcaseNormalTitle: string;
-  showcaseNormalDescription: string;
   showcaseNormalAlt: string;
   showcaseConcurrentTitle: string;
-  showcaseConcurrentDescription: string;
   showcaseConcurrentAlt: string;
 }
 
@@ -64,10 +62,8 @@ const homepageCopy: Record<Locale, HomePageCopy> = {
     hideOtherSources: '收起其他下载源',
     recommendedLabel: '推荐',
     showcaseNormalTitle: '日常对话',
-    showcaseNormalDescription: '使用 G1i 在设备本地逐字生成，不必把对话发送到云端。',
     showcaseNormalAlt: 'RWKV Chat 使用 G1i 在本地进行日常对话的界面',
-    showcaseConcurrentTitle: 'G1i 高并发',
-    showcaseConcurrentDescription: '多路任务在设备本地同时实时输出，进度清楚可见。',
+    showcaseConcurrentTitle: '超高并发',
     showcaseConcurrentAlt: 'RWKV Chat 使用本地 G1i 进行多路高并发实时输出的界面',
   },
   'zh-TW': {
@@ -98,10 +94,8 @@ const homepageCopy: Record<Locale, HomePageCopy> = {
     hideOtherSources: '收起其他下載源',
     recommendedLabel: '推薦',
     showcaseNormalTitle: '日常對話',
-    showcaseNormalDescription: '使用 G1i 在裝置本機逐字生成，對話不必傳送到雲端。',
     showcaseNormalAlt: 'RWKV Chat 使用 G1i 在本機進行日常對話的介面',
-    showcaseConcurrentTitle: 'G1i 高併發',
-    showcaseConcurrentDescription: '多路任務在裝置本機同時即時輸出，進度清楚可見。',
+    showcaseConcurrentTitle: '超高併發',
     showcaseConcurrentAlt: 'RWKV Chat 使用本機 G1i 進行多路高併發即時輸出的介面',
   },
   ja: {
@@ -132,12 +126,8 @@ const homepageCopy: Record<Locale, HomePageCopy> = {
     hideOtherSources: '他のダウンロード元を隠す',
     recommendedLabel: 'おすすめ',
     showcaseNormalTitle: '普段のチャット',
-    showcaseNormalDescription:
-      'G1i が端末上で逐次生成するため、会話をクラウドへ送る必要はありません。',
     showcaseNormalAlt: 'RWKV Chat が G1i を使って端末上で日常会話を生成している画面',
-    showcaseConcurrentTitle: 'G1i 高並列処理',
-    showcaseConcurrentDescription:
-      '複数のタスクを端末上で同時にリアルタイム出力し、進行状況も確認できます。',
+    showcaseConcurrentTitle: '超高並列処理',
     showcaseConcurrentAlt: 'RWKV Chat がローカルの G1i で複数タスクを同時出力している画面',
   },
   ko: {
@@ -168,12 +158,8 @@ const homepageCopy: Record<Locale, HomePageCopy> = {
     hideOtherSources: '다른 다운로드 소스 숨기기',
     recommendedLabel: '추천',
     showcaseNormalTitle: '일상 대화',
-    showcaseNormalDescription:
-      'G1i가 기기에서 순차 생성하므로 대화를 클라우드로 보낼 필요가 없습니다.',
     showcaseNormalAlt: 'RWKV Chat이 G1i로 기기에서 일상 대화를 생성하는 화면',
-    showcaseConcurrentTitle: 'G1i 고동시성',
-    showcaseConcurrentDescription:
-      '여러 작업이 기기에서 동시에 실시간으로 출력되며 진행 상황도 명확히 확인됩니다.',
+    showcaseConcurrentTitle: '초고동시성',
     showcaseConcurrentAlt: 'RWKV Chat이 로컬 G1i로 여러 작업을 동시에 실시간 출력하는 화면',
   },
   en: {
@@ -204,12 +190,8 @@ const homepageCopy: Record<Locale, HomePageCopy> = {
     hideOtherSources: 'Hide other sources',
     recommendedLabel: 'Recommended',
     showcaseNormalTitle: 'Everyday chat',
-    showcaseNormalDescription:
-      'G1i generates each response on-device, without sending the conversation to the cloud.',
     showcaseNormalAlt: 'RWKV Chat using G1i for an everyday on-device conversation',
-    showcaseConcurrentTitle: 'G1i high concurrency',
-    showcaseConcurrentDescription:
-      'Multiple tasks stream in real time at once, all running locally with visible progress.',
+    showcaseConcurrentTitle: 'Ultra-high concurrency',
     showcaseConcurrentAlt:
       'RWKV Chat streaming multiple concurrent tasks in real time with local G1i',
   },
@@ -241,12 +223,8 @@ const homepageCopy: Record<Locale, HomePageCopy> = {
     hideOtherSources: 'Скрыть другие источники',
     recommendedLabel: 'Рекомендуем',
     showcaseNormalTitle: 'Обычный диалог',
-    showcaseNormalDescription:
-      'G1i генерирует ответ на устройстве, не отправляя переписку в облако.',
     showcaseNormalAlt: 'Обычный диалог в RWKV Chat с локальной генерацией G1i',
-    showcaseConcurrentTitle: 'Высокая параллельность G1i',
-    showcaseConcurrentDescription:
-      'Несколько задач одновременно выводят результат в реальном времени, локально и с видимым прогрессом.',
+    showcaseConcurrentTitle: 'Сверхвысокая параллельность',
     showcaseConcurrentAlt: 'RWKV Chat одновременно выводит несколько задач с помощью локальной G1i',
   },
 };

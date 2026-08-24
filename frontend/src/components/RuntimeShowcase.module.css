@@ -9,14 +9,8 @@
 .inner {
   width: min(100%, 1120px);
   margin: 0 auto;
-}
-
-.stage {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  background: var(--color-surface);
-  border-radius: 16px;
-  overflow: hidden;
 }
 
 .scene {
@@ -24,31 +18,23 @@
   padding: clamp(0.75rem, 2vw, 1.25rem);
 }
 
-.scene + .scene {
-  border-left: 1px solid var(--color-border);
-}
-
 .imageFrame {
   display: flex;
   justify-content: center;
-  aspect-ratio: 4 / 3;
-  overflow: hidden;
-  background: #111214;
-  border-radius: 10px;
+  aspect-ratio: 2330 / 2584;
 }
 
 .screenshot {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
 }
 
 .caption {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
   padding: 1rem 0.25rem 0.25rem;
-  text-align: left;
+  text-align: center;
 }
 
 .caption strong {
@@ -57,33 +43,19 @@
   line-height: 1.35;
 }
 
-.caption span {
-  max-width: 48ch;
-  color: var(--color-secondary-text);
-  font-size: 0.875rem;
-  line-height: 1.55;
-  text-wrap: pretty;
-}
-
 @media (max-width: 734px) {
   .section {
     padding-inline: 1.25rem;
   }
 
-  .stage {
+  .inner {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .scene + .scene {
-    border-top: 1px solid var(--color-border);
-    border-left: 0;
   }
 
   .imageFrame {
     width: min(100%, 340px);
     margin-inline: auto;
-    aspect-ratio: 12 / 25;
-    border-radius: 14px;
+    aspect-ratio: 1134 / 1994;
   }
 }
 
