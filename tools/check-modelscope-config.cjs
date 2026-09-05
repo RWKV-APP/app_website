@@ -17,6 +17,30 @@ const { RemoteConfigAdminController } = backendRequire(
 )
 
 async function main() {
+  const configPath = backendRequire.resolve('./src/config')
+  const cachedConfig = backendRequire.cache[configPath]
+  const originalRepoId = process.env.HF_DATASETS_ID
+  try {
+    for (const [value, expected] of [
+      [undefined, 'HaloWang/rwkv-chat'],
+      ['', ''],
+      ['  ', ''],
+      [' HaloWang/rwkv-chat ', 'HaloWang/rwkv-chat']
+    ]) {
+      if (value === undefined) delete process.env.HF_DATASETS_ID
+      else process.env.HF_DATASETS_ID = value
+      delete backendRequire.cache[configPath]
+      assert.equal(
+        backendRequire('./src/config').Config.huggingface.repoId,
+        expected
+      )
+    }
+  } finally {
+    if (originalRepoId === undefined) delete process.env.HF_DATASETS_ID
+    else process.env.HF_DATASETS_ID = originalRepoId
+    backendRequire.cache[configPath] = cachedConfig
+  }
+
   const metadata = { size: 11, timestamp: 456, sha256: 'a'.repeat(64) }
   const records = []
   const activities = []

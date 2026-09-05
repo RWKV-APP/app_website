@@ -5,7 +5,7 @@ function getEnvValue(key: string, fallback = ''): string {
 
 export const Config = {
   huggingface: {
-    repoId: getEnvValue('HF_DATASETS_ID', 'HaloWang/rwkv-chat'),
+    repoId: process.env.HF_DATASETS_ID?.trim() ?? 'HaloWang/rwkv-chat',
     token: getEnvValue('HF_TOKEN'),
     endpoint: getEnvValue('HF_ENDPOINT', 'https://huggingface.co'),
   },

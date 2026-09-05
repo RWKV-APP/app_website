@@ -114,6 +114,13 @@ Hugging Face availability or change the config's source declarations.
 
 Run the offline regression check with `node tools/check-modelscope-config.cjs`.
 
+To defer automatic Hugging Face distribution refreshes as well, explicitly set
+`HF_DATASETS_ID=` in the backend's private runtime environment before restarting.
+This disables Hugging Face and its mirror refreshes without removing cached
+download records. An unset variable retains the default repository; restoring
+its repository ID re-enables refreshes. Catalog uploads still require the
+explicit `modelScopeOnly` option to defer their independent Hugging Face checks.
+
 ## Build
 
 ```bash
