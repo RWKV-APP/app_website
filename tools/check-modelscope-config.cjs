@@ -15,6 +15,9 @@ const { RemoteConfigService } = backendRequire(
 const { RemoteConfigAdminController } = backendRequire(
   './src/remote-config/remote-config.admin.controller'
 )
+const { DistributionController } = backendRequire(
+  './src/distribution/distribution.controller'
+)
 
 async function main() {
   const configPath = backendRequire.resolve('./src/config')
@@ -42,6 +45,88 @@ async function main() {
   }
 
   const metadata = { size: 11, timestamp: 456, sha256: 'a'.repeat(64) }
+  const distributions = Object.fromEntries(
+    [
+      'winMS',
+      'winHF',
+      'winArm64MS',
+      'linuxMS',
+      'androidMS',
+      'androidHF',
+      'macosMS',
+      'iOSAS'
+    ].map((type, id) => [
+      type,
+      {
+        id,
+        type,
+        url: `https://example.test/${type}`,
+        version: '4.7.2',
+        build: 754,
+        createdAt: new Date(0),
+        updatedAt: new Date(0)
+      }
+    ])
+  )
+  distributions.winMS = { ...distributions.winMS, version: '4.8.0', build: 755 }
+  distributions.linuxMS = {
+    ...distributions.linuxMS,
+    version: '4.8.0',
+    build: 755
+  }
+  distributions.androidGooglePlay = {
+    ...distributions.androidMS,
+    type: 'androidGooglePlay',
+    version: 'latest',
+    build: null
+  }
+  distributions.macosGR = null
+  const distributionController = new DistributionController({
+    getLatestDistributions: async () => distributions
+  })
+  const appRequest = {
+    headers: { 'application-build-number': '754' },
+    query: {},
+    url: '/distributions/latest'
+  }
+  const appResult =
+    await distributionController.getLatestDistributions(appRequest)
+  for (const type of ['winMS', 'winHF', 'linuxMS'])
+    assert.equal(appResult[type].build, 755)
+  for (const type of [
+    'winArm64MS',
+    'androidMS',
+    'androidHF',
+    'androidGooglePlay',
+    'macosMS',
+    'iOSAS'
+  ]) {
+    assert.equal(appResult[type].version, '4.7.2')
+    assert.equal(appResult[type].build, 754)
+  }
+  assert.equal(appResult.macosGR, null)
+  assert.equal(appResult.androidMS.url, 'https://rwkv.halowang.cloud/')
+  const rawResult = await distributionController.getLatestDistributions({
+    ...appRequest,
+    headers: {}
+  })
+  assert.equal(rawResult.winHF.build, 754)
+  assert.equal(rawResult.winHF.url, 'https://example.test/winHF')
+  assert.equal(distributions.winHF.build, 754)
+  distributions.androidMS = {
+    ...distributions.androidMS,
+    version: '4.8.0',
+    build: 755
+  }
+  const filteredResult = await distributionController.getLatestDistributions({
+    ...appRequest,
+    query: {},
+    url: '/distributions/latest?key%3DandroidHF%26key%3DmacosMS'
+  })
+  assert.deepEqual(Object.keys(filteredResult), ['androidHF', 'macosMS'])
+  assert.equal(filteredResult.androidHF.build, 755)
+  assert.equal(filteredResult.macosMS.build, 754)
+
   const records = []
   const activities = []
   const calls = []

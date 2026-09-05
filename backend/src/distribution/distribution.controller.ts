@@ -9,7 +9,6 @@ const APP_LATEST_VERSION_FALLBACK = '4.7.2';
 const APP_LATEST_BUILD_FALLBACK = 754;
 const IOS_LATEST_VERSION_FALLBACK = '4.7.2';
 const IOS_LATEST_BUILD_FALLBACK = 754;
-const IOS_DISTRIBUTION_KEYS = new Set(['iOSTF', 'iOSAS']);
 
 interface DistributionRecord {
   id: number;
@@ -174,14 +173,22 @@ export class DistributionController {
     return current;
   }
 
-  private getAppOverrideMetadata(result: DistributionMap, iosOnly: boolean): AppOverrideMetadata {
-    let metadata: AppOverrideMetadata = iosOnly
-      ? { version: IOS_LATEST_VERSION_FALLBACK, build: IOS_LATEST_BUILD_FALLBACK }
-      : { version: APP_LATEST_VERSION_FALLBACK, build: APP_LATEST_BUILD_FALLBACK };
+  private getDistributionPlatform(key: string): string {
+    return (
+      ['macos', 'linux', 'winArm64', 'win', 'android', 'iOS'].find((prefix) =>
+        key.startsWith(prefix),
+      ) ?? key
+    );
+  }
+
+  private getAppOverrideMetadata(result: DistributionMap, platform: string): AppOverrideMetadata {
+    let metadata: AppOverrideMetadata =
+      platform === 'iOS'
+        ? { version: IOS_LATEST_VERSION_FALLBACK, build: IOS_LATEST_BUILD_FALLBACK }
+        : { version: APP_LATEST_VERSION_FALLBACK, build: APP_LATEST_BUILD_FALLBACK };
 
     for (const [key, value] of Object.entries(result)) {
-      const isIosKey = IOS_DISTRIBUTION_KEYS.has(key);
-      if (iosOnly !== isIosKey) {
+      if (this.getDistributionPlatform(key) !== platform) {
         continue;
       }
 
@@ -200,8 +207,7 @@ export class DistributionController {
     }
 
     const adaptedResult: DistributionMap = {};
-    const appMetadata = this.getAppOverrideMetadata(result, false);
-    const iosMetadata = this.getAppOverrideMetadata(result, true);
+    const metadataByPlatform = new Map<string, AppOverrideMetadata>();
 
     for (const [key, value] of Object.entries(result)) {
       if (!value) {
@@ -209,7 +215,12 @@ export class DistributionController {
         continue;
       }
 
-      const metadata = IOS_DISTRIBUTION_KEYS.has(key) ? iosMetadata : appMetadata;
+      const platform = this.getDistributionPlatform(key);
+      let metadata = metadataByPlatform.get(platform);
+      if (!metadata) {
+        metadata = this.getAppOverrideMetadata(result, platform);
+        metadataByPlatform.set(platform, metadata);
+      }
       adaptedResult[key] = {
         ...value,
         url: APP_DOWNLOAD_LANDING_URL,

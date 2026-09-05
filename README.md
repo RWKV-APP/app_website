@@ -121,6 +121,11 @@ download records. An unset variable retains the default repository; restoring
 its repository ID re-enables refreshes. Catalog uploads still require the
 explicit `modelScopeOnly` option to defer their independent Hugging Face checks.
 
+App update responses continue to link to the download page, but select version
+metadata independently for macOS, Linux, Windows x64, Windows ARM64, Android,
+and iOS. Publishing one platform does not announce an update for another.
+Requests without App headers still return the original per-channel records.
+
 ## Build
 
 ```bash
