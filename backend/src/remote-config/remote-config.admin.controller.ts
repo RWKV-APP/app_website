@@ -20,6 +20,7 @@ interface UploadRemoteConfigBody {
   fileName?: string;
   content?: string;
   publishNow?: boolean;
+  modelScopeOnly?: boolean;
 }
 
 @Controller('admin-api/remote-configs')
@@ -50,6 +51,7 @@ export class RemoteConfigAdminController {
       content: body.content,
       createdBy: request.adminUser || 'unknown',
       publishNow: body.publishNow ?? false,
+      modelScopeOnly: body.modelScopeOnly,
     });
   }
 

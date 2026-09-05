@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "pnpm -r --parallel --stream --filter backend --filter frontend run dev",
     "build": "pnpm --filter @app/contracts build && pnpm --filter frontend build && pnpm --filter backend build",
-    "check": "pnpm check:no-specs && pnpm type-check && pnpm lint:check",
+    "check": "pnpm check:no-specs && node tools/check-modelscope-config.cjs && pnpm type-check && pnpm lint:check",
     "check:no-specs": "node tools/check-no-specs.mjs",
     "deploy:prod": "bash scripts/deploy-prod-artifact.sh",
     "deploy:prod:server-build": "bash scripts/start-prod.sh",

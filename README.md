@@ -95,6 +95,25 @@ Notes:
 - this avoids browser-side cross-origin requests during local development
 - if you need to run the services separately, use `pnpm --filter backend dev` or `pnpm --filter frontend dev`
 
+## Remote Model Config Validation
+
+Authenticated uploads to `POST /admin-api/remote-configs/upload` accept
+`modelScopeOnly: true` alongside `fileName`, JSON-string `content`, and optional
+`publishNow`. Use this explicit mode when Hugging Face verification is deferred.
+It applies to `latest.json` and numbered App configs, makes only ModelScope
+metadata requests, and records the selected source in the upload activity.
+
+Direct ModelScope URLs must use `HaloWang1991/rwkv-weights-tmp` or
+`HaloWang1991/rwkv-weights`, a 40-hex commit revision, an `artifacts/` path,
+`availableIn: ["modelscope"]`, and matching file size and SHA-256. Legacy Hugging
+Face URLs must map to an approved ModelScope mirror; their file size is
+synchronized, any declared SHA-256 is checked, and their existing date is kept.
+Omitting the option retains dual-source checks for legacy URLs and permits only
+the temporary repository for direct ModelScope URLs. This mode does not claim
+Hugging Face availability or change the config's source declarations.
+
+Run the offline regression check with `node tools/check-modelscope-config.cjs`.
+
 ## Build
 
 ```bash
