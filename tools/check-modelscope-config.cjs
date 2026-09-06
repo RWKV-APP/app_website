@@ -18,6 +18,9 @@ const { RemoteConfigAdminController } = backendRequire(
 const { DistributionController } = backendRequire(
   './src/distribution/distribution.controller'
 )
+const { DistributionService } = backendRequire(
+  './src/distribution/distribution.service'
+)
 
 async function main() {
   const configPath = backendRequire.resolve('./src/config')
@@ -68,12 +71,6 @@ async function main() {
       }
     ])
   )
-  distributions.winMS = { ...distributions.winMS, version: '4.8.0', build: 755 }
-  distributions.linuxMS = {
-    ...distributions.linuxMS,
-    version: '4.8.0',
-    build: 755
-  }
   distributions.androidGooglePlay = {
     ...distributions.androidMS,
     type: 'androidGooglePlay',
@@ -81,9 +78,20 @@ async function main() {
     build: null
   }
   distributions.macosGR = null
-  const distributionController = new DistributionController({
-    getLatestDistributions: async () => distributions
-  })
+  const distributionRecords = Object.values(distributions).filter(Boolean)
+  for (const type of ['winMS', 'linuxMS', 'androidMS', 'winArm64MS', 'macosGR']) {
+    distributionRecords.unshift({
+      ...distributions.androidMS,
+      type,
+      url: `https://example.test/${type}/4.8.0`,
+      version: '4.8.0',
+      build: 755
+    })
+  }
+  const distributionService = new DistributionService({
+    distribution: { findMany: async () => distributionRecords }
+  }, {})
+  const distributionController = new DistributionController(distributionService)
   const appRequest = {
     headers: { 'application-build-number': '754' },
     query: {},
@@ -91,9 +99,10 @@ async function main() {
   }
   const appResult =
     await distributionController.getLatestDistributions(appRequest)
-  for (const type of ['winMS', 'winHF', 'linuxMS'])
-    assert.equal(appResult[type].build, 755)
   for (const type of [
+    'winMS',
+    'winHF',
+    'linuxMS',
     'winArm64MS',
     'androidMS',
     'androidHF',
@@ -112,19 +121,28 @@ async function main() {
   })
   assert.equal(rawResult.winHF.build, 754)
   assert.equal(rawResult.winHF.url, 'https://example.test/winHF')
-  assert.equal(distributions.winHF.build, 754)
-  distributions.androidMS = {
-    ...distributions.androidMS,
-    version: '4.8.0',
-    build: 755
+  for (const type of ['winMS', 'linuxMS', 'androidMS', 'winArm64MS']) {
+    assert.equal(rawResult[type].version, '4.7.2')
+    assert.equal(rawResult[type].build, 754)
+    assert.equal(rawResult[type].url, distributions[type].url)
   }
+  assert.equal(rawResult.androidGooglePlay.version, 'latest')
+  assert.equal(rawResult.macosGR, null)
+  assert.equal(distributions.winHF.build, 754)
+  distributionRecords.unshift({
+    ...distributions.androidMS,
+    version: '4.10.0',
+    build: 756
+  })
+  await distributionService.refreshLatestSnapshotAfterSync()
   const filteredResult = await distributionController.getLatestDistributions({
     ...appRequest,
     query: {},
     url: '/distributions/latest?key%3DandroidHF%26key%3DmacosMS'
   })
   assert.deepEqual(Object.keys(filteredResult), ['androidHF', 'macosMS'])
-  assert.equal(filteredResult.androidHF.build, 755)
+  assert.equal(filteredResult.androidHF.version, '4.7.2')
+  assert.equal(filteredResult.androidHF.build, 754)
   assert.equal(filteredResult.macosMS.build, 754)
 
   const records = []

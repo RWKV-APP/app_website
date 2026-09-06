@@ -124,7 +124,11 @@ explicit `modelScopeOnly` option to defer their independent Hugging Face checks.
 App update responses continue to link to the download page, but select version
 metadata independently for macOS, Linux, Windows x64, Windows ARM64, Android,
 and iOS. Publishing one platform does not announce an update for another.
-Requests without App headers still return the original per-channel records.
+The latest distribution snapshot is capped at version 4.7.2. Newer packages
+remain in distribution history and cannot advance the website or App update
+response until `LATEST_PUBLISHED_APP_VERSION` is deliberately raised.
+Requests without App headers return the original per-channel records within
+that cap, including older mirrors and store metadata.
 
 ## Build
 

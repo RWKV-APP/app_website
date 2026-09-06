@@ -6,6 +6,8 @@ import { DistributionType } from '../types/distribution';
 import { Config } from '../config';
 import { ReleaseNotesService } from './release-notes.service';
 
+const LATEST_PUBLISHED_APP_VERSION = '4.7.2';
+
 export interface DistributionSnapshotRecord {
   id: number;
   type: string;
@@ -1736,6 +1738,12 @@ export class DistributionService implements OnModuleInit {
     });
     const recordsByType = new Map<string, DistributionSnapshotRecord[]>();
     for (const record of records) {
+      if (
+        this.isSemanticVersion(record.version) &&
+        this.compareVersions(record.version, LATEST_PUBLISHED_APP_VERSION) > 0
+      ) {
+        continue;
+      }
       const current = recordsByType.get(record.type);
       if (current) {
         current.push(record);
