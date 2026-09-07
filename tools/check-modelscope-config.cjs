@@ -48,17 +48,18 @@ async function main() {
   }
 
   const metadata = { size: 11, timestamp: 456, sha256: 'a'.repeat(64) }
+  const releasedTypes = [
+    'winMS', 'winGR', 'winZipMS', 'winZipGR',
+    'winArm64MS', 'winArm64GR', 'winArm64ZipMS', 'winArm64ZipGR',
+    'linuxMS', 'linuxGR', 'linuxAppImageMS', 'linuxAppImageGR',
+    'androidMS', 'androidGR'
+  ]
+  const deferredTypes = [
+    'winHF', 'winZipHF', 'androidHF', 'linuxAF', 'linuxHFM',
+    'macosMS', 'macosHF', 'macosAF', 'iOSAS'
+  ]
   const distributions = Object.fromEntries(
-    [
-      'winMS',
-      'winHF',
-      'winArm64MS',
-      'linuxMS',
-      'androidMS',
-      'androidHF',
-      'macosMS',
-      'iOSAS'
-    ].map((type, id) => [
+    [...releasedTypes, ...deferredTypes].map((type, id) => [
       type,
       {
         id,
@@ -79,7 +80,7 @@ async function main() {
   }
   distributions.macosGR = null
   const distributionRecords = Object.values(distributions).filter(Boolean)
-  for (const type of ['winMS', 'linuxMS', 'androidMS', 'winArm64MS', 'macosGR']) {
+  for (const type of [...releasedTypes, ...deferredTypes, 'macosGR']) {
     distributionRecords.unshift({
       ...distributions.androidMS,
       type,
@@ -100,16 +101,16 @@ async function main() {
   const appResult =
     await distributionController.getLatestDistributions(appRequest)
   for (const type of [
-    'winMS',
+    ...releasedTypes,
     'winHF',
-    'linuxMS',
-    'winArm64MS',
-    'androidMS',
     'androidHF',
-    'androidGooglePlay',
-    'macosMS',
-    'iOSAS'
+    'androidGooglePlay'
   ]) {
+    // App clients receive the landing page and the latest version for their OS.
+    assert.equal(appResult[type].version, '4.8.0')
+    assert.equal(appResult[type].build, 755)
+  }
+  for (const type of ['macosMS', 'iOSAS']) {
     assert.equal(appResult[type].version, '4.7.2')
     assert.equal(appResult[type].build, 754)
   }
@@ -121,7 +122,12 @@ async function main() {
   })
   assert.equal(rawResult.winHF.build, 754)
   assert.equal(rawResult.winHF.url, 'https://example.test/winHF')
-  for (const type of ['winMS', 'linuxMS', 'androidMS', 'winArm64MS']) {
+  for (const type of releasedTypes) {
+    assert.equal(rawResult[type].version, '4.8.0')
+    assert.equal(rawResult[type].build, 755)
+    assert.equal(rawResult[type].url, `https://example.test/${type}/4.8.0`)
+  }
+  for (const type of deferredTypes) {
     assert.equal(rawResult[type].version, '4.7.2')
     assert.equal(rawResult[type].build, 754)
     assert.equal(rawResult[type].url, distributions[type].url)
@@ -135,14 +141,17 @@ async function main() {
     build: 756
   })
   await distributionService.refreshLatestSnapshotAfterSync()
+  const cappedResult = await distributionService.getLatestDistributions()
+  assert.equal(cappedResult.androidMS.version, '4.8.0')
+  assert.equal(cappedResult.androidMS.build, 755)
   const filteredResult = await distributionController.getLatestDistributions({
     ...appRequest,
     query: {},
     url: '/distributions/latest?key%3DandroidHF%26key%3DmacosMS'
   })
   assert.deepEqual(Object.keys(filteredResult), ['androidHF', 'macosMS'])
-  assert.equal(filteredResult.androidHF.version, '4.7.2')
-  assert.equal(filteredResult.androidHF.build, 754)
+  assert.equal(filteredResult.androidHF.version, '4.8.0')
+  assert.equal(filteredResult.androidHF.build, 755)
   assert.equal(filteredResult.macosMS.build, 754)
 
   const records = []

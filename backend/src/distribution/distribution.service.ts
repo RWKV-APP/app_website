@@ -6,7 +6,24 @@ import { DistributionType } from '../types/distribution';
 import { Config } from '../config';
 import { ReleaseNotesService } from './release-notes.service';
 
-const LATEST_PUBLISHED_APP_VERSION = '4.7.2';
+const LATEST_PUBLISHED_APP_VERSION = '4.8.0';
+// Apple and deferred mirrors retain their last verified release.
+const CURRENT_RELEASE_TYPES = new Set<string>([
+  DistributionType.winMS,
+  DistributionType.winGR,
+  DistributionType.winZipMS,
+  DistributionType.winZipGR,
+  DistributionType.winArm64MS,
+  DistributionType.winArm64GR,
+  DistributionType.winArm64ZipMS,
+  DistributionType.winArm64ZipGR,
+  DistributionType.linuxMS,
+  DistributionType.linuxGR,
+  DistributionType.linuxAppImageMS,
+  DistributionType.linuxAppImageGR,
+  DistributionType.androidMS,
+  DistributionType.androidGR,
+]);
 
 export interface DistributionSnapshotRecord {
   id: number;
@@ -1740,7 +1757,10 @@ export class DistributionService implements OnModuleInit {
     for (const record of records) {
       if (
         this.isSemanticVersion(record.version) &&
-        this.compareVersions(record.version, LATEST_PUBLISHED_APP_VERSION) > 0
+        this.compareVersions(
+          record.version,
+          CURRENT_RELEASE_TYPES.has(record.type) ? LATEST_PUBLISHED_APP_VERSION : '4.7.2',
+        ) > 0
       ) {
         continue;
       }
