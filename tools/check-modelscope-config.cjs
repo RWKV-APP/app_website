@@ -48,13 +48,12 @@ async function main() {
   }
 
   const metadata = { size: 11, timestamp: 456, sha256: 'a'.repeat(64) }
-  const releasedTypes = [
+  const releasedTypes = ['androidMS']
+  const deferredTypes = [
     'winMS', 'winGR', 'winZipMS', 'winZipGR',
     'winArm64MS', 'winArm64GR', 'winArm64ZipMS', 'winArm64ZipGR',
     'linuxMS', 'linuxGR', 'linuxAppImageMS', 'linuxAppImageGR',
-    'androidMS', 'androidGR'
-  ]
-  const deferredTypes = [
+    'androidGR',
     'winHF', 'winZipHF', 'androidHF', 'linuxAF', 'linuxHFM',
     'macosMS', 'macosHF', 'macosAF', 'iOSAS'
   ]
@@ -101,8 +100,8 @@ async function main() {
   const appResult =
     await distributionController.getLatestDistributions(appRequest)
   for (const type of [
-    ...releasedTypes,
-    'winHF',
+    'androidMS',
+    'androidGR',
     'androidHF',
     'androidGooglePlay'
   ]) {
@@ -110,7 +109,7 @@ async function main() {
     assert.equal(appResult[type].version, '4.8.0')
     assert.equal(appResult[type].build, 755)
   }
-  for (const type of ['macosMS', 'iOSAS']) {
+  for (const type of deferredTypes.filter((type) => !type.startsWith('android'))) {
     assert.equal(appResult[type].version, '4.7.2')
     assert.equal(appResult[type].build, 754)
   }

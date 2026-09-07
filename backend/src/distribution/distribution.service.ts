@@ -7,22 +7,9 @@ import { Config } from '../config';
 import { ReleaseNotesService } from './release-notes.service';
 
 const LATEST_PUBLISHED_APP_VERSION = '4.8.0';
-// Apple and deferred mirrors retain their last verified release.
+// Only the verified Android ModelScope APK is published for this release.
 const CURRENT_RELEASE_TYPES = new Set<string>([
-  DistributionType.winMS,
-  DistributionType.winGR,
-  DistributionType.winZipMS,
-  DistributionType.winZipGR,
-  DistributionType.winArm64MS,
-  DistributionType.winArm64GR,
-  DistributionType.winArm64ZipMS,
-  DistributionType.winArm64ZipGR,
-  DistributionType.linuxMS,
-  DistributionType.linuxGR,
-  DistributionType.linuxAppImageMS,
-  DistributionType.linuxAppImageGR,
   DistributionType.androidMS,
-  DistributionType.androidGR,
 ]);
 
 export interface DistributionSnapshotRecord {
