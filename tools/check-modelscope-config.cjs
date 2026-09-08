@@ -48,14 +48,20 @@ async function main() {
   }
 
   const metadata = { size: 11, timestamp: 456, sha256: 'a'.repeat(64) }
-  const releasedTypes = ['androidMS']
+  const releasedTypes = [
+    'linuxHF', 'linuxMS', 'linuxGR',
+    'linuxAppImageHF', 'linuxAppImageMS', 'linuxAppImageGR',
+    'winHF', 'winMS', 'winGR', 'winZipHF', 'winZipMS', 'winZipGR',
+    'winArm64HF', 'winArm64MS', 'winArm64GR',
+    'winArm64ZipHF', 'winArm64ZipMS', 'winArm64ZipGR',
+    'androidHF', 'androidMS', 'androidGR'
+  ]
   const deferredTypes = [
-    'winMS', 'winGR', 'winZipMS', 'winZipGR',
-    'winArm64MS', 'winArm64GR', 'winArm64ZipMS', 'winArm64ZipGR',
-    'linuxMS', 'linuxGR', 'linuxAppImageMS', 'linuxAppImageGR',
-    'androidGR',
-    'winHF', 'winZipHF', 'androidHF', 'linuxAF', 'linuxHFM',
-    'macosMS', 'macosHF', 'macosAF', 'iOSAS'
+    'linuxAF', 'linuxHFM', 'linuxAppImageAF', 'linuxAppImageHFM',
+    'winAF', 'winHFM', 'winZipAF', 'winZipHFM',
+    'winArm64AF', 'winArm64HFM', 'winArm64ZipAF', 'winArm64ZipHFM',
+    'androidAF', 'androidHFM', 'androidPgyerAPK', 'androidPgyer',
+    'macosMS', 'macosHF', 'macosAF', 'macosHFM', 'iOSAS'
   ]
   const distributions = Object.fromEntries(
     [...releasedTypes, ...deferredTypes].map((type, id) => [
@@ -100,16 +106,15 @@ async function main() {
   const appResult =
     await distributionController.getLatestDistributions(appRequest)
   for (const type of [
-    'androidMS',
-    'androidGR',
-    'androidHF',
+    ...releasedTypes,
+    ...deferredTypes.filter((type) => !/^(macos|iOS)/.test(type)),
     'androidGooglePlay'
   ]) {
     // App clients receive the landing page and the latest version for their OS.
     assert.equal(appResult[type].version, '4.8.0')
     assert.equal(appResult[type].build, 755)
   }
-  for (const type of deferredTypes.filter((type) => !type.startsWith('android'))) {
+  for (const type of deferredTypes.filter((type) => /^(macos|iOS)/.test(type))) {
     assert.equal(appResult[type].version, '4.7.2')
     assert.equal(appResult[type].build, 754)
   }
@@ -119,8 +124,6 @@ async function main() {
     ...appRequest,
     headers: {}
   })
-  assert.equal(rawResult.winHF.build, 754)
-  assert.equal(rawResult.winHF.url, 'https://example.test/winHF')
   for (const type of releasedTypes) {
     assert.equal(rawResult[type].version, '4.8.0')
     assert.equal(rawResult[type].build, 755)
@@ -134,6 +137,14 @@ async function main() {
   assert.equal(rawResult.androidGooglePlay.version, 'latest')
   assert.equal(rawResult.macosGR, null)
   assert.equal(distributions.winHF.build, 754)
+  // An enabled channel stays on its existing version until its package exists.
+  const missingPackageService = new DistributionService({
+    distribution: { findMany: async () => [distributions.winHF] }
+  }, {})
+  const missingPackageResult = await missingPackageService.getLatestDistributions()
+  assert.equal(missingPackageResult.winHF.version, '4.7.2')
+  assert.equal(missingPackageResult.winHF.build, 754)
+  assert.equal(missingPackageResult.winMS, null)
   distributionRecords.unshift({
     ...distributions.androidMS,
     version: '4.10.0',
