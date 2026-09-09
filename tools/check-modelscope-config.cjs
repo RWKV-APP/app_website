@@ -49,8 +49,9 @@ async function main() {
 
   const metadata = { size: 11, timestamp: 456, sha256: 'a'.repeat(64) }
   const macosTypes = ['macosMS', 'macosHF', 'macosAF', 'macosGR', 'macosHFM']
+  const sourceLatestTypes = [...macosTypes, 'androidPgyerAPK', 'androidPgyer']
   const releasedTypes = [
-    ...macosTypes,
+    ...sourceLatestTypes,
     'linuxHF', 'linuxMS', 'linuxGR',
     'linuxAppImageHF', 'linuxAppImageMS', 'linuxAppImageGR',
     'winHF', 'winMS', 'winGR', 'winZipHF', 'winZipMS', 'winZipGR',
@@ -62,7 +63,7 @@ async function main() {
     'linuxAF', 'linuxHFM', 'linuxAppImageAF', 'linuxAppImageHFM',
     'winAF', 'winHFM', 'winZipAF', 'winZipHFM',
     'winArm64AF', 'winArm64HFM', 'winArm64ZipAF', 'winArm64ZipHFM',
-    'androidAF', 'androidHFM', 'androidPgyerAPK', 'androidPgyer',
+    'androidAF', 'androidHFM',
     'iOSAS'
   ]
   const distributions = Object.fromEntries(
@@ -163,8 +164,8 @@ async function main() {
   assert.equal(filteredResult.androidHF.build, 755)
   assert.equal(filteredResult.macosMS.build, 755)
 
-  // macOS has no hard-coded version ceiling, including after a cache refresh.
-  for (const type of macosTypes) {
+  // macOS and Pgyer follow published packages, including after a cache refresh.
+  for (const type of sourceLatestTypes) {
     distributionRecords.unshift({
       ...distributions[type],
       version: '4.10.0',
@@ -174,7 +175,7 @@ async function main() {
   }
   await distributionService.refreshLatestSnapshotAfterSync()
   const futureMacosResult = await distributionService.getLatestDistributions()
-  for (const type of macosTypes) {
+  for (const type of sourceLatestTypes) {
     assert.equal(futureMacosResult[type].version, '4.10.0')
     assert.equal(futureMacosResult[type].build, 756)
   }
@@ -185,6 +186,39 @@ async function main() {
   const missingMacosResult = await missingMacosService.getLatestDistributions()
   assert.equal(missingMacosResult.macosHF.version, '4.7.2')
   assert.equal(missingMacosResult.macosMS, null)
+
+  const axios = backendRequire('axios').default
+  const originalPost = axios.post
+  const pgyerRequests = []
+  const pgyerResponse = { data: { code: 0, data: {
+    buildKey: 'b'.repeat(32), buildShortcutUrl: 'rwkvchat',
+    buildVersion: '4.8.0', buildVersionNo: '755'
+  } } }
+  try {
+    axios.post = async (url, body) => {
+      pgyerRequests.push({ url, body: Object.fromEntries(body) })
+      return pgyerResponse
+    }
+    distributionService.activeRefreshMemo = { requests: new Map() }
+    const [apkInfo, pageInfo] = await Promise.all([
+      distributionService.fetchPgyerAppInfo('test-key', 'rwkvchat'),
+      distributionService.fetchPgyerAppInfo('test-key', 'rwkvchat')
+    ])
+    assert.equal(apkInfo, pageInfo)
+    assert.equal(pgyerRequests.length, 1)
+    assert.deepEqual(pgyerRequests[0], {
+      url: 'https://www.pgyer.com/apiv2/app/getByShortcut',
+      body: { _api_key: 'test-key', buildShortcutUrl: 'rwkvchat' }
+    })
+    await distributionService.fetchPgyerAppInfo('test-key', 'a'.repeat(32))
+    assert.deepEqual(pgyerRequests[1], {
+      url: 'https://www.pgyer.com/apiv2/app/view',
+      body: { _api_key: 'test-key', appKey: 'a'.repeat(32) }
+    })
+  } finally {
+    axios.post = originalPost
+    distributionService.activeRefreshMemo = null
+  }
 
   const records = []
   const activities = []

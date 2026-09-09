@@ -1292,15 +1292,17 @@ export class DistributionService implements OnModuleInit {
     apiKey: string,
     appKey: string,
   ): Promise<{ data: PgyerAppInfoResponse }> {
-    const apiUrl = 'https://www.pgyer.com/apiv2/app/view';
+    // Pgyer app/view requires an App Key; short URLs use getByShortcut.
+    const isAppKey = /^[a-f0-9]{32}$/i.test(appKey);
+    const apiUrl = `https://www.pgyer.com/apiv2/app/${isAppKey ? 'view' : 'getByShortcut'}`;
+    const params = new URLSearchParams({
+      _api_key: apiKey,
+      [isAppKey ? 'appKey' : 'buildShortcutUrl']: appKey,
+    });
     return this.memoizeRefreshRequest(
       JSON.stringify(['pgyer-app-info', apiUrl, apiKey, appKey]),
       () =>
-        axios.get<PgyerAppInfoResponse>(apiUrl, {
-          params: {
-            _api_key: apiKey,
-            appKey,
-          },
+        axios.post<PgyerAppInfoResponse>(apiUrl, params, {
           timeout: 30000,
         }),
     );
@@ -1335,7 +1337,7 @@ export class DistributionService implements OnModuleInit {
         `Calling Pgyer API for ${DistributionType.androidPgyerAPK} with appKey: ${trimmedAppKey}, apiKey length: ${trimmedApiKey.length}`,
       );
 
-      // Try GET request first (Pgyer API may prefer GET)
+      // Both Pgyer entries share the same response during a refresh.
       const response = await this.fetchPgyerAppInfo(trimmedApiKey, trimmedAppKey);
 
       if (!response.data || response.data.code !== 0) {
@@ -1434,7 +1436,7 @@ export class DistributionService implements OnModuleInit {
         `Calling Pgyer API for ${DistributionType.androidPgyer} with appKey: ${trimmedAppKey}, apiKey length: ${trimmedApiKey.length}`,
       );
 
-      // Try GET request first (Pgyer API may prefer GET)
+      // Both Pgyer entries share the same response during a refresh.
       const response = await this.fetchPgyerAppInfo(trimmedApiKey, trimmedAppKey);
 
       if (!response.data || response.data.code !== 0) {
@@ -1762,9 +1764,11 @@ export class DistributionService implements OnModuleInit {
     });
     const recordsByType = new Map<string, DistributionSnapshotRecord[]>();
     for (const record of records) {
-      // macOS follows the latest package actually discovered for each source.
+      // macOS and Pgyer follow the latest package actually discovered at the source.
       if (
         !record.type.startsWith('macos') &&
+        record.type !== DistributionType.androidPgyer &&
+        record.type !== DistributionType.androidPgyerAPK &&
         this.isSemanticVersion(record.version) &&
         this.compareVersions(
           record.version,
