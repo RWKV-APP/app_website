@@ -7,7 +7,7 @@ import { Config } from '../config';
 import { ReleaseNotesService } from './release-notes.service';
 
 const LATEST_PUBLISHED_APP_VERSION = '4.8.0';
-// Apple packages and unselected mirrors/stores retain the previous release.
+// Non-macOS channels retain their staged release policy.
 const CURRENT_RELEASE_TYPES = new Set<string>([
   DistributionType.linuxHF,
   DistributionType.linuxMS,
@@ -1762,7 +1762,9 @@ export class DistributionService implements OnModuleInit {
     });
     const recordsByType = new Map<string, DistributionSnapshotRecord[]>();
     for (const record of records) {
+      // macOS follows the latest package actually discovered for each source.
       if (
+        !record.type.startsWith('macos') &&
         this.isSemanticVersion(record.version) &&
         this.compareVersions(
           record.version,

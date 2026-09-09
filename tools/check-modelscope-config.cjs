@@ -48,7 +48,9 @@ async function main() {
   }
 
   const metadata = { size: 11, timestamp: 456, sha256: 'a'.repeat(64) }
+  const macosTypes = ['macosMS', 'macosHF', 'macosAF', 'macosGR', 'macosHFM']
   const releasedTypes = [
+    ...macosTypes,
     'linuxHF', 'linuxMS', 'linuxGR',
     'linuxAppImageHF', 'linuxAppImageMS', 'linuxAppImageGR',
     'winHF', 'winMS', 'winGR', 'winZipHF', 'winZipMS', 'winZipGR',
@@ -61,7 +63,7 @@ async function main() {
     'winAF', 'winHFM', 'winZipAF', 'winZipHFM',
     'winArm64AF', 'winArm64HFM', 'winArm64ZipAF', 'winArm64ZipHFM',
     'androidAF', 'androidHFM', 'androidPgyerAPK', 'androidPgyer',
-    'macosMS', 'macosHF', 'macosAF', 'macosHFM', 'iOSAS'
+    'iOSAS'
   ]
   const distributions = Object.fromEntries(
     [...releasedTypes, ...deferredTypes].map((type, id) => [
@@ -83,9 +85,8 @@ async function main() {
     version: 'latest',
     build: null
   }
-  distributions.macosGR = null
   const distributionRecords = Object.values(distributions).filter(Boolean)
-  for (const type of [...releasedTypes, ...deferredTypes, 'macosGR']) {
+  for (const type of [...releasedTypes, ...deferredTypes]) {
     distributionRecords.unshift({
       ...distributions.androidMS,
       type,
@@ -118,7 +119,6 @@ async function main() {
     assert.equal(appResult[type].version, '4.7.2')
     assert.equal(appResult[type].build, 754)
   }
-  assert.equal(appResult.macosGR, null)
   assert.equal(appResult.androidMS.url, 'https://rwkv.halowang.cloud/')
   const rawResult = await distributionController.getLatestDistributions({
     ...appRequest,
@@ -135,7 +135,6 @@ async function main() {
     assert.equal(rawResult[type].url, distributions[type].url)
   }
   assert.equal(rawResult.androidGooglePlay.version, 'latest')
-  assert.equal(rawResult.macosGR, null)
   assert.equal(distributions.winHF.build, 754)
   // An enabled channel stays on its existing version until its package exists.
   const missingPackageService = new DistributionService({
@@ -162,7 +161,30 @@ async function main() {
   assert.deepEqual(Object.keys(filteredResult), ['androidHF', 'macosMS'])
   assert.equal(filteredResult.androidHF.version, '4.8.0')
   assert.equal(filteredResult.androidHF.build, 755)
-  assert.equal(filteredResult.macosMS.build, 754)
+  assert.equal(filteredResult.macosMS.build, 755)
+
+  // macOS has no hard-coded version ceiling, including after a cache refresh.
+  for (const type of macosTypes) {
+    distributionRecords.unshift({
+      ...distributions[type],
+      version: '4.10.0',
+      build: 756,
+      url: `https://example.test/${type}/4.10.0`
+    })
+  }
+  await distributionService.refreshLatestSnapshotAfterSync()
+  const futureMacosResult = await distributionService.getLatestDistributions()
+  for (const type of macosTypes) {
+    assert.equal(futureMacosResult[type].version, '4.10.0')
+    assert.equal(futureMacosResult[type].build, 756)
+  }
+  assert.equal(futureMacosResult.androidMS.version, '4.8.0')
+  const missingMacosService = new DistributionService({
+    distribution: { findMany: async () => [distributions.macosHF] }
+  }, {})
+  const missingMacosResult = await missingMacosService.getLatestDistributions()
+  assert.equal(missingMacosResult.macosHF.version, '4.7.2')
+  assert.equal(missingMacosResult.macosMS, null)
 
   const records = []
   const activities = []
