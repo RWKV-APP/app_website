@@ -111,8 +111,10 @@ identical in-flight requests, and discard failures. HTTP responses cache for
 15 seconds and negotiate gzip for large JSON bodies (up to 45 seconds combined
 data freshness). Ingest remains uncached.
 
-The matrix searches loaded data locally, displays 20 chip/platform rows and 10
-model columns per page, and preserves all filtered columns in exported reports.
+The matrix searches loaded data locally and displays all matching rows and model
+columns in one continuous scrollable matrix, without pagination. Rows fill in
+automatically in idle-time batches. All filter groups and SoC options remain
+expanded and visible. Exported reports preserve all filtered columns.
 Version/build-mode changes cancel superseded network requests. Empty results
 retain the filters and reset control. `pnpm check:telemetry` covers query reuse,
 expiry, retries, field privacy and HTTP compression negotiation.

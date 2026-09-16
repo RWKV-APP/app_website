@@ -133,8 +133,25 @@ interface StackedCellLabel {
 const LS_KEY_MODEL_TAG = 'rwkv-perf-filter-model-tag';
 const LS_KEY_SIZE = 'rwkv-perf-filter-size';
 const LS_KEY_BRAND = 'rwkv-perf-filter-brand';
-const ROWS_PER_PAGE = 20;
-const COLUMNS_PER_PAGE = 10;
+const INITIAL_RENDERED_ROWS = 12;
+const RENDER_ROW_CHUNK = 12;
+
+type IdleWindow = Window & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+  cancelIdleCallback?: (handle: number) => void;
+};
+
+function scheduleRowRender(callback: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const idleWindow = window as IdleWindow;
+  if (idleWindow.requestIdleCallback && idleWindow.cancelIdleCallback) {
+    const handle = idleWindow.requestIdleCallback(callback, { timeout: 120 });
+    return () => idleWindow.cancelIdleCallback?.(handle);
+  }
+
+  const handle = window.setTimeout(callback, 16);
+  return () => window.clearTimeout(handle);
+}
 
 function parseFilterList(value: string | null | undefined): string[] {
   if (!value) return [];
@@ -898,8 +915,7 @@ export default function ModelFitPreviewPage() {
   const [selectedSoc, setSelectedSoc] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search.trim().toLowerCase());
-  const [rowPage, setRowPage] = useState(0);
-  const [columnPage, setColumnPage] = useState(0);
+  const [renderedRowLimit, setRenderedRowLimit] = useState(INITIAL_RENDERED_ROWS);
   const [reloadKey, setReloadKey] = useState(0);
   const [sidebarError, setSidebarError] = useState<string | null>(null);
   const recordsRequest = useRef<AbortController | null>(null);
@@ -1150,28 +1166,26 @@ export default function ModelFitPreviewPage() {
   }, [platforms]);
 
   useEffect(() => {
-    setRowPage(0);
-    setColumnPage(0);
-  }, [filteredData]);
+    setRenderedRowLimit(Math.min(INITIAL_RENDERED_ROWS, displayRows.length));
+  }, [displayRows.length, weightColumns.length]);
 
-  const lastRowPage = Math.max(0, Math.ceil(displayRows.length / ROWS_PER_PAGE) - 1);
-  const lastColumnPage = Math.max(0, Math.ceil(weightColumns.length / COLUMNS_PER_PAGE) - 1);
-  const currentRowPage = Math.min(rowPage, lastRowPage);
-  const currentColumnPage = Math.min(columnPage, lastColumnPage);
-  const renderedDisplayRows = displayRows.slice(
-    currentRowPage * ROWS_PER_PAGE,
-    (currentRowPage + 1) * ROWS_PER_PAGE,
-  );
-  const visibleColumns = weightColumns.slice(
-    currentColumnPage * COLUMNS_PER_PAGE,
-    (currentColumnPage + 1) * COLUMNS_PER_PAGE,
+  useEffect(() => {
+    if (renderedRowLimit >= displayRows.length) return;
+    return scheduleRowRender(() => {
+      setRenderedRowLimit((current) => Math.min(current + RENDER_ROW_CHUNK, displayRows.length));
+    });
+  }, [displayRows.length, renderedRowLimit]);
+
+  const renderedDisplayRows = useMemo(
+    () => displayRows.slice(0, renderedRowLimit),
+    [displayRows, renderedRowLimit],
   );
 
   const matrixGridStyle = useMemo<CSSProperties>(
     () => ({
-      gridTemplateColumns: `var(--soc-column-width) repeat(${Math.max(visibleColumns.length, 1)}, var(--metric-column-width))`,
+      gridTemplateColumns: `var(--soc-column-width) repeat(${Math.max(weightColumns.length, 1)}, var(--metric-column-width))`,
     }),
-    [visibleColumns.length],
+    [weightColumns.length],
   );
 
   const exportFileBaseName = useMemo(() => {
@@ -1510,177 +1524,172 @@ export default function ModelFitPreviewPage() {
                 </div>
               ) : null}
 
-              <details className={styles.advancedFilters}>
-                <summary>更多筛选 · 芯片 / 后端 / 并发 / 版本</summary>
-                <div className={styles.advancedContent}>
-                  {/* Batch */}
-                  {availableBatchCounts.length > 1 ? (
-                    <div className={styles.tabRow}>
-                      <span className={styles.filterLabel}>并发</span>
-                      <button
-                        type="button"
-                        className={`${styles.tabButtonSmall} ${selectedBatch.length === 0 ? styles.tabButtonSelected : ''}`}
-                        aria-pressed={selectedBatch.length === 0}
-                        onClick={() => setSelectedBatch([])}
-                      >
-                        不限制
-                      </button>
-                      {availableBatchCounts.map((bc) => (
-                        <button
-                          key={bc}
-                          type="button"
-                          className={`${styles.tabButtonSmall} ${selectedBatch.includes(String(bc)) ? styles.tabButtonSelected : ''}`}
-                          aria-pressed={selectedBatch.includes(String(bc))}
-                          onClick={() =>
-                            setSelectedBatch((current) => toggleFilterValue(current, String(bc)))
-                          }
-                        >
-                          {bc === 1 ? '单条' : `batch×${bc}`}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  {/* Backend */}
-                  {availableBackends.length > 1 ? (
-                    <div className={styles.tabRow}>
-                      <span className={styles.filterLabel}>Backend</span>
-                      <button
-                        type="button"
-                        className={`${styles.tabButtonSmall} ${selectedBackend.length === 0 ? styles.tabButtonSelected : ''}`}
-                        aria-pressed={selectedBackend.length === 0}
-                        onClick={() => setSelectedBackend([])}
-                      >
-                        不限制
-                      </button>
-                      {availableBackends.map((backend) => (
-                        <button
-                          key={backend}
-                          type="button"
-                          className={`${styles.tabButtonSmall} ${selectedBackend.includes(backend) ? styles.tabButtonSelected : ''}`}
-                          aria-pressed={selectedBackend.includes(backend)}
-                          onClick={() =>
-                            setSelectedBackend((current) => toggleFilterValue(current, backend))
-                          }
-                        >
-                          {backend}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  {/* SoC brand */}
-                  {availableBrands.length > 1 ? (
-                    <div className={styles.tabRow}>
-                      <span className={styles.filterLabel}>芯片</span>
-                      <button
-                        type="button"
-                        className={`${styles.brandFilterTag} ${selectedBrand.length === 0 ? styles.tabButtonSelected : ''}`}
-                        aria-pressed={selectedBrand.length === 0}
-                        onClick={clearBrandFilter}
-                      >
-                        不限制
-                      </button>
-                      {availableBrands.map((brand) => (
-                        <button
-                          key={brand}
-                          type="button"
-                          className={`${styles.brandFilterTag} ${selectedBrand.includes(brand) ? styles.tabButtonSelected : ''}`}
-                          aria-pressed={selectedBrand.includes(brand)}
-                          onClick={() => handleBrandChange(brand)}
-                        >
-                          <BrandIcon brand={brand} className={styles.brandFilterIcon} />
-                          {BRAND_LABELS[brand] ?? brand}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  {/* Individual SoC */}
-                  {availableSocs.length > 1 ? (
-                    <div className={`${styles.tabRow} ${styles.socOptions}`}>
-                      <span className={styles.filterLabel}>SoC</span>
-                      <button
-                        type="button"
-                        className={`${styles.tabButtonSmall} ${selectedSoc.length === 0 ? styles.tabButtonSelected : ''}`}
-                        aria-pressed={selectedSoc.length === 0}
-                        onClick={() => setSelectedSoc([])}
-                      >
-                        不限制
-                      </button>
-                      {availableSocs.map((soc) => (
-                        <button
-                          key={soc}
-                          type="button"
-                          className={`${styles.tabButtonSmall} ${selectedSoc.includes(soc) ? styles.tabButtonSelected : ''}`}
-                          aria-pressed={selectedSoc.includes(soc)}
-                          onClick={() =>
-                            setSelectedSoc((current) => toggleFilterValue(current, soc))
-                          }
-                          title={soc}
-                        >
-                          {formatSocFilterLabel({ socName: soc })}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  {/* APP version */}
-                  {appVersions.length > 0 ? (
-                    <div className={styles.tabRow}>
-                      <span className={styles.filterLabel}>APP 版本</span>
-                      <button
-                        type="button"
-                        className={`${styles.tabButtonSmall} ${selectedVersion.length === 0 ? styles.tabButtonSelected : ''}`}
-                        aria-pressed={selectedVersion.length === 0}
-                        onClick={() => setSelectedVersion([])}
-                      >
-                        不限制
-                      </button>
-                      {appVersions.map((v) => (
-                        <button
-                          key={v}
-                          type="button"
-                          className={`${styles.tabButtonSmall} ${selectedVersion.includes(v) ? styles.tabButtonSelected : ''}`}
-                          aria-pressed={selectedVersion.includes(v)}
-                          onClick={() =>
-                            setSelectedVersion((current) => toggleFilterValue(current, v))
-                          }
-                        >
-                          v{v}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  {buildModes.length > 0 ? (
-                    <div className={styles.tabRow}>
-                      <span className={styles.filterLabel}>构建模式</span>
-                      <button
-                        type="button"
-                        className={`${styles.tabButtonSmall} ${selectedBuildMode.length === 0 ? styles.tabButtonSelected : ''}`}
-                        aria-pressed={selectedBuildMode.length === 0}
-                        onClick={() => setSelectedBuildMode([])}
-                      >
-                        不限制
-                      </button>
-                      {buildModes.map((buildMode) => (
-                        <button
-                          key={buildMode}
-                          type="button"
-                          className={`${styles.tabButtonSmall} ${selectedBuildMode.includes(buildMode) ? styles.tabButtonSelected : ''}`}
-                          aria-pressed={selectedBuildMode.includes(buildMode)}
-                          onClick={() =>
-                            setSelectedBuildMode((current) => toggleFilterValue(current, buildMode))
-                          }
-                        >
-                          {BUILD_MODE_LABELS[buildMode] ?? buildMode}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
+              {/* Batch */}
+              {availableBatchCounts.length > 1 ? (
+                <div className={styles.tabRow}>
+                  <span className={styles.filterLabel}>并发</span>
+                  <button
+                    type="button"
+                    className={`${styles.tabButtonSmall} ${selectedBatch.length === 0 ? styles.tabButtonSelected : ''}`}
+                    aria-pressed={selectedBatch.length === 0}
+                    onClick={() => setSelectedBatch([])}
+                  >
+                    不限制
+                  </button>
+                  {availableBatchCounts.map((bc) => (
+                    <button
+                      key={bc}
+                      type="button"
+                      className={`${styles.tabButtonSmall} ${selectedBatch.includes(String(bc)) ? styles.tabButtonSelected : ''}`}
+                      aria-pressed={selectedBatch.includes(String(bc))}
+                      onClick={() =>
+                        setSelectedBatch((current) => toggleFilterValue(current, String(bc)))
+                      }
+                    >
+                      {bc === 1 ? '单条' : `batch×${bc}`}
+                    </button>
+                  ))}
                 </div>
-              </details>
+              ) : null}
+
+              {/* Backend */}
+              {availableBackends.length > 1 ? (
+                <div className={styles.tabRow}>
+                  <span className={styles.filterLabel}>Backend</span>
+                  <button
+                    type="button"
+                    className={`${styles.tabButtonSmall} ${selectedBackend.length === 0 ? styles.tabButtonSelected : ''}`}
+                    aria-pressed={selectedBackend.length === 0}
+                    onClick={() => setSelectedBackend([])}
+                  >
+                    不限制
+                  </button>
+                  {availableBackends.map((backend) => (
+                    <button
+                      key={backend}
+                      type="button"
+                      className={`${styles.tabButtonSmall} ${selectedBackend.includes(backend) ? styles.tabButtonSelected : ''}`}
+                      aria-pressed={selectedBackend.includes(backend)}
+                      onClick={() =>
+                        setSelectedBackend((current) => toggleFilterValue(current, backend))
+                      }
+                    >
+                      {backend}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {/* SoC brand */}
+              {availableBrands.length > 1 ? (
+                <div className={styles.tabRow}>
+                  <span className={styles.filterLabel}>芯片</span>
+                  <button
+                    type="button"
+                    className={`${styles.brandFilterTag} ${selectedBrand.length === 0 ? styles.tabButtonSelected : ''}`}
+                    aria-pressed={selectedBrand.length === 0}
+                    onClick={clearBrandFilter}
+                  >
+                    不限制
+                  </button>
+                  {availableBrands.map((brand) => (
+                    <button
+                      key={brand}
+                      type="button"
+                      className={`${styles.brandFilterTag} ${selectedBrand.includes(brand) ? styles.tabButtonSelected : ''}`}
+                      aria-pressed={selectedBrand.includes(brand)}
+                      onClick={() => handleBrandChange(brand)}
+                    >
+                      <BrandIcon brand={brand} className={styles.brandFilterIcon} />
+                      {BRAND_LABELS[brand] ?? brand}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {/* Individual SoC */}
+              {availableSocs.length > 1 ? (
+                <div className={styles.tabRow}>
+                  <span className={styles.filterLabel}>SoC</span>
+                  <button
+                    type="button"
+                    className={`${styles.tabButtonSmall} ${selectedSoc.length === 0 ? styles.tabButtonSelected : ''}`}
+                    aria-pressed={selectedSoc.length === 0}
+                    onClick={() => setSelectedSoc([])}
+                  >
+                    不限制
+                  </button>
+                  {availableSocs.map((soc) => (
+                    <button
+                      key={soc}
+                      type="button"
+                      className={`${styles.tabButtonSmall} ${selectedSoc.includes(soc) ? styles.tabButtonSelected : ''}`}
+                      aria-pressed={selectedSoc.includes(soc)}
+                      onClick={() =>
+                        setSelectedSoc((current) => toggleFilterValue(current, soc))
+                      }
+                      title={soc}
+                    >
+                      {formatSocFilterLabel({ socName: soc })}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {/* APP version */}
+              {appVersions.length > 0 ? (
+                <div className={styles.tabRow}>
+                  <span className={styles.filterLabel}>APP 版本</span>
+                  <button
+                    type="button"
+                    className={`${styles.tabButtonSmall} ${selectedVersion.length === 0 ? styles.tabButtonSelected : ''}`}
+                    aria-pressed={selectedVersion.length === 0}
+                    onClick={() => setSelectedVersion([])}
+                  >
+                    不限制
+                  </button>
+                  {appVersions.map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      className={`${styles.tabButtonSmall} ${selectedVersion.includes(v) ? styles.tabButtonSelected : ''}`}
+                      aria-pressed={selectedVersion.includes(v)}
+                      onClick={() =>
+                        setSelectedVersion((current) => toggleFilterValue(current, v))
+                      }
+                    >
+                      v{v}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {buildModes.length > 0 ? (
+                <div className={styles.tabRow}>
+                  <span className={styles.filterLabel}>构建模式</span>
+                  <button
+                    type="button"
+                    className={`${styles.tabButtonSmall} ${selectedBuildMode.length === 0 ? styles.tabButtonSelected : ''}`}
+                    aria-pressed={selectedBuildMode.length === 0}
+                    onClick={() => setSelectedBuildMode([])}
+                  >
+                    不限制
+                  </button>
+                  {buildModes.map((buildMode) => (
+                    <button
+                      key={buildMode}
+                      type="button"
+                      className={`${styles.tabButtonSmall} ${selectedBuildMode.includes(buildMode) ? styles.tabButtonSelected : ''}`}
+                      aria-pressed={selectedBuildMode.includes(buildMode)}
+                      onClick={() =>
+                        setSelectedBuildMode((current) => toggleFilterValue(current, buildMode))
+                      }
+                    >
+                      {BUILD_MODE_LABELS[buildMode] ?? buildMode}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
 
               <div className={styles.metaBlock} role="status" aria-live="polite">
                 <span>
@@ -1729,58 +1738,14 @@ export default function ModelFitPreviewPage() {
                   </p>
                 </section>
 
-                <div className={styles.pagination} aria-label="矩阵分页">
-                  <div>
-                    <span>
-                      芯片 {currentRowPage * ROWS_PER_PAGE + 1}–
-                      {Math.min((currentRowPage + 1) * ROWS_PER_PAGE, displayRows.length)} /{' '}
-                      {displayRows.length}
-                    </span>
-                    <button
-                      aria-label="上一页芯片"
-                      disabled={currentRowPage === 0}
-                      onClick={() => setRowPage(currentRowPage - 1)}
-                    >
-                      上一页
-                    </button>
-                    <button
-                      aria-label="下一页芯片"
-                      disabled={currentRowPage === lastRowPage}
-                      onClick={() => setRowPage(currentRowPage + 1)}
-                    >
-                      下一页
-                    </button>
-                  </div>
-                  <div>
-                    <span>
-                      模型 {currentColumnPage * COLUMNS_PER_PAGE + 1}–
-                      {Math.min((currentColumnPage + 1) * COLUMNS_PER_PAGE, weightColumns.length)} /{' '}
-                      {weightColumns.length}
-                    </span>
-                    <button
-                      aria-label="上一组模型"
-                      disabled={currentColumnPage === 0}
-                      onClick={() => setColumnPage(currentColumnPage - 1)}
-                    >
-                      上一组
-                    </button>
-                    <button
-                      aria-label="下一组模型"
-                      disabled={currentColumnPage === lastColumnPage}
-                      onClick={() => setColumnPage(currentColumnPage + 1)}
-                    >
-                      下一组
-                    </button>
-                  </div>
-                </div>
                 <section className={styles.tableSection} aria-busy={loading}>
                   <div className={styles.tableWrap}>
                     <div className={styles.matrixGrid} style={matrixGridStyle}>
                       <div className={`${styles.rowHead} ${styles.cornerHead}`}>SoC</div>
-                      {visibleColumns.map((col, colIndex) => (
+                      {weightColumns.map((col, colIndex) => (
                         <div
                           key={col.key}
-                          className={`${styles.weightHead} ${colIndex === visibleColumns.length - 1 ? styles.lastCol : ''}`}
+                          className={`${styles.weightHead} ${colIndex === weightColumns.length - 1 ? styles.lastCol : ''}`}
                         >
                           <div className={styles.weightTitle}>{col.label}</div>
                           <div className={styles.weightName} title={col.fileName}>
@@ -1856,9 +1821,9 @@ export default function ModelFitPreviewPage() {
                             ) : null}
                             {rowMeta ? <div className={styles.rowMeta}>{rowMeta}</div> : null}
                           </div>,
-                          ...visibleColumns.map((col, colIndex) => {
+                          ...weightColumns.map((col, colIndex) => {
                             const cell = row.cells[col.key];
-                            const isLastCol = colIndex === visibleColumns.length - 1;
+                            const isLastCol = colIndex === weightColumns.length - 1;
                             const cellBaseClass = `${styles.speedCell} ${isLastCol ? styles.lastCol : ''} ${isLastRow ? styles.lastRow : ''}`;
 
                             if (!cell) {
@@ -1947,7 +1912,7 @@ export default function ModelFitPreviewPage() {
                   样本来自社区上报，不同后端、量化、并发和构建模式应分别比较；不作为官方兼容性保证。
                 </li>
                 <li>
-                  芯片旁的「报表」包含当前筛选下的全部模型统计，不受矩阵分页影响。空白单元格表示暂无样本，不代表不支持。
+                  芯片旁的「报表」包含当前筛选下的全部模型统计，与矩阵中的筛选结果一致。空白单元格表示暂无样本，不代表不支持。
                 </li>
               </ul>
             </section>

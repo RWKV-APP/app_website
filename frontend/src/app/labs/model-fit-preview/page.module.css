@@ -327,8 +327,7 @@
   --metric-column-width: 156px;
   --matrix-header-height: 56px;
   --matrix-row-min-height: 92px;
-  overflow: auto;
-  max-height: 70vh;
+  overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   position: relative;
   isolation: isolate;
@@ -932,62 +931,6 @@
   color: var(--color-secondary-text);
   opacity: 1;
 }
-.advancedFilters {
-  margin-top: 4px;
-  border-top: 1px solid var(--color-border);
-}
-.advancedFilters summary {
-  padding: 14px 0 4px;
-  min-height: 44px;
-  cursor: pointer;
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-.advancedContent {
-  display: grid;
-  gap: 12px;
-  padding: 16px 0 4px;
-}
-.socOptions {
-  max-height: 200px;
-  overflow-y: auto;
-  align-content: start;
-}
-.pagination {
-  display: flex;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin: 14px 0;
-  font-size: 0.8125rem;
-}
-.pagination > div {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-.pagination span {
-  font-variant-numeric: tabular-nums;
-  margin-right: 4px;
-}
-.pagination button {
-  min-height: 36px;
-  padding: 6px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  background: var(--color-background);
-  color: var(--color-foreground);
-  cursor: pointer;
-  font: inherit;
-}
-.pagination button:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-.pagination button:not(:disabled):hover {
-  background: var(--color-surface);
-}
 .main :is(button, input, summary, a):focus-visible {
   outline: 2px solid var(--color-link);
   outline-offset: 3px;
@@ -1035,7 +978,6 @@
   .tabButtonSmall,
   .brandFilterTag,
   .resetButton,
-  .pagination button,
   .heroActionLink {
     min-height: 44px;
   }
