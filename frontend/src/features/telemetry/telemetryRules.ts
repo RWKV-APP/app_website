@@ -270,6 +270,42 @@ export function telemetrySocKey(value: string): string {
   return normalizeTelemetrySocName(value).toLowerCase();
 }
 
+export function telemetryLegacySocGroupValues(value: string, socNames: string[]): string[] | null {
+  const legacy = value.match(
+    /^(Qualcomm|MediaTek|Apple|Samsung|Intel|AMD|NVIDIA|Huawei|Google) 芯片（型号待识别）$/,
+  );
+  if (!legacy) return null;
+  return Array.from(
+    new Set(
+      socNames.filter((socName) => {
+        const label = formatConsumerSocName(socName);
+        if (!label.endsWith('（型号待识别）')) return false;
+        const name = normalizeTelemetrySocName(socName);
+        const brand = /qualcomm|snapdragon|\b(?:sm|sdm|qcm)\d|^(?:778|x1)$/i.test(name)
+          ? 'Qualcomm'
+          : /mediatek|dimensity|helio|\bmt\d/i.test(name)
+            ? 'MediaTek'
+            : /apple|iphone|ipad|ipod/i.test(name)
+              ? 'Apple'
+              : /exynos|samsung|^sm-/i.test(name)
+                ? 'Samsung'
+                : /intel/i.test(name)
+                  ? 'Intel'
+                  : /amd|advanced micro devices/i.test(name)
+                    ? 'AMD'
+                    : /nvidia/i.test(name)
+                      ? 'NVIDIA'
+                      : /kirin|huawei/i.test(name)
+                        ? 'Huawei'
+                        : /tensor|google|pixel/i.test(name)
+                          ? 'Google'
+                          : null;
+        return brand === legacy[1];
+      }),
+    ),
+  );
+}
+
 // Public filter labels may cover several distinct statistics identities.
 export function telemetrySocFilterLabels(
   data: TelemetryLeaderboardEntry[],
@@ -278,6 +314,13 @@ export function telemetrySocFilterLabels(
   return Array.from(
     new Set(
       values.flatMap((value) => {
+        const legacyValues = telemetryLegacySocGroupValues(
+          value,
+          data.map((entry) => entry.socName),
+        );
+        if (legacyValues !== null) {
+          return legacyValues.length ? legacyValues.map(formatConsumerSocName) : [value];
+        }
         // Current public groups must not be reinterpreted as historical raw aliases.
         if (formatConsumerSocName(value) === value) return [value];
         const key = telemetrySocKey(value);

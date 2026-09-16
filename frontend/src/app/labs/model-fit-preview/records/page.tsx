@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ThemeSwitcher } from '@/components';
+import { telemetryLegacySocGroupValues } from '@/features/telemetry/telemetryRules';
 import { formatConsumerSocName, resolveAppleDevicePresentation } from '@/utils/appleDeviceInfo';
 import {
   AdminTelemetryPerfFilters,
@@ -166,17 +167,22 @@ export default function TelemetryRecordsPage() {
   const [selectedVersion, setSelectedVersion] = useState<string[]>([]);
   const [selectedBuildMode, setSelectedBuildMode] = useState<string[]>([]);
   const [selectedRecordId, setSelectedRecordId] = useState('');
+  const expandedSelectedSoc = useMemo(
+    () =>
+      selectedSoc.flatMap((value) => telemetryLegacySocGroupValues(value, filters.socs) ?? [value]),
+    [selectedSoc, filters.socs],
+  );
   const socGroups = useMemo(() => {
     const groups = new Map<string, string[]>();
-    for (const value of Array.from(new Set([...filters.socs, ...selectedSoc]))) {
+    for (const value of Array.from(new Set([...filters.socs, ...expandedSelectedSoc]))) {
       const label = formatConsumerSocName(value);
       groups.set(label, [...(groups.get(label) ?? []), value]);
     }
     return Array.from(groups, ([label, values]) => ({ label, values }));
-  }, [filters.socs, selectedSoc]);
+  }, [filters.socs, expandedSelectedSoc]);
   const selectedSocLabels = useMemo(
-    () => new Set(selectedSoc.map(formatConsumerSocName)),
-    [selectedSoc],
+    () => new Set(expandedSelectedSoc.map(formatConsumerSocName)),
+    [expandedSelectedSoc],
   );
   const selectedSocQueryValues = useMemo(
     () =>
@@ -227,6 +233,12 @@ export default function TelemetryRecordsPage() {
 
   useEffect(() => {
     if (!pageReady || loadingFilters) return;
+    if (selectedSoc.length > 0 && selectedSocQueryValues.length === 0) {
+      setPageData({ items: [], page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 });
+      setLoading(false);
+      setError(null);
+      return;
+    }
     const controller = new AbortController();
     let cancelled = false;
     setLoading(true);
@@ -285,6 +297,7 @@ export default function TelemetryRecordsPage() {
     selectedOs,
     selectedRecordId,
     selectedSize,
+    selectedSoc.length,
     selectedSocQueryValues,
     selectedVersion,
   ]);
@@ -565,10 +578,12 @@ export default function TelemetryRecordsPage() {
                   selected={selectedSocLabels.has(label)}
                   title={label}
                   onClick={() => {
-                    setSelectedSoc((current) =>
+                    setSelectedSoc(
                       selectedSocLabels.has(label)
-                        ? current.filter((value) => formatConsumerSocName(value) !== label)
-                        : [...current, ...values],
+                        ? expandedSelectedSoc.filter(
+                            (value) => formatConsumerSocName(value) !== label,
+                          )
+                        : [...expandedSelectedSoc, ...values],
                     );
                     resetToFirstPage({ clearRecordId: true });
                   }}

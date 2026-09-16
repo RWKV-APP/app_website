@@ -13,9 +13,9 @@ The shared registry is [`packages/contracts/src/telemetry-soc.ts`](../packages/c
 
 ## Public consumer labels
 
-The public performance matrix, filters, reports and record details display consumer chip names. Internal SM, SDM, MT, QCM, PCI and Apple device identifiers must never be used as visible SoC labels or tooltip/accessibility text. Unknown parts use a vendor-qualified “芯片（型号待识别）” label. Do not guess a retail variant to avoid that label.
+The public performance matrix, filters, reports and record details display consumer chip names. Identified chips use their consumer names. Unidentified chips display their complete internal identifier followed by “（型号待识别）”, including every supplied revision or package suffix, consistently in filters, matrix titles, reports, tooltips and record details. Only missing identifiers use “芯片型号待识别”. Do not guess a retail variant to avoid that label.
 
-The frontend consumer formatter is separate from statistical identity. Equal public labels form one filter option covering all corresponding identities. Matrix rows and record queries retain their original keys; a public family or unknown label never combines their measurements. Legacy filter selections resolve through their original canonical/reported identities before migrating to public groups. Original identifiers remain searchable.
+The frontend consumer formatter is separate from statistical identity. Equal public labels form one filter option covering all corresponding identities; different unresolved identifiers have separate options. Matrix rows and record queries retain their original keys; a public family or unknown label never combines their measurements. Legacy filter selections resolve through their original canonical/reported identities before migrating to public groups. Older vendor-wide unidentified groups expand into the current unidentified chip options for that vendor, excluding chips that have since been identified. Original identifiers remain searchable.
 
 Snapdragon X CPU implementation strings are shown by their reported retail family; Dragonwing and Adreno also use public family names. These display labels do not assert an exact SKU. Desktop CPU/GPU labels omit trademark boilerplate, PCI implementation codes and revision strings. Raw ingest and historical rows remain unchanged.
 

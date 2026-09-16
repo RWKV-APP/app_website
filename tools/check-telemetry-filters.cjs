@@ -351,7 +351,7 @@ assert.deepEqual(
 )
 assert.deepEqual(
   getTelemetryFilterOptions(neuropilotRows, familyFilters).selectedSoc,
-  ['MediaTek 芯片（型号待识别）'],
+  ['MediaTek test device（型号待识别）'],
   'other facets match a selected NeuroPilot family'
 )
 const neuropilotMatches = filterLeaderboardData(neuropilotRows, familyFilters)
@@ -483,11 +483,14 @@ const mixedVersions = parseTelemetryFilterState(
 assert.deepEqual(mixedVersions.selectedVersion, ['4.6.7', '4.6.8-rc.1'])
 assert.deepEqual(mixedVersions.selectedBuildMode, [])
 
-// Public chip labels cannot expose engineering identifiers; display grouping
-// must leave record identities intact and keep identified chips out of unknowns.
+// Known chips use consumer names; unidentified chips retain exact identifiers.
+// Display grouping must preserve record identities and unresolved suffixes.
 for (const [raw, label] of [
-  ['Qualcomm SM6225', 'Qualcomm 芯片（型号待识别）'],
-  ['MT6771', 'MediaTek 芯片（型号待识别）'],
+  ['Qualcomm SM6225', 'Qualcomm SM6225（型号待识别）'],
+  ['MT6771', 'MediaTek MT6771（型号待识别）'],
+  ['SM7635-AC', 'Qualcomm SM7635-AC（型号待识别）'],
+  ['MT6893Z/CZA', 'MT6893Z/CZA（型号待识别）'],
+  ['Unknown', '芯片型号待识别'],
   ['SM7435', 'Snapdragon 7s Gen 2'],
   ['SM7450', 'Snapdragon 7 Gen 1'],
   ['SDM670', 'Snapdragon 670'],
@@ -503,7 +506,7 @@ for (const [raw, label] of [
     'NVIDIA Corporation GB203 [GeForce RTX 5070 Ti] (rev a1)',
     'GeForce RTX 5070 Ti'
   ],
-  ['genuine intel(r) cpu 0000 @ 3.00ghz', 'Intel 芯片（型号待识别）']
+  ['genuine intel(r) cpu 0000 @ 3.00ghz', 'genuine intel(r) cpu 0000 @ 3.00ghz（型号待识别）']
 ]) {
   assert.equal(formatConsumerSocName(raw), label)
   assert.equal(
@@ -511,7 +514,9 @@ for (const [raw, label] of [
     label,
     'public labels are idempotent'
   )
-  assert(!/\b(?:SM|SDM|MT|QCM)\d|_soc|X126100|X1E78100|iphone\d+,/i.test(label))
+  if (!label.includes('型号待识别')) {
+    assert(!/\b(?:SM|SDM|MT|QCM)\d|_soc|X126100|X1E78100|iphone\d+,/i.test(label))
+  }
 }
 const publicGroupingRows = [
   entry({ socName: 'Qualcomm SM6225', reportedSocNames: ['SM6225'] }),
@@ -523,8 +528,9 @@ const publicBefore = JSON.stringify(publicGroupingRows)
 assert.deepEqual(
   getTelemetryFilterOptions(publicGroupingRows, defaults).selectedSoc.sort(),
   [
-    'Qualcomm 芯片（型号待识别）',
-    'MediaTek 芯片（型号待识别）',
+    'Qualcomm SM6225（型号待识别）',
+    'Qualcomm SM7635（型号待识别）',
+    'MediaTek MT6771（型号待识别）',
     'MediaTek Helio P90'
   ].sort()
 )
@@ -556,3 +562,9 @@ const xFamilyRows = [
   entry({socName:'Snapdragon(R) X - X126100', reportedSocNames:['x elite']})
 ]
 assert.deepEqual(filterLeaderboardData(xFamilyRows, {...defaults, selectedSoc:['Snapdragon X Elite']}), [xFamilyRows[0]])
+
+assert.deepEqual(filterLeaderboardData(publicGroupingRows, {...defaults, selectedSoc:['Qualcomm SM6225（型号待识别）']}), [publicGroupingRows[0]])
+assert.deepEqual(filterLeaderboardData(publicGroupingRows, {...defaults, selectedSoc:['Qualcomm SM7635（型号待识别）']}), [publicGroupingRows[1]])
+const suffixRows = ['SM7635', 'SM7635-AC'].map(socName=>entry({socName}))
+assert.equal(getTelemetryFilterOptions(suffixRows, defaults).selectedSoc.length, 2)
+assert.deepEqual(filterLeaderboardData(suffixRows, {...defaults, selectedSoc:['Qualcomm SM7635-AC（型号待识别）']}), [suffixRows[1]])

@@ -87,8 +87,9 @@ export function resolveAndroidSocName(value: string | null | undefined): string 
 export function formatConsumerSocName(value: string): string {
   const raw = value.trim();
   if (raw.endsWith('（型号待识别）') || raw === '芯片型号待识别') return raw;
+  if (!raw || /^(?:unknown|n\/a|未识别|未知)$/i.test(raw)) return '芯片型号待识别';
   const apple = resolveAppleDevicePresentation({ socName: raw });
-  if (apple) return apple.socName ?? apple.modelName ?? 'Apple 芯片（型号待识别）';
+  if (apple) return apple.socName ?? apple.modelName ?? `${raw}（型号待识别）`;
 
   const name = (resolveTelemetrySocName(raw) ?? raw)
     .replace(/\((?:r|tm)\)|[®™]/gi, '')
@@ -145,26 +146,8 @@ export function formatConsumerSocName(value: string): string {
   if (/^(?:(?:AMD|Intel)\s+)?(?:Radeon|FirePro|Arc|Iris|UHD|HD Graphics|Graphics)\b/i.test(name))
     return name.replace(/\s*\(rev.*$/i, '');
 
-  const brand = /qualcomm|snapdragon|\b(?:sm|sdm|qcm)\d|^(?:778|x1)$/i.test(name)
-    ? 'Qualcomm'
-    : /mediatek|dimensity|helio|\bmt\d/i.test(name)
-      ? 'MediaTek'
-      : /apple|iphone|ipad|ipod/i.test(name)
-        ? 'Apple'
-        : /exynos|samsung|^sm-/i.test(name)
-          ? 'Samsung'
-          : /intel/i.test(name)
-            ? 'Intel'
-            : /amd|advanced micro devices/i.test(name)
-              ? 'AMD'
-              : /nvidia/i.test(name)
-                ? 'NVIDIA'
-                : /kirin|huawei/i.test(name)
-                  ? 'Huawei'
-                  : /tensor|google|pixel/i.test(name)
-                    ? 'Google'
-                    : null;
-  return brand ? `${brand} 芯片（型号待识别）` : '芯片型号待识别';
+  // Preserve the full identifier, including revisions, when its retail name is unresolved.
+  return `${resolveTelemetrySocName(raw) ?? raw}（型号待识别）`;
 }
 
 export function simplifySnapdragonXEliteCpuName(value: string | null | undefined): string | null {
