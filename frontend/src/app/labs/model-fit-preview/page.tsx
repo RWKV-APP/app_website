@@ -1,9 +1,16 @@
 'use client';
 
 import type { CSSProperties } from 'react';
-import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import {
   BRAND_LABELS,
   BRAND_ORDER,
@@ -30,7 +37,6 @@ import {
 } from '@/features/telemetry/telemetryRules';
 import { ThemeSwitcher } from '@/components';
 import {
-  fetchAdminSession,
   fetchPublicTelemetryFilters,
   fetchPublicTelemetryLeaderboard,
   fetchPublicTelemetryRecords,
@@ -53,6 +59,8 @@ import styles from './page.module.css';
 interface WeightColumn {
   key: string; // modelSha256 + backend + batch dimension
   label: string;
+  modelName: string;
+  fileName: string;
   quant: string;
   backend: string;
   modelTag: string; // Chat / VL / TTS / Translate / Neko
@@ -125,25 +133,8 @@ interface StackedCellLabel {
 const LS_KEY_MODEL_TAG = 'rwkv-perf-filter-model-tag';
 const LS_KEY_SIZE = 'rwkv-perf-filter-size';
 const LS_KEY_BRAND = 'rwkv-perf-filter-brand';
-const INITIAL_RENDERED_ROWS = 12;
-const RENDER_ROW_CHUNK = 12;
-
-type IdleWindow = Window & {
-  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
-  cancelIdleCallback?: (handle: number) => void;
-};
-
-function scheduleRowRender(callback: () => void): () => void {
-  if (typeof window === 'undefined') return () => {};
-  const idleWindow = window as IdleWindow;
-  if (idleWindow.requestIdleCallback && idleWindow.cancelIdleCallback) {
-    const handle = idleWindow.requestIdleCallback(callback, { timeout: 120 });
-    return () => idleWindow.cancelIdleCallback?.(handle);
-  }
-
-  const handle = window.setTimeout(callback, 16);
-  return () => window.clearTimeout(handle);
-}
+const ROWS_PER_PAGE = 20;
+const COLUMNS_PER_PAGE = 10;
 
 function parseFilterList(value: string | null | undefined): string[] {
   if (!value) return [];
@@ -384,6 +375,8 @@ function getEntryReportLabel(entry: LeaderboardEntry): string {
   return getWeightColumnReportLabel({
     key: columnKey(entry),
     label: deriveWeightLabel(entry),
+    modelName: entry.modelName,
+    fileName: entry.modelFileName,
     quant: deriveQuantLabel(entry),
     backend: entry.backend,
     modelTag: deriveModelTag(entry),
@@ -762,6 +755,8 @@ function buildPlatforms(
       weightMap.set(ck, {
         key: ck,
         label: deriveWeightLabel(entry),
+        modelName: entry.modelName,
+        fileName: entry.modelFileName,
         quant: deriveQuantLabel(entry),
         backend: entry.backend,
         modelTag: tag,
@@ -856,8 +851,9 @@ function buildPlatforms(
 async function fetchLeaderboard(
   appVersions?: string[],
   buildModes?: string[],
+  signal?: AbortSignal,
 ): Promise<LeaderboardEntry[]> {
-  return fetchPublicTelemetryLeaderboard({ appVersions, buildModes, limit: 5000 });
+  return fetchPublicTelemetryLeaderboard({ appVersions, buildModes, limit: 5000, signal });
 }
 
 async function fetchFilters(): Promise<{ appVersions: string[]; buildModes: string[] }> {
@@ -873,6 +869,7 @@ async function fetchRecords(params: {
   os?: string;
   appVersions?: string[];
   buildModes?: string[];
+  signal?: AbortSignal;
 }): Promise<RecordEntry[]> {
   return fetchPublicTelemetryRecords(params);
 }
@@ -882,9 +879,7 @@ async function fetchRecords(params: {
 // ---------------------------------------------------------------------------
 
 export default function ModelFitPreviewPage() {
-  const router = useRouter();
   const [, startFilterTransition] = useTransition();
-  const [authed, setAuthed] = useState(false);
   const [data, setData] = useState<LeaderboardEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -901,7 +896,14 @@ export default function ModelFitPreviewPage() {
   );
   const [selectedBrand, setSelectedBrand] = useState<string[]>(() => readLs(LS_KEY_BRAND, []));
   const [selectedSoc, setSelectedSoc] = useState<string[]>([]);
-  const [renderedRowLimit, setRenderedRowLimit] = useState(INITIAL_RENDERED_ROWS);
+  const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search.trim().toLowerCase());
+  const [rowPage, setRowPage] = useState(0);
+  const [columnPage, setColumnPage] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [sidebarError, setSidebarError] = useState<string | null>(null);
+  const recordsRequest = useRef<AbortController | null>(null);
+  const sidebarDialog = useRef<HTMLDialogElement>(null);
   const [sidebar, setSidebar] = useState<SidebarState>({
     open: false,
     loading: false,
@@ -909,46 +911,38 @@ export default function ModelFitPreviewPage() {
     cellInfo: null,
   });
 
-  // Auth guard: redirect to login if not authenticated
   useEffect(() => {
-    fetchAdminSession()
-      .then((session) => {
-        if (!session) {
-          router.replace('/admin/login?next=/labs/model-fit-preview');
-          return;
-        }
-        setAuthed(true);
-      })
-      .catch(() => {
-        router.replace('/admin/login?next=/labs/model-fit-preview');
-      });
-  }, [router]);
-
-  // Load available filters once
-  useEffect(() => {
-    if (!authed) return;
     fetchFilters()
-      .then((f) => {
-        setAppVersions(f.appVersions);
-        setBuildModes(f.buildModes);
+      .then((filters) => {
+        setAppVersions(filters.appVersions);
+        setBuildModes(filters.buildModes);
       })
       .catch(() => {});
-  }, [authed]);
+  }, []);
 
-  // Fetch leaderboard data (re-fetch when version filter changes)
   useEffect(() => {
-    if (!authed) return;
+    const controller = new AbortController();
     setLoading(true);
-    fetchLeaderboard(selectedVersion, selectedBuildMode)
+    setError(null);
+    fetchLeaderboard(selectedVersion, selectedBuildMode, controller.signal)
       .then((entries) => {
-        setData(entries);
-        setLoading(false);
+        if (!controller.signal.aborted) setData(entries);
       })
-      .catch((e) => {
-        setError(e.message);
-        setLoading(false);
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted)
+          setError(error instanceof Error ? error.message : '查询失败');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
       });
-  }, [authed, selectedBuildMode, selectedVersion]);
+    return () => controller.abort();
+  }, [selectedBuildMode, selectedVersion, reloadKey]);
+
+  useEffect(() => () => recordsRequest.current?.abort(), []);
+
+  useEffect(() => {
+    if (sidebar.open) sidebarDialog.current?.showModal();
+  }, [sidebar.open]);
 
   // Available batch counts from data
   const availableBatchCounts = useMemo(() => {
@@ -1079,6 +1073,7 @@ export default function ModelFitPreviewPage() {
   }, []);
 
   const handleResetFilters = useCallback(() => {
+    setSearch('');
     writeLs(LS_KEY_MODEL_TAG, []);
     writeLs(LS_KEY_SIZE, []);
     writeLs(LS_KEY_BRAND, []);
@@ -1124,9 +1119,24 @@ export default function ModelFitPreviewPage() {
   }, [baseFilteredData]);
 
   const filteredData = useMemo(() => {
-    if (selectedPlatforms.length === 0) return baseFilteredData;
-    return baseFilteredData.filter((entry) => selectedPlatforms.includes(entry.os));
-  }, [baseFilteredData, selectedPlatforms]);
+    return baseFilteredData.filter(
+      (entry) =>
+        (selectedPlatforms.length === 0 || selectedPlatforms.includes(entry.os)) &&
+        (!deferredSearch ||
+          [
+            entry.socName,
+            formatSocFilterLabel(entry),
+            ...entry.deviceModels,
+            ...entry.deviceDisplayNames,
+            entry.modelName,
+            entry.modelFileName,
+            entry.backend,
+          ]
+            .join(' ')
+            .toLowerCase()
+            .includes(deferredSearch)),
+    );
+  }, [baseFilteredData, selectedPlatforms, deferredSearch]);
 
   // Build matrix for current platform selection.
   const { platforms, weightColumns } = useMemo(() => {
@@ -1140,26 +1150,28 @@ export default function ModelFitPreviewPage() {
   }, [platforms]);
 
   useEffect(() => {
-    setRenderedRowLimit(Math.min(INITIAL_RENDERED_ROWS, displayRows.length));
-  }, [displayRows.length, weightColumns.length]);
+    setRowPage(0);
+    setColumnPage(0);
+  }, [filteredData]);
 
-  useEffect(() => {
-    if (renderedRowLimit >= displayRows.length) return;
-    return scheduleRowRender(() => {
-      setRenderedRowLimit((current) => Math.min(current + RENDER_ROW_CHUNK, displayRows.length));
-    });
-  }, [displayRows.length, renderedRowLimit]);
-
-  const renderedDisplayRows = useMemo(
-    () => displayRows.slice(0, renderedRowLimit),
-    [displayRows, renderedRowLimit],
+  const lastRowPage = Math.max(0, Math.ceil(displayRows.length / ROWS_PER_PAGE) - 1);
+  const lastColumnPage = Math.max(0, Math.ceil(weightColumns.length / COLUMNS_PER_PAGE) - 1);
+  const currentRowPage = Math.min(rowPage, lastRowPage);
+  const currentColumnPage = Math.min(columnPage, lastColumnPage);
+  const renderedDisplayRows = displayRows.slice(
+    currentRowPage * ROWS_PER_PAGE,
+    (currentRowPage + 1) * ROWS_PER_PAGE,
+  );
+  const visibleColumns = weightColumns.slice(
+    currentColumnPage * COLUMNS_PER_PAGE,
+    (currentColumnPage + 1) * COLUMNS_PER_PAGE,
   );
 
   const matrixGridStyle = useMemo<CSSProperties>(
     () => ({
-      gridTemplateColumns: `var(--soc-column-width) repeat(${Math.max(weightColumns.length, 1)}, var(--metric-column-width))`,
+      gridTemplateColumns: `var(--soc-column-width) repeat(${Math.max(visibleColumns.length, 1)}, var(--metric-column-width))`,
     }),
-    [weightColumns.length],
+    [visibleColumns.length],
   );
 
   const exportFileBaseName = useMemo(() => {
@@ -1321,10 +1333,15 @@ export default function ModelFitPreviewPage() {
         os: cell.os,
         label: `${socLabel} × ${weightLabel}`,
       };
+      recordsRequest.current?.abort();
+      const controller = new AbortController();
+      recordsRequest.current = controller;
+      setSidebarError(null);
       setSidebar({ open: true, loading: true, records: [], cellInfo: info });
 
       try {
         const records = await fetchRecords({
+          signal: controller.signal,
           socName: cell.socName,
           modelSha256: cell.modelSha256,
           backend: cell.backend,
@@ -1334,36 +1351,23 @@ export default function ModelFitPreviewPage() {
           appVersions: selectedVersion,
           buildModes: selectedBuildMode,
         });
-        setSidebar((prev) => ({ ...prev, loading: false, records }));
+        if (!controller.signal.aborted)
+          setSidebar((prev) => ({ ...prev, loading: false, records }));
       } catch {
-        setSidebar((prev) => ({ ...prev, loading: false }));
+        if (!controller.signal.aborted) {
+          setSidebarError('明细加载失败，请关闭后重试。');
+          setSidebar((prev) => ({ ...prev, loading: false }));
+        }
       }
     },
     [selectedBuildMode, selectedVersion],
   );
 
   const closeSidebar = useCallback(() => {
+    recordsRequest.current?.abort();
+    sidebarDialog.current?.close();
     setSidebar({ open: false, loading: false, records: [], cellInfo: null });
   }, []);
-
-  if (!authed) {
-    return (
-      <main className={styles.main}>
-        <div className={styles.navbarWrap}>
-          <nav className={styles.navbar}>
-            <a href="/" className={styles.navLeft}>
-              <span className={styles.navTitle}>RWKV Chat</span>
-            </a>
-          </nav>
-        </div>
-        <div className={styles.container}>
-          <section className={styles.comingSoonBox}>
-            <h3 className={styles.comingSoonTitle}>正在验证登录状态...</h3>
-          </section>
-        </div>
-      </main>
-    );
-  }
 
   return (
     <main className={styles.main}>
@@ -1382,48 +1386,59 @@ export default function ModelFitPreviewPage() {
       <div className={styles.container}>
         <section className={styles.hero}>
           <div className={styles.heroHeader}>
-            <p className={styles.eyebrow}>Performance Leaderboard</p>
+            <p className={styles.eyebrow}>RWKV · 社区实测</p>
             <Link href="/labs/model-fit-preview/records" className={styles.heroActionLink}>
               <span aria-hidden="true">↗</span>
               全部上报数据
             </Link>
           </div>
-          <h1 className={styles.title}>RWKV prefill / decode matrix</h1>
+          <h1 className={styles.title}>模型性能查询</h1>
           <p className={styles.description}>
-            按平台切换 Tab，纵轴是芯片，横轴是模型权重。非 batch 单元格展示 top 10% 位次成绩；batch
-            单元格同时展示 Decode 总值和 Decode / Batch，并按 Decode / Batch 着色。每个 SoC 的
-            header column 可单独导出统计，点击单元格可查看上报记录。
+            查找你的设备，比较不同模型的推理速度。数据来自用户匿名上报，实际表现会随设备状态和运行配置变化。
           </p>
         </section>
 
-        {loading ? (
+        {loading && !data ? (
           <section className={styles.comingSoonBox}>
-            <h3 className={styles.comingSoonTitle}>Loading...</h3>
+            <h3 className={styles.comingSoonTitle}>正在加载性能数据…</h3>
             <p className={styles.comingSoonText}>正在从服务器获取性能数据</p>
           </section>
-        ) : error ? (
+        ) : error && !data ? (
           <section className={styles.comingSoonBox}>
             <h3 className={styles.comingSoonTitle}>加载失败</h3>
             <p className={styles.comingSoonText}>{error}</p>
-          </section>
-        ) : availableOsTabs.length === 0 ? (
-          <section className={styles.comingSoonBox}>
-            <h3 className={styles.comingSoonTitle}>暂无数据</h3>
-            <p className={styles.comingSoonText}>
-              还没有收到任何性能上报数据。请在 RWKV Chat App
-              中运行一次推理，数据会在回复完成后自动上传。
-            </p>
+            <button
+              className={styles.resetButton}
+              onClick={() => setReloadKey((value) => value + 1)}
+            >
+              重新加载
+            </button>
           </section>
         ) : (
           <>
             {/* Filters */}
-            <section className={styles.tabSection}>
+            <section className={styles.tabSection} aria-label="查询条件">
+              <div className={styles.searchToolbar}>
+                <label className={styles.searchLabel}>
+                  <span>查找设备或模型</span>
+                  <input
+                    type="search"
+                    placeholder="搜索芯片、设备、模型或推理后端…"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                  />
+                </label>
+                <button type="button" className={styles.resetButton} onClick={handleResetFilters}>
+                  重置筛选
+                </button>
+              </div>
               {/* Platform */}
               <div className={styles.tabRow}>
                 <span className={styles.filterLabel}>平台</span>
                 <button
                   type="button"
                   className={`${styles.tabButtonSmall} ${selectedPlatforms.length === 0 ? styles.tabButtonSelected : ''}`}
+                  aria-pressed={selectedPlatforms.length === 0}
                   onClick={() => setSelectedPlatforms([])}
                 >
                   不限制
@@ -1433,6 +1448,7 @@ export default function ModelFitPreviewPage() {
                     key={os}
                     type="button"
                     className={`${styles.tabButtonSmall} ${selectedPlatforms.includes(os) ? styles.tabButtonSelected : ''}`}
+                    aria-pressed={selectedPlatforms.includes(os)}
                     onClick={() =>
                       setSelectedPlatforms((current) => toggleFilterValue(current, os))
                     }
@@ -1442,58 +1458,6 @@ export default function ModelFitPreviewPage() {
                 ))}
               </div>
 
-              {/* Batch */}
-              {availableBatchCounts.length > 1 ? (
-                <div className={styles.tabRow}>
-                  <span className={styles.filterLabel}>并发</span>
-                  <button
-                    type="button"
-                    className={`${styles.tabButtonSmall} ${selectedBatch.length === 0 ? styles.tabButtonSelected : ''}`}
-                    onClick={() => setSelectedBatch([])}
-                  >
-                    不限制
-                  </button>
-                  {availableBatchCounts.map((bc) => (
-                    <button
-                      key={bc}
-                      type="button"
-                      className={`${styles.tabButtonSmall} ${selectedBatch.includes(String(bc)) ? styles.tabButtonSelected : ''}`}
-                      onClick={() =>
-                        setSelectedBatch((current) => toggleFilterValue(current, String(bc)))
-                      }
-                    >
-                      {bc === 1 ? '单条' : `batch×${bc}`}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-
-              {/* Backend */}
-              {availableBackends.length > 1 ? (
-                <div className={styles.tabRow}>
-                  <span className={styles.filterLabel}>Backend</span>
-                  <button
-                    type="button"
-                    className={`${styles.tabButtonSmall} ${selectedBackend.length === 0 ? styles.tabButtonSelected : ''}`}
-                    onClick={() => setSelectedBackend([])}
-                  >
-                    不限制
-                  </button>
-                  {availableBackends.map((backend) => (
-                    <button
-                      key={backend}
-                      type="button"
-                      className={`${styles.tabButtonSmall} ${selectedBackend.includes(backend) ? styles.tabButtonSelected : ''}`}
-                      onClick={() =>
-                        setSelectedBackend((current) => toggleFilterValue(current, backend))
-                      }
-                    >
-                      {backend}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-
               {/* Model type */}
               {availableModelTags.length > 1 ? (
                 <div className={styles.tabRow}>
@@ -1501,6 +1465,7 @@ export default function ModelFitPreviewPage() {
                   <button
                     type="button"
                     className={`${styles.tabButtonSmall} ${selectedModelTag.length === 0 ? styles.tabButtonSelected : ''}`}
+                    aria-pressed={selectedModelTag.length === 0}
                     onClick={clearModelTagFilter}
                   >
                     不限制
@@ -1510,6 +1475,7 @@ export default function ModelFitPreviewPage() {
                       key={tag}
                       type="button"
                       className={`${styles.tabButtonSmall} ${selectedModelTag.includes(tag) ? styles.tabButtonSelected : ''}`}
+                      aria-pressed={selectedModelTag.includes(tag)}
                       onClick={() => handleModelTagChange(tag)}
                     >
                       {MODEL_TAG_LABELS[tag] ?? tag}
@@ -1525,6 +1491,7 @@ export default function ModelFitPreviewPage() {
                   <button
                     type="button"
                     className={`${styles.tabButtonSmall} ${selectedSize.length === 0 ? styles.tabButtonSelected : ''}`}
+                    aria-pressed={selectedSize.length === 0}
                     onClick={clearSizeFilter}
                   >
                     不限制
@@ -1534,6 +1501,7 @@ export default function ModelFitPreviewPage() {
                       key={size}
                       type="button"
                       className={`${styles.tabButtonSmall} ${selectedSize.includes(size) ? styles.tabButtonSelected : ''}`}
+                      aria-pressed={selectedSize.includes(size)}
                       onClick={() => handleSizeChange(size)}
                     >
                       {size}
@@ -1542,115 +1510,195 @@ export default function ModelFitPreviewPage() {
                 </div>
               ) : null}
 
-              {/* SoC brand */}
-              {availableBrands.length > 1 ? (
-                <div className={styles.tabRow}>
-                  <span className={styles.filterLabel}>芯片</span>
-                  <button
-                    type="button"
-                    className={`${styles.brandFilterTag} ${selectedBrand.length === 0 ? styles.tabButtonSelected : ''}`}
-                    onClick={clearBrandFilter}
-                  >
-                    不限制
-                  </button>
-                  {availableBrands.map((brand) => (
-                    <button
-                      key={brand}
-                      type="button"
-                      className={`${styles.brandFilterTag} ${selectedBrand.includes(brand) ? styles.tabButtonSelected : ''}`}
-                      onClick={() => handleBrandChange(brand)}
-                    >
-                      <BrandIcon brand={brand} className={styles.brandFilterIcon} />
-                      {BRAND_LABELS[brand] ?? brand}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+              <details className={styles.advancedFilters}>
+                <summary>更多筛选 · 芯片 / 后端 / 并发 / 版本</summary>
+                <div className={styles.advancedContent}>
+                  {/* Batch */}
+                  {availableBatchCounts.length > 1 ? (
+                    <div className={styles.tabRow}>
+                      <span className={styles.filterLabel}>并发</span>
+                      <button
+                        type="button"
+                        className={`${styles.tabButtonSmall} ${selectedBatch.length === 0 ? styles.tabButtonSelected : ''}`}
+                        aria-pressed={selectedBatch.length === 0}
+                        onClick={() => setSelectedBatch([])}
+                      >
+                        不限制
+                      </button>
+                      {availableBatchCounts.map((bc) => (
+                        <button
+                          key={bc}
+                          type="button"
+                          className={`${styles.tabButtonSmall} ${selectedBatch.includes(String(bc)) ? styles.tabButtonSelected : ''}`}
+                          aria-pressed={selectedBatch.includes(String(bc))}
+                          onClick={() =>
+                            setSelectedBatch((current) => toggleFilterValue(current, String(bc)))
+                          }
+                        >
+                          {bc === 1 ? '单条' : `batch×${bc}`}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
 
-              {/* Individual SoC */}
-              {availableSocs.length > 1 ? (
-                <div className={styles.tabRow}>
-                  <span className={styles.filterLabel}>SoC</span>
-                  <button
-                    type="button"
-                    className={`${styles.tabButtonSmall} ${selectedSoc.length === 0 ? styles.tabButtonSelected : ''}`}
-                    onClick={() => setSelectedSoc([])}
-                  >
-                    不限制
-                  </button>
-                  {availableSocs.map((soc) => (
-                    <button
-                      key={soc}
-                      type="button"
-                      className={`${styles.tabButtonSmall} ${selectedSoc.includes(soc) ? styles.tabButtonSelected : ''}`}
-                      onClick={() => setSelectedSoc((current) => toggleFilterValue(current, soc))}
-                      title={soc}
-                    >
-                      {formatSocFilterLabel({ socName: soc })}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+                  {/* Backend */}
+                  {availableBackends.length > 1 ? (
+                    <div className={styles.tabRow}>
+                      <span className={styles.filterLabel}>Backend</span>
+                      <button
+                        type="button"
+                        className={`${styles.tabButtonSmall} ${selectedBackend.length === 0 ? styles.tabButtonSelected : ''}`}
+                        aria-pressed={selectedBackend.length === 0}
+                        onClick={() => setSelectedBackend([])}
+                      >
+                        不限制
+                      </button>
+                      {availableBackends.map((backend) => (
+                        <button
+                          key={backend}
+                          type="button"
+                          className={`${styles.tabButtonSmall} ${selectedBackend.includes(backend) ? styles.tabButtonSelected : ''}`}
+                          aria-pressed={selectedBackend.includes(backend)}
+                          onClick={() =>
+                            setSelectedBackend((current) => toggleFilterValue(current, backend))
+                          }
+                        >
+                          {backend}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
 
-              {/* APP version */}
-              {appVersions.length > 0 ? (
-                <div className={styles.tabRow}>
-                  <span className={styles.filterLabel}>APP 版本</span>
-                  <button
-                    type="button"
-                    className={`${styles.tabButtonSmall} ${selectedVersion.length === 0 ? styles.tabButtonSelected : ''}`}
-                    onClick={() => setSelectedVersion([])}
-                  >
-                    不限制
-                  </button>
-                  {appVersions.map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      className={`${styles.tabButtonSmall} ${selectedVersion.includes(v) ? styles.tabButtonSelected : ''}`}
-                      onClick={() => setSelectedVersion((current) => toggleFilterValue(current, v))}
-                    >
-                      v{v}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+                  {/* SoC brand */}
+                  {availableBrands.length > 1 ? (
+                    <div className={styles.tabRow}>
+                      <span className={styles.filterLabel}>芯片</span>
+                      <button
+                        type="button"
+                        className={`${styles.brandFilterTag} ${selectedBrand.length === 0 ? styles.tabButtonSelected : ''}`}
+                        aria-pressed={selectedBrand.length === 0}
+                        onClick={clearBrandFilter}
+                      >
+                        不限制
+                      </button>
+                      {availableBrands.map((brand) => (
+                        <button
+                          key={brand}
+                          type="button"
+                          className={`${styles.brandFilterTag} ${selectedBrand.includes(brand) ? styles.tabButtonSelected : ''}`}
+                          aria-pressed={selectedBrand.includes(brand)}
+                          onClick={() => handleBrandChange(brand)}
+                        >
+                          <BrandIcon brand={brand} className={styles.brandFilterIcon} />
+                          {BRAND_LABELS[brand] ?? brand}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
 
-              {buildModes.length > 0 ? (
-                <div className={styles.tabRow}>
-                  <span className={styles.filterLabel}>构建模式</span>
-                  <button
-                    type="button"
-                    className={`${styles.tabButtonSmall} ${selectedBuildMode.length === 0 ? styles.tabButtonSelected : ''}`}
-                    onClick={() => setSelectedBuildMode([])}
-                  >
-                    不限制
-                  </button>
-                  {buildModes.map((buildMode) => (
-                    <button
-                      key={buildMode}
-                      type="button"
-                      className={`${styles.tabButtonSmall} ${selectedBuildMode.includes(buildMode) ? styles.tabButtonSelected : ''}`}
-                      onClick={() =>
-                        setSelectedBuildMode((current) => toggleFilterValue(current, buildMode))
-                      }
-                    >
-                      {BUILD_MODE_LABELS[buildMode] ?? buildMode}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+                  {/* Individual SoC */}
+                  {availableSocs.length > 1 ? (
+                    <div className={`${styles.tabRow} ${styles.socOptions}`}>
+                      <span className={styles.filterLabel}>SoC</span>
+                      <button
+                        type="button"
+                        className={`${styles.tabButtonSmall} ${selectedSoc.length === 0 ? styles.tabButtonSelected : ''}`}
+                        aria-pressed={selectedSoc.length === 0}
+                        onClick={() => setSelectedSoc([])}
+                      >
+                        不限制
+                      </button>
+                      {availableSocs.map((soc) => (
+                        <button
+                          key={soc}
+                          type="button"
+                          className={`${styles.tabButtonSmall} ${selectedSoc.includes(soc) ? styles.tabButtonSelected : ''}`}
+                          aria-pressed={selectedSoc.includes(soc)}
+                          onClick={() =>
+                            setSelectedSoc((current) => toggleFilterValue(current, soc))
+                          }
+                          title={soc}
+                        >
+                          {formatSocFilterLabel({ socName: soc })}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
 
-              {/* Reset + Meta */}
-              <div className={styles.metaBlock}>
-                <button type="button" className={styles.resetButton} onClick={handleResetFilters}>
-                  重置筛选
-                </button>
-                <span>Chips: {displayRows.length}</span>
-                <span>Models: {weightColumns.length}</span>
-                {renderedDisplayRows.length < displayRows.length ? (
-                  <span>
-                    Displaying: {renderedDisplayRows.length}/{displayRows.length}
+                  {/* APP version */}
+                  {appVersions.length > 0 ? (
+                    <div className={styles.tabRow}>
+                      <span className={styles.filterLabel}>APP 版本</span>
+                      <button
+                        type="button"
+                        className={`${styles.tabButtonSmall} ${selectedVersion.length === 0 ? styles.tabButtonSelected : ''}`}
+                        aria-pressed={selectedVersion.length === 0}
+                        onClick={() => setSelectedVersion([])}
+                      >
+                        不限制
+                      </button>
+                      {appVersions.map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          className={`${styles.tabButtonSmall} ${selectedVersion.includes(v) ? styles.tabButtonSelected : ''}`}
+                          aria-pressed={selectedVersion.includes(v)}
+                          onClick={() =>
+                            setSelectedVersion((current) => toggleFilterValue(current, v))
+                          }
+                        >
+                          v{v}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {buildModes.length > 0 ? (
+                    <div className={styles.tabRow}>
+                      <span className={styles.filterLabel}>构建模式</span>
+                      <button
+                        type="button"
+                        className={`${styles.tabButtonSmall} ${selectedBuildMode.length === 0 ? styles.tabButtonSelected : ''}`}
+                        aria-pressed={selectedBuildMode.length === 0}
+                        onClick={() => setSelectedBuildMode([])}
+                      >
+                        不限制
+                      </button>
+                      {buildModes.map((buildMode) => (
+                        <button
+                          key={buildMode}
+                          type="button"
+                          className={`${styles.tabButtonSmall} ${selectedBuildMode.includes(buildMode) ? styles.tabButtonSelected : ''}`}
+                          aria-pressed={selectedBuildMode.includes(buildMode)}
+                          onClick={() =>
+                            setSelectedBuildMode((current) => toggleFilterValue(current, buildMode))
+                          }
+                        >
+                          {BUILD_MODE_LABELS[buildMode] ?? buildMode}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </details>
+
+              <div className={styles.metaBlock} role="status" aria-live="polite">
+                <span>
+                  <strong>{displayRows.length}</strong> 个芯片 / 平台
+                </span>
+                <span>
+                  <strong>{weightColumns.length}</strong> 组模型配置
+                </span>
+                <span>{loading ? '正在更新查询…' : '筛选支持多选 · 单位 tokens/s'}</span>
+                {error ? (
+                  <span role="alert">
+                    更新失败，当前仍是上次结果。
+                    <button
+                      className={styles.resetButton}
+                      onClick={() => setReloadKey((value) => value + 1)}
+                    >
+                      重试
+                    </button>
                   </span>
                 ) : null}
               </div>
@@ -1659,8 +1707,10 @@ export default function ModelFitPreviewPage() {
             {/* Table */}
             {displayRows.length === 0 ? (
               <section className={styles.comingSoonBox}>
-                <h3 className={styles.comingSoonTitle}>该平台暂无数据</h3>
-                <p className={styles.comingSoonText}>等待用户上报</p>
+                <h3 className={styles.comingSoonTitle}>没有匹配的性能记录</h3>
+                <p className={styles.comingSoonText}>
+                  试试减少筛选条件，或搜索其他芯片、设备和模型。
+                </p>
               </section>
             ) : (
               <>
@@ -1671,25 +1721,71 @@ export default function ModelFitPreviewPage() {
                       '全平台',
                       (os) => OS_LABELS[os] ?? os,
                     )}{' '}
-                    SoC × Model
+                    性能矩阵
                   </h2>
                   <p className={styles.sectionDescription}>
-                    非 batch 单元格展示 top 10% 位次 Prefill / Decode；batch 单元格会同时展示 Decode
-                    和 Decode / Batch，单元格颜色按 Decode / Batch 计算。每个 SoC 的 header column
-                    内可导出该 SoC 在当前筛选下的报表和全部统计。
+                    Prefill 为输入处理速度，Decode
+                    为生成速度。点击成绩查看样本；左右滚动对比模型，芯片名称固定在左侧。
                   </p>
                 </section>
 
-                <section className={styles.tableSection}>
+                <div className={styles.pagination} aria-label="矩阵分页">
+                  <div>
+                    <span>
+                      芯片 {currentRowPage * ROWS_PER_PAGE + 1}–
+                      {Math.min((currentRowPage + 1) * ROWS_PER_PAGE, displayRows.length)} /{' '}
+                      {displayRows.length}
+                    </span>
+                    <button
+                      aria-label="上一页芯片"
+                      disabled={currentRowPage === 0}
+                      onClick={() => setRowPage(currentRowPage - 1)}
+                    >
+                      上一页
+                    </button>
+                    <button
+                      aria-label="下一页芯片"
+                      disabled={currentRowPage === lastRowPage}
+                      onClick={() => setRowPage(currentRowPage + 1)}
+                    >
+                      下一页
+                    </button>
+                  </div>
+                  <div>
+                    <span>
+                      模型 {currentColumnPage * COLUMNS_PER_PAGE + 1}–
+                      {Math.min((currentColumnPage + 1) * COLUMNS_PER_PAGE, weightColumns.length)} /{' '}
+                      {weightColumns.length}
+                    </span>
+                    <button
+                      aria-label="上一组模型"
+                      disabled={currentColumnPage === 0}
+                      onClick={() => setColumnPage(currentColumnPage - 1)}
+                    >
+                      上一组
+                    </button>
+                    <button
+                      aria-label="下一组模型"
+                      disabled={currentColumnPage === lastColumnPage}
+                      onClick={() => setColumnPage(currentColumnPage + 1)}
+                    >
+                      下一组
+                    </button>
+                  </div>
+                </div>
+                <section className={styles.tableSection} aria-busy={loading}>
                   <div className={styles.tableWrap}>
                     <div className={styles.matrixGrid} style={matrixGridStyle}>
                       <div className={`${styles.rowHead} ${styles.cornerHead}`}>SoC</div>
-                      {weightColumns.map((col, colIndex) => (
+                      {visibleColumns.map((col, colIndex) => (
                         <div
                           key={col.key}
-                          className={`${styles.weightHead} ${colIndex === weightColumns.length - 1 ? styles.lastCol : ''}`}
+                          className={`${styles.weightHead} ${colIndex === visibleColumns.length - 1 ? styles.lastCol : ''}`}
                         >
                           <div className={styles.weightTitle}>{col.label}</div>
+                          <div className={styles.weightName} title={col.fileName}>
+                            {col.modelName || col.fileName}
+                          </div>
                           <div className={styles.weightMeta}>
                             {col.modelTag !== 'Chat' ? (
                               <span className={styles.modelTag}>{col.modelTag}</span>
@@ -1704,7 +1800,7 @@ export default function ModelFitPreviewPage() {
 
                       {renderedDisplayRows.flatMap((row, rowIndex) => {
                         const rowKey = `${row.osLabel ?? ''}-${row.socName}`;
-                        const isLastRow = rowIndex === displayRows.length - 1;
+                        const isLastRow = rowIndex === renderedDisplayRows.length - 1;
                         const rowHeadClass = `${styles.rowCell} ${isLastRow ? styles.lastRow : ''}`;
                         const socDisplay = getSocDisplayInfo({
                           socName: row.socName,
@@ -1760,9 +1856,9 @@ export default function ModelFitPreviewPage() {
                             ) : null}
                             {rowMeta ? <div className={styles.rowMeta}>{rowMeta}</div> : null}
                           </div>,
-                          ...weightColumns.map((col, colIndex) => {
+                          ...visibleColumns.map((col, colIndex) => {
                             const cell = row.cells[col.key];
-                            const isLastCol = colIndex === weightColumns.length - 1;
+                            const isLastCol = colIndex === visibleColumns.length - 1;
                             const cellBaseClass = `${styles.speedCell} ${isLastCol ? styles.lastCol : ''} ${isLastRow ? styles.lastRow : ''}`;
 
                             if (!cell) {
@@ -1780,6 +1876,7 @@ export default function ModelFitPreviewPage() {
                                 key={`${rowKey}__${col.key}`}
                                 type="button"
                                 className={`${cellBaseClass} ${buildCellClass(decode)} ${styles.speedCellClickable} ${styles.matrixButtonCell}`}
+                                disabled={loading}
                                 onClick={() => handleCellClick(cell, col.label)}
                                 aria-label={
                                   isBatchMetric
@@ -1846,10 +1943,11 @@ export default function ModelFitPreviewPage() {
                 <li>
                   batch 单元格同时显示 Decode 总值和 Decode / Batch，颜色按 Decode / Batch 计算。
                 </li>
-                <li>单元格着色值低于 6 时标红，6-14.9 为黄色，15 以上继续按原来的绿色区间显示。</li>
                 <li>
-                  每个 SoC header column 都有导出按钮，导出的报表首字段是 Headers，对应这个
-                  SoC；没有统计到的权重不会写进报表。
+                  样本来自社区上报，不同后端、量化、并发和构建模式应分别比较；不作为官方兼容性保证。
+                </li>
+                <li>
+                  芯片旁的「报表」包含当前筛选下的全部模型统计，不受矩阵分页影响。空白单元格表示暂无样本，不代表不支持。
                 </li>
               </ul>
             </section>
@@ -1860,17 +1958,33 @@ export default function ModelFitPreviewPage() {
       {/* Sidebar */}
       {sidebar.open ? (
         <>
-          <div className={styles.sidebarOverlay} onClick={closeSidebar} />
-          <aside className={styles.sidebar}>
+          <dialog
+            ref={sidebarDialog}
+            className={styles.sidebar}
+            aria-label={sidebar.cellInfo?.label ?? '性能样本'}
+            onCancel={closeSidebar}
+            onClick={(event) => {
+              if (event.target === event.currentTarget) closeSidebar();
+            }}
+          >
             <div className={styles.sidebarHeader}>
               <h3 className={styles.sidebarTitle}>{sidebar.cellInfo?.label ?? 'Records'}</h3>
-              <button type="button" className={styles.sidebarClose} onClick={closeSidebar}>
+              <button
+                type="button"
+                className={styles.sidebarClose}
+                aria-label="关闭明细"
+                onClick={closeSidebar}
+              >
                 ✕
               </button>
             </div>
 
             {sidebar.loading ? (
               <div className={styles.sidebarLoading}>加载中...</div>
+            ) : sidebarError ? (
+              <div className={styles.sidebarLoading} role="alert">
+                {sidebarError}
+              </div>
             ) : sidebar.records.length === 0 ? (
               <div className={styles.sidebarLoading}>暂无明细记录</div>
             ) : (
@@ -1933,7 +2047,7 @@ export default function ModelFitPreviewPage() {
                 })}
               </div>
             )}
-          </aside>
+          </dialog>
         </>
       ) : null}
     </main>

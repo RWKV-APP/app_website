@@ -48,7 +48,7 @@ Avoid re-creating these constants inside feature pages or services.
 - `remote-config/`: app config upload, publish, archive, public config endpoints.
 - `eval/`: eval run import and public/admin eval views.
 - `rwkv-chat/`: admin-only RWKV Chat proxy, batch inference, search-provider adapters, conversation persistence.
-- `telemetry/`: performance telemetry ingest, leaderboard, admin records.
+- `telemetry/`: performance telemetry ingest, public leaderboard and paginated records; admin routes retain authentication.
 - `prisma/`: shared Prisma service/module.
 
 When adding a backend feature, prefer a feature module over registering everything directly in `AppModule`.
@@ -100,3 +100,19 @@ Prefer this order:
 5. Only then consider deeper service extraction.
 
 Keep each refactor behavior-preserving and verify with `pnpm type-check` at minimum.
+
+## Public performance explorer
+
+`/labs/model-fit-preview` and its `/records` page are anonymous read-only views.
+`/public-api/telemetry/browse` shares the existing explicit record-column allowlist;
+installation identifiers are never selected. Admin endpoints remain guarded.
+Public reads share at most 32 cached query snapshots for 30 seconds, coalesce
+identical in-flight requests, and discard failures. HTTP responses cache for
+15 seconds and negotiate gzip for large JSON bodies (up to 45 seconds combined
+data freshness). Ingest remains uncached.
+
+The matrix searches loaded data locally, displays 20 chip/platform rows and 10
+model columns per page, and preserves all filtered columns in exported reports.
+Version/build-mode changes cancel superseded network requests. Empty results
+retain the filters and reset control. `pnpm check:telemetry` covers query reuse,
+expiry, retries, field privacy and HTTP compression negotiation.

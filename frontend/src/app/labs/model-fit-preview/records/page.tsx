@@ -1,16 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ThemeSwitcher } from '@/components';
 import {
   AdminTelemetryPerfFilters,
   AdminTelemetryPerfRecord,
   AdminTelemetryPerfRecordsPage,
-  fetchAdminSession,
-  fetchAdminTelemetryFilters,
-  fetchAdminTelemetryRecords,
+  fetchPublicTelemetryBrowseFilters,
+  fetchPublicTelemetryBrowse,
 } from '@/utils/api';
 import styles from './page.module.css';
 
@@ -145,8 +143,6 @@ function getVisibleRange(pageData: AdminTelemetryPerfRecordsPage | null): string
 }
 
 export default function TelemetryRecordsPage() {
-  const router = useRouter();
-  const [authed, setAuthed] = useState(false);
   const [pageReady, setPageReady] = useState(false);
   const [page, setPage] = useState(1);
   const [pageData, setPageData] = useState<AdminTelemetryPerfRecordsPage | null>(null);
@@ -181,44 +177,9 @@ export default function TelemetryRecordsPage() {
 
   useEffect(() => {
     let cancelled = false;
-
-    async function bootstrap() {
-      try {
-        const session = await fetchAdminSession();
-        if (cancelled) return;
-        if (!session) {
-          const nextPath =
-            typeof window !== 'undefined'
-              ? `${window.location.pathname}${window.location.search}`
-              : '/labs/model-fit-preview/records';
-          router.replace(`/admin/login?next=${encodeURIComponent(nextPath)}`);
-          return;
-        }
-        setAuthed(true);
-      } catch {
-        if (!cancelled) {
-          const nextPath =
-            typeof window !== 'undefined'
-              ? `${window.location.pathname}${window.location.search}`
-              : '/labs/model-fit-preview/records';
-          router.replace(`/admin/login?next=${encodeURIComponent(nextPath)}`);
-        }
-      }
-    }
-
-    void bootstrap();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
-
-  useEffect(() => {
-    if (!authed) return;
-    let cancelled = false;
     setLoadingFilters(true);
 
-    fetchAdminTelemetryFilters()
+    fetchPublicTelemetryBrowseFilters()
       .then((nextFilters) => {
         if (!cancelled) {
           setFilters(nextFilters);
@@ -238,10 +199,11 @@ export default function TelemetryRecordsPage() {
     return () => {
       cancelled = true;
     };
-  }, [authed]);
+  }, []);
 
   useEffect(() => {
-    if (!authed || !pageReady) return;
+    if (!pageReady) return;
+    const controller = new AbortController();
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -250,7 +212,8 @@ export default function TelemetryRecordsPage() {
       .map((batchCount) => Number.parseInt(batchCount, 10))
       .filter((batchCount) => Number.isFinite(batchCount) && batchCount > 0);
 
-    fetchAdminTelemetryRecords({
+    fetchPublicTelemetryBrowse({
+      signal: controller.signal,
       page,
       limit: PAGE_SIZE,
       recordId: selectedRecordId ? Number.parseInt(selectedRecordId, 10) : undefined,
@@ -285,9 +248,9 @@ export default function TelemetryRecordsPage() {
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [
-    authed,
     page,
     pageReady,
     selectedBatch,
@@ -347,10 +310,10 @@ export default function TelemetryRecordsPage() {
     selectedBuildMode.length > 0;
 
   const renderStatus = () => {
-    if (!authed || !pageReady) {
+    if (!pageReady) {
       return (
         <section className={styles.stateBox}>
-          <h2>正在验证登录状态...</h2>
+          <h2>正在准备查询…</h2>
         </section>
       );
     }
@@ -396,7 +359,7 @@ export default function TelemetryRecordsPage() {
           <div className={styles.navRight}>
             <Link href="/labs/model-fit-preview" className={styles.navLink}>
               <span aria-hidden="true">←</span>
-              Matrix
+              性能矩阵
             </Link>
             <ThemeSwitcher />
           </div>
@@ -407,7 +370,7 @@ export default function TelemetryRecordsPage() {
         <section className={styles.hero}>
           <div>
             <p className={styles.eyebrow}>Telemetry Records</p>
-            <h1 className={styles.title}>Benchmark 上报明细</h1>
+            <h1 className={styles.title}>性能上报明细</h1>
           </div>
           <div className={styles.heroStats}>
             <div>

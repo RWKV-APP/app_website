@@ -599,9 +599,7 @@ export default function Home() {
     }
 
     if (selectedPlatform === 'android') {
-      return prefersChinaDownloadSources
-        ? ['Pgyer', 'HF', 'GR']
-        : ['MS', 'AF', 'HFM', 'Pgyer'];
+      return prefersChinaDownloadSources ? ['Pgyer', 'HF', 'GR'] : ['MS', 'AF', 'HFM', 'Pgyer'];
     }
 
     return prefersChinaDownloadSources ? ['HF', 'GR'] : ['MS', 'AF', 'HFM'];
@@ -1082,6 +1080,19 @@ export default function Home() {
       <section className={styles.sectionBandAlt}>
         <div className={styles.sectionInner}>
           <MobilePageQrCard />
+          <p>
+            <a
+              href="/labs/model-fit-preview"
+              style={{
+                color: 'var(--color-link)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                minHeight: 44,
+              }}
+            >
+              模型性能查询 · Performance
+            </a>
+          </p>
           <h2 className={styles.sectionTitle}>{t.openSource}</h2>
           <p className={styles.openSourceDesc}>{t.openSourceDesc}</p>
           <a

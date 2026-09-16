@@ -752,6 +752,43 @@ function normalizeTelemetryRecordRow(row: TelemetryRecordRow): NormalizedTelemet
 @Injectable()
 export class TelemetryService {
   private readonly logger = new Logger(TelemetryService.name);
+  // Bounded, short-lived snapshots; concurrent identical queries share one read.
+  private readonly publicCache = new Map<string, { expires: number; value: Promise<unknown> }>();
+
+  private cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+    const now = Date.now();
+    const hit = this.publicCache.get(key);
+    if (hit && hit.expires > now) return hit.value as Promise<T>;
+    for (const [cacheKey, entry] of this.publicCache) {
+      if (entry.expires <= now) this.publicCache.delete(cacheKey);
+    }
+    if (this.publicCache.size >= 32) this.publicCache.delete(this.publicCache.keys().next().value);
+    const entry = { expires: Infinity, value: null as Promise<T> | null };
+    entry.value = Promise.resolve()
+      .then(load)
+      .then((result) => {
+        entry.expires = Date.now() + 30_000;
+        return result;
+      })
+      .catch((error) => {
+        if (this.publicCache.get(key) === entry) this.publicCache.delete(key);
+        throw error;
+      });
+    this.publicCache.set(key, entry);
+    return entry.value;
+  }
+
+  private queryKey(kind: string, query: object): string {
+    return kind + JSON.stringify(Object.entries(query).sort(([a], [b]) => a.localeCompare(b)));
+  }
+
+  publicRecords(query: AdminRecordsQuery) {
+    return this.cached(this.queryKey('browse', query), () => this.adminRecords(query));
+  }
+
+  publicFilters() {
+    return this.cached('browse-filters', () => this.adminFilters());
+  }
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -840,8 +877,12 @@ export class TelemetryService {
     return { accepted: true };
   }
 
-  async leaderboard(query: LeaderboardQuery): Promise<any[]> {
-    const limit = Math.min(parseInt(query.limit ?? '100', 10) || 100, 5000);
+  leaderboard(query: LeaderboardQuery): Promise<any[]> {
+    return this.cached(this.queryKey('leaderboard', query), () => this.queryLeaderboard(query));
+  }
+
+  private async queryLeaderboard(query: LeaderboardQuery): Promise<any[]> {
+    const limit = Math.min(Math.max(parseInt(query.limit ?? '100', 10) || 100, 1), 5000);
 
     const where: any = {};
     if (query.modelSha256) where.modelSha256 = query.modelSha256.toLowerCase().trim();
@@ -993,7 +1034,14 @@ export class TelemetryService {
       .slice(0, limit);
   }
 
-  async filters(): Promise<{ appVersions: string[]; buildModes: TelemetryBuildMode[] }> {
+  filters(): Promise<{ appVersions: string[]; buildModes: TelemetryBuildMode[] }> {
+    return this.cached('filters', () => this.queryFilters());
+  }
+
+  private async queryFilters(): Promise<{
+    appVersions: string[];
+    buildModes: TelemetryBuildMode[];
+  }> {
     const versions = await this.prisma.telemetryPerf.groupBy({
       by: ['appVersion'],
       _count: { id: true },
@@ -1006,8 +1054,12 @@ export class TelemetryService {
     return { appVersions, buildModes: [...TELEMETRY_BUILD_MODE_ORDER] };
   }
 
-  async records(query: RecordsQuery): Promise<any[]> {
-    const limit = Math.min(parseInt(query.limit ?? '50', 10) || 50, 200);
+  records(query: RecordsQuery): Promise<any[]> {
+    return this.cached(this.queryKey('records', query), () => this.queryRecords(query));
+  }
+
+  private async queryRecords(query: RecordsQuery): Promise<any[]> {
+    const limit = Math.min(Math.max(parseInt(query.limit ?? '50', 10) || 50, 1), 200);
 
     const where: any = {
       modelSha256: query.modelSha256.toLowerCase().trim(),

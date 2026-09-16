@@ -281,19 +281,23 @@ export async function fetchAdminEvalRuns(): Promise<EvalRunSummaryRecord[]> {
   return (await response.json()) as EvalRunSummaryRecord[];
 }
 
-export async function fetchAdminTelemetryRecords(options?: {
-  page?: number;
-  limit?: number;
-  recordId?: number;
-  os?: string | string[];
-  appVersion?: string | string[];
-  buildMode?: string | string[];
-  batchCount?: number | number[];
-  modelTag?: string | string[];
-  modelSize?: string | string[];
-  socBrand?: string | string[];
-  socName?: string | string[];
-}): Promise<AdminTelemetryPerfRecordsPage> {
+async function fetchTelemetryBrowse(
+  options?: {
+    page?: number;
+    limit?: number;
+    recordId?: number;
+    os?: string | string[];
+    appVersion?: string | string[];
+    buildMode?: string | string[];
+    batchCount?: number | number[];
+    modelTag?: string | string[];
+    modelSize?: string | string[];
+    socBrand?: string | string[];
+    socName?: string | string[];
+    signal?: AbortSignal;
+  },
+  publicAccess = false,
+): Promise<AdminTelemetryPerfRecordsPage> {
   const params = new URLSearchParams();
   const setFilterParam = (key: string, value?: string | string[] | number | number[]) => {
     if (value === undefined) return;
@@ -323,11 +327,27 @@ export async function fetchAdminTelemetryRecords(options?: {
   setFilterParam('socBrand', options?.socBrand);
   setFilterParam('socName', options?.socName);
   const query = params.toString();
-  const response = await adminFetch(`/admin-api/telemetry/records${query ? `?${query}` : ''}`);
+  const response = publicAccess
+    ? await fetch(`${API_BASE_URL}/public-api/telemetry/browse?${query}`, {
+        signal: options?.signal,
+      })
+    : await adminFetch(`/admin-api/telemetry/records${query ? `?${query}` : ''}`);
   if (!response.ok) {
     throw new Error(await parseErrorResponse(response));
   }
   return (await response.json()) as AdminTelemetryPerfRecordsPage;
+}
+
+export const fetchAdminTelemetryRecords = (options?: Parameters<typeof fetchTelemetryBrowse>[0]) =>
+  fetchTelemetryBrowse(options);
+
+export const fetchPublicTelemetryBrowse = (options?: Parameters<typeof fetchTelemetryBrowse>[0]) =>
+  fetchTelemetryBrowse(options, true);
+
+export async function fetchPublicTelemetryBrowseFilters(): Promise<AdminTelemetryPerfFilters> {
+  const response = await fetch(`${API_BASE_URL}/public-api/telemetry/browse/filters`);
+  if (!response.ok) throw new Error(await parseErrorResponse(response));
+  return response.json();
 }
 
 export async function fetchAdminTelemetryFilters(): Promise<AdminTelemetryPerfFilters> {
@@ -342,6 +362,7 @@ export async function fetchPublicTelemetryLeaderboard(options?: {
   appVersions?: string[];
   buildModes?: string[];
   limit?: number;
+  signal?: AbortSignal;
 }): Promise<TelemetryLeaderboardEntry[]> {
   const params = new URLSearchParams({ limit: String(options?.limit ?? 5000) });
   if (options?.appVersions && options.appVersions.length > 0) {
@@ -351,7 +372,9 @@ export async function fetchPublicTelemetryLeaderboard(options?: {
     params.set('buildMode', options.buildModes.join(','));
   }
 
-  const response = await fetch(`${API_BASE_URL}/public-api/telemetry/leaderboard?${params}`);
+  const response = await fetch(`${API_BASE_URL}/public-api/telemetry/leaderboard?${params}`, {
+    signal: options?.signal,
+  });
   if (!response.ok) {
     throw new Error(await parseErrorResponse(response));
   }
@@ -376,6 +399,7 @@ export async function fetchPublicTelemetryRecords(params: {
   appVersions?: string[];
   buildModes?: string[];
   limit?: number;
+  signal?: AbortSignal;
 }): Promise<TelemetryRecordEntry[]> {
   const query = new URLSearchParams({
     socName: params.socName,
@@ -395,7 +419,9 @@ export async function fetchPublicTelemetryRecords(params: {
     query.set('buildMode', params.buildModes.join(','));
   }
 
-  const response = await fetch(`${API_BASE_URL}/public-api/telemetry/records?${query}`);
+  const response = await fetch(`${API_BASE_URL}/public-api/telemetry/records?${query}`, {
+    signal: params.signal,
+  });
   if (!response.ok) {
     throw new Error(await parseErrorResponse(response));
   }
