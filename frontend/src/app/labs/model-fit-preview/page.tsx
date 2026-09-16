@@ -186,6 +186,7 @@ function FilterGroup({
   format = (value) => value,
   valueKey = (value) => value,
   pending = false,
+  emptyLabel,
 }: {
   label: string;
   options: string[];
@@ -194,6 +195,7 @@ function FilterGroup({
   format?: (value: string) => ReactNode;
   valueKey?: (value: string) => string;
   pending?: boolean;
+  emptyLabel?: string;
 }) {
   const selectedKeys = new Set(selected.map(valueKey));
   const optionKeys = new Set(options.map(valueKey));
@@ -235,7 +237,9 @@ function FilterGroup({
         );
       })}
       {visibleOptions.length === 0 ? (
-        <span className={styles.filterHint}>{pending ? '加载中…' : '当前条件下无可选项'}</span>
+        <span className={styles.filterHint}>
+          {emptyLabel ?? (pending ? '加载中…' : '当前条件下无可选项')}
+        </span>
       ) : null}
     </div>
   );
@@ -980,7 +984,6 @@ export default function ModelFitPreviewPage() {
   const [selectedSoc, setSelectedSoc] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search.trim().toLowerCase());
-  const [renderedRowLimit, setRenderedRowLimit] = useState(INITIAL_RENDERED_ROWS);
   const [reloadKey, setReloadKey] = useState(0);
   const [filtersReady, setFiltersReady] = useState(false);
   const [filtersError, setFiltersError] = useState<string | null>(null);
@@ -1185,16 +1188,26 @@ export default function ModelFitPreviewPage() {
     return platforms.flatMap((p) => p.rows.map((r) => ({ ...r, osLabel: p.label, osId: p.id })));
   }, [platforms]);
 
-  useEffect(() => {
-    setRenderedRowLimit(Math.min(INITIAL_RENDERED_ROWS, displayRows.length));
-  }, [displayRows.length, weightColumns.length]);
+  const [renderProgress, setRenderProgress] = useState({
+    rows: displayRows,
+    limit: INITIAL_RENDERED_ROWS,
+  });
+  // A new result starts small during render, before effects run. Reusing the
+  // previous result's full row count would briefly build the entire new matrix.
+  const renderedRowLimit =
+    renderProgress.rows === displayRows
+      ? renderProgress.limit
+      : Math.min(INITIAL_RENDERED_ROWS, displayRows.length);
 
   useEffect(() => {
     if (renderedRowLimit >= displayRows.length) return;
     return scheduleRowRender(() => {
-      setRenderedRowLimit((current) => Math.min(current + RENDER_ROW_CHUNK, displayRows.length));
+      setRenderProgress({
+        rows: displayRows,
+        limit: Math.min(renderedRowLimit + RENDER_ROW_CHUNK, displayRows.length),
+      });
     });
-  }, [displayRows.length, renderedRowLimit]);
+  }, [displayRows, renderedRowLimit]);
 
   const renderedDisplayRows = useMemo(
     () => displayRows.slice(0, renderedRowLimit),
@@ -1518,6 +1531,7 @@ export default function ModelFitPreviewPage() {
               selected={selectedVersion}
               onChange={setSelectedVersion}
               pending={filtersLoading || !!filtersError}
+              emptyLabel={filtersError ? '选项暂不可用' : undefined}
               format={(value) => `v${value}`}
             />
             <FilterGroup
@@ -1526,6 +1540,7 @@ export default function ModelFitPreviewPage() {
               selected={selectedBuildMode}
               onChange={setSelectedBuildMode}
               pending={filtersLoading || !!filtersError}
+              emptyLabel={filtersError ? '选项暂不可用' : undefined}
               format={(value) => BUILD_MODE_LABELS[value] ?? value}
             />
             {filtersError ? (
