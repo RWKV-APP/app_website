@@ -33,7 +33,7 @@ import {
   MODEL_TAG_LABELS,
   OS_LABELS,
   OS_ORDER,
-  telemetrySocKey,
+  telemetrySocFilterLabels,
 } from '@/features/telemetry/telemetryRules';
 import { getTelemetryFilterOptions } from '@/features/telemetry/telemetryFilters';
 import {
@@ -53,7 +53,7 @@ import type {
   TelemetryRecordEntry as RecordEntry,
 } from '@/types/telemetry';
 import {
-  resolveAndroidSocName,
+  formatConsumerSocName,
   resolveAppleDevicePresentation,
   summarizeHeaderDeviceModels,
 } from '@/utils/appleDeviceInfo';
@@ -269,7 +269,12 @@ function getSocDisplayInfo(input: {
   deviceModels?: string[] | null;
 }): SocDisplayInfo {
   if (input.socName.toLowerCase() === 'unknown') {
-    return { brand: 'unknown', primaryLabel: '芯片未知', secondaryLabel: null, metaLabel: null };
+    return {
+      brand: 'unknown',
+      primaryLabel: formatConsumerSocName(input.socName),
+      secondaryLabel: null,
+      metaLabel: null,
+    };
   }
   const applePresentation = resolveAppleDevicePresentation({
     socName: input.socName,
@@ -277,48 +282,32 @@ function getSocDisplayInfo(input: {
   });
 
   if (applePresentation) {
-    const primaryLabel =
-      applePresentation.socName ??
-      applePresentation.modelName ??
-      applePresentation.identifier ??
-      input.socName;
+    const primaryLabel = formatConsumerSocName(input.socName);
     const secondaryLabel =
       applePresentation.socName &&
       applePresentation.modelName &&
       applePresentation.modelName !== primaryLabel
         ? applePresentation.modelName
         : null;
-    const metaLabel =
-      applePresentation.identifier &&
-      applePresentation.identifier !== primaryLabel &&
-      applePresentation.identifier !== secondaryLabel
-        ? applePresentation.identifier
-        : null;
-
     return {
       brand: 'apple',
       primaryLabel,
       secondaryLabel,
-      metaLabel,
-    };
-  }
-
-  const androidSocName = resolveAndroidSocName(input.socName);
-  if (androidSocName) {
-    return {
-      brand: inferBrand(input.socName, input.socBrand ?? 'unknown'),
-      primaryLabel: androidSocName,
-      secondaryLabel: null,
       metaLabel: null,
     };
   }
 
   return {
     brand: inferBrand(input.socName, input.socBrand ?? 'unknown'),
-    primaryLabel: input.socName,
+    primaryLabel: formatConsumerSocName(input.socName),
     secondaryLabel: null,
     metaLabel: null,
   };
+}
+
+function formatConsumerDeviceName(value: string): string {
+  const apple = resolveAppleDevicePresentation({ deviceModel: value });
+  return apple ? (apple.modelName ?? formatConsumerSocName(value)) : value;
 }
 
 function formatSocFilterLabel(input: {
@@ -341,28 +330,25 @@ function getRecordDeviceLabel(record: RecordEntry): StackedCellLabel {
   });
 
   if (applePresentation) {
-    const primary =
-      applePresentation.modelName ?? record.deviceModel ?? applePresentation.identifier ?? '—';
-    const secondary =
-      applePresentation.identifier && applePresentation.identifier !== primary
-        ? applePresentation.identifier
-        : null;
-
-    return { primary, secondary };
+    return {
+      primary:
+        applePresentation.modelName ?? formatConsumerSocName(record.deviceModel ?? record.socName),
+      secondary: null,
+    };
   }
 
   if (record.deviceDisplayName) {
     return {
-      primary: record.deviceDisplayName,
+      primary: formatConsumerDeviceName(record.deviceDisplayName),
       secondary:
         record.deviceModel && record.deviceModel !== record.deviceDisplayName
-          ? record.deviceModel
+          ? formatConsumerDeviceName(record.deviceModel)
           : null,
     };
   }
 
   return {
-    primary: record.deviceModel || '—',
+    primary: record.deviceModel ? formatConsumerDeviceName(record.deviceModel) : '—',
     secondary: null,
   };
 }
@@ -372,7 +358,10 @@ function getRecordHardwareLabel(record: RecordEntry): StackedCellLabel {
     socName: record.socName,
     deviceModel: record.deviceModel,
   });
-  const rawHardwareSummary = formatHardwareSummary(record.cpuName, record.gpuName);
+  const rawHardwareSummary = formatHardwareSummary(
+    record.cpuName ? formatConsumerSocName(record.cpuName) : null,
+    record.gpuName ? formatConsumerSocName(record.gpuName) : null,
+  );
 
   if (applePresentation?.socName) {
     return {
@@ -384,12 +373,12 @@ function getRecordHardwareLabel(record: RecordEntry): StackedCellLabel {
     };
   }
 
-  const androidSocName = resolveAndroidSocName(record.socName);
-  if (androidSocName) {
+  const consumerSocName = formatConsumerSocName(record.socName);
+  if (consumerSocName) {
     return {
-      primary: androidSocName,
+      primary: consumerSocName,
       secondary:
-        rawHardwareSummary !== '—' && rawHardwareSummary !== androidSocName
+        rawHardwareSummary !== '—' && rawHardwareSummary !== consumerSocName
           ? rawHardwareSummary
           : null,
     };
@@ -1092,6 +1081,16 @@ export default function ModelFitPreviewPage() {
     if (sidebar.open) sidebarDialog.current?.showModal();
   }, [sidebar.open]);
 
+  const selectedSocLabels = useMemo(
+    () => telemetrySocFilterLabels(data ?? [], selectedSoc),
+    [data, selectedSoc],
+  );
+  useEffect(() => {
+    if (resultsReady && JSON.stringify(selectedSoc) !== JSON.stringify(selectedSocLabels)) {
+      setSelectedSoc(selectedSocLabels);
+    }
+  }, [resultsReady, selectedSoc, selectedSocLabels]);
+
   const selections = useMemo(
     () => ({
       selectedPlatforms,
@@ -1100,7 +1099,7 @@ export default function ModelFitPreviewPage() {
       selectedSize,
       selectedModelTag,
       selectedBrand,
-      selectedSoc,
+      selectedSoc: selectedSocLabels,
     }),
     [
       selectedPlatforms,
@@ -1109,7 +1108,7 @@ export default function ModelFitPreviewPage() {
       selectedSize,
       selectedModelTag,
       selectedBrand,
-      selectedSoc,
+      selectedSocLabels,
     ],
   );
 
@@ -1489,9 +1488,8 @@ export default function ModelFitPreviewPage() {
             />
             <FilterGroup
               label="SoC"
-              valueKey={telemetrySocKey}
               options={options.selectedSoc}
-              selected={selectedSoc}
+              selected={selectedSocLabels}
               onChange={(values) => startFilterTransition(() => setSelectedSoc(values))}
               pending={!resultsReady}
               format={(value) => formatSocFilterLabel({ socName: value })}
@@ -1624,8 +1622,8 @@ export default function ModelFitPreviewPage() {
                       });
                       const rowPlatformLabel = row.osLabel ?? OS_LABELS[row.osId] ?? row.osId;
                       const rowDeviceSummary = summarizeHeaderDeviceModels({
-                        deviceLabels: row.deviceDisplayNames,
-                        fallbackDeviceModels: row.deviceModels,
+                        deviceLabels: row.deviceDisplayNames.map(formatConsumerDeviceName),
+                        fallbackDeviceModels: row.deviceModels.map(formatConsumerDeviceName),
                       });
                       const rowMeta = [
                         rowPlatformLabel,

@@ -21,7 +21,8 @@ const {
   formatBackendLabel,
   getBackendFamily,
   getHardwareBrandKeys,
-  telemetrySocKey
+  telemetrySocKey,
+  telemetrySocFilterLabels
 } = frontendRequire('./src/features/telemetry/telemetryRules')
 const {
   defaultTelemetryFilters,
@@ -30,6 +31,7 @@ const {
 } = frontendRequire('./src/features/telemetry/telemetryFilterState')
 const { telemetrySocSearchText } = frontendRequire('@app/contracts')
 const {
+  formatConsumerSocName,
   normalizeAppleDeviceIdentifier,
   resolveAndroidSocName,
   simplifySnapdragonXEliteCpuName
@@ -213,7 +215,7 @@ assert.deepEqual(
 const caseOptions = getTelemetryFilterOptions(versionRows, savedSocSelection)
 assert.deepEqual(caseOptions.selectedPlatforms, ['windows'])
 assert.deepEqual(caseOptions.selectedBackend, ['cuda'])
-assert.deepEqual(caseOptions.selectedSoc, ['nvidia geforce rtx 4090'])
+assert.deepEqual(caseOptions.selectedSoc, ['NVIDIA GeForce RTX 4090'])
 assert.deepEqual(savedSocSelection.selectedSoc, [' NVIDIA GeForce RTX 4090 '])
 assert.equal(
   filterLeaderboardData(versionRows, {
@@ -230,48 +232,72 @@ const aliasRows = ['SM7435', 'Snapdragon 7s Gen 2', 'SM7450', 'SM7635'].map(
 )
 for (const selection of ['SM7435', 'Snapdragon 7s Gen 2']) {
   const filters = { ...defaults, selectedSoc: [selection] }
-  assert.deepEqual(filterLeaderboardData(aliasRows, filters), aliasRows.slice(0, 2))
+  assert.deepEqual(
+    filterLeaderboardData(aliasRows, filters),
+    aliasRows.slice(0, 2)
+  )
   assert.deepEqual(
     getTelemetryFilterOptions(aliasRows, filters).selectedPlatforms,
     ['android']
   )
 }
-const deviceMappedRows = [entry({
-  os: 'android',
-  socName: 'MediaTek Helio P90',
-  reportedSocNames: ['mt6779'],
-  hardwareBrands: ['mediatek'],
-  backend: 'llamacpp'
-})]
-const deviceMappedFilters = parseTelemetryFilterState(JSON.stringify({
-  selectedSoc: ['MT6779']
-}))
-assert.deepEqual(filterLeaderboardData(deviceMappedRows, deviceMappedFilters), deviceMappedRows)
-const deviceMappedOptions = getTelemetryFilterOptions(deviceMappedRows, deviceMappedFilters)
-assert.deepEqual(deviceMappedOptions, {
-  selectedPlatforms: ['android'],
-  selectedBackend: ['llamacpp'],
-  selectedBatch: ['1'],
-  selectedSize: ['0.1B'],
-  selectedModelTag: ['Chat'],
-  selectedBrand: ['mediatek'],
-  selectedSoc: ['MediaTek Helio P90']
-}, 'saved raw codes match every facet while SoC options display the public name')
+const deviceMappedRows = [
+  entry({
+    os: 'android',
+    socName: 'MediaTek Helio P90',
+    reportedSocNames: ['mt6779'],
+    hardwareBrands: ['mediatek'],
+    backend: 'llamacpp'
+  })
+]
+const deviceMappedFilters = parseTelemetryFilterState(
+  JSON.stringify({
+    selectedSoc: ['MT6779']
+  })
+)
 assert.deepEqual(
-  parseTelemetryFilterState(JSON.stringify({
-    selectedSoc: ['SM7435', ' Snapdragon 7s Gen 2 ', 'sm7435', 'SM7635', ' ']
-  })).selectedSoc,
+  filterLeaderboardData(deviceMappedRows, deviceMappedFilters),
+  deviceMappedRows
+)
+const deviceMappedOptions = getTelemetryFilterOptions(
+  deviceMappedRows,
+  deviceMappedFilters
+)
+assert.deepEqual(
+  deviceMappedOptions,
+  {
+    selectedPlatforms: ['android'],
+    selectedBackend: ['llamacpp'],
+    selectedBatch: ['1'],
+    selectedSize: ['0.1B'],
+    selectedModelTag: ['Chat'],
+    selectedBrand: ['mediatek'],
+    selectedSoc: ['MediaTek Helio P90']
+  },
+  'saved raw codes match every facet while SoC options display the public name'
+)
+assert.deepEqual(
+  parseTelemetryFilterState(
+    JSON.stringify({
+      selectedSoc: ['SM7435', ' Snapdragon 7s Gen 2 ', 'sm7435', 'SM7635', ' ']
+    })
+  ).selectedSoc,
   ['Snapdragon 7s Gen 2', 'Qualcomm SM7635'],
   'persisted aliases canonicalize and deduplicate without inventing a retail model'
 )
 assert.notEqual(telemetrySocKey('SM7435'), telemetrySocKey('SM7450'))
 assert.equal(telemetrySocKey('SM7635'), 'qualcomm sm7635')
-assert.notEqual(telemetrySocKey('SM7635'), telemetrySocKey('Snapdragon 7s Gen 3'))
+assert.notEqual(
+  telemetrySocKey('SM7635'),
+  telemetrySocKey('Snapdragon 7s Gen 3')
+)
 assert.notEqual(telemetrySocKey('8gen1'), telemetrySocKey('8+gen1'))
 assert.notEqual(telemetrySocKey('8gen3'), telemetrySocKey('8sgen3'))
 assert.equal(telemetrySocKey('8+gen1'), telemetrySocKey('Snapdragon 8+ Gen 1'))
 assert.equal(telemetrySocKey('8sgen3'), telemetrySocKey('Snapdragon 8s Gen 3'))
-assert.ok(telemetrySocSearchText('Snapdragon 7s Gen 2').toLowerCase().includes('sm7435'))
+assert.ok(
+  telemetrySocSearchText('Snapdragon 7s Gen 2').toLowerCase().includes('sm7435')
+)
 assert.ok(telemetrySocSearchText('SM7435').includes('Snapdragon 7s Gen 2'))
 for (const [name, query] of [
   ['Snapdragon 8 Gen 3', '8gen3'],
@@ -279,15 +305,24 @@ for (const [name, query] of [
   ['Snapdragon 8s Gen 3', '8sgen3'],
   ['Snapdragon 7+ Gen 2', '7+gen2']
 ]) {
-  assert.ok(telemetrySocSearchText(name).toLowerCase().includes(query), `${name} supports ${query} search`)
+  assert.ok(
+    telemetrySocSearchText(name).toLowerCase().includes(query),
+    `${name} supports ${query} search`
+  )
 }
-assert.ok(!telemetrySocSearchText('Snapdragon 8s Gen 3').toLowerCase().includes('8gen3'))
-assert.ok(!telemetrySocSearchText('Snapdragon 8 Gen 3').toLowerCase().includes('8sgen3'))
+assert.ok(
+  !telemetrySocSearchText('Snapdragon 8s Gen 3').toLowerCase().includes('8gen3')
+)
+assert.ok(
+  !telemetrySocSearchText('Snapdragon 8 Gen 3').toLowerCase().includes('8sgen3')
+)
 assert.equal(resolveAndroidSocName('SM7435'), 'Snapdragon 7s Gen 2')
 assert.equal(resolveAndroidSocName('SM7635'), 'Qualcomm SM7635')
 assert.equal(resolveAndroidSocName('xelite'), 'Snapdragon X Elite')
 assert.equal(
-  simplifySnapdragonXEliteCpuName('Snapdragon(R) X - X1E80100 - Qualcomm(R) Oryon(TM) CPU'),
+  simplifySnapdragonXEliteCpuName(
+    'Snapdragon(R) X - X1E80100 - Qualcomm(R) Oryon(TM) CPU'
+  ),
   'Snapdragon(R) X - X1E80100'
 )
 assert.equal(normalizeAppleDeviceIdentifier('iphone15,2'), 'iPhone15,2')
@@ -316,7 +351,7 @@ assert.deepEqual(
 )
 assert.deepEqual(
   getTelemetryFilterOptions(neuropilotRows, familyFilters).selectedSoc,
-  ['MediaTek test device'],
+  ['MediaTek 芯片（型号待识别）'],
   'other facets match a selected NeuroPilot family'
 )
 const neuropilotMatches = filterLeaderboardData(neuropilotRows, familyFilters)
@@ -383,7 +418,9 @@ for (const historicalSelection of [
 }
 assert.deepEqual(
   parseTelemetryFilterState(
-    JSON.stringify({ selectedBackend: ['mlx', 'mtkneuropilot7', 'qnn', 'mtkneuropilot9'] })
+    JSON.stringify({
+      selectedBackend: ['mlx', 'mtkneuropilot7', 'qnn', 'mtkneuropilot9']
+    })
   ).selectedBackend,
   ['mlx', 'mtkneuropilot', 'qnn']
 )
@@ -427,12 +464,95 @@ console.log(
   'telemetry filters: disjunctive facets, OR/AND, empty recovery, ordering, unknown sizes, SoC identity, backend families, raw backend identity, persisted state and query identity passed'
 )
 
-const legacyDebugVersion = parseTelemetryFilterState(JSON.stringify({ selectedVersion: ['4.6.7-debug'] }))
+const legacyDebugVersion = parseTelemetryFilterState(
+  JSON.stringify({ selectedVersion: ['4.6.7-debug'] })
+)
 assert.deepEqual(legacyDebugVersion.selectedVersion, ['4.6.7'])
 assert.deepEqual(legacyDebugVersion.selectedBuildMode, ['debug'])
-const explicitModeVersion = parseTelemetryFilterState(JSON.stringify({ selectedVersion: ['4.6.7-debug'], selectedBuildMode: ['release'] }))
+const explicitModeVersion = parseTelemetryFilterState(
+  JSON.stringify({
+    selectedVersion: ['4.6.7-debug'],
+    selectedBuildMode: ['release']
+  })
+)
 assert.deepEqual(explicitModeVersion.selectedVersion, ['4.6.7'])
 assert.deepEqual(explicitModeVersion.selectedBuildMode, ['release'])
-const mixedVersions = parseTelemetryFilterState(JSON.stringify({ selectedVersion: ['4.6.7-debug', '4.6.7', '4.6.8-rc.1'] }))
+const mixedVersions = parseTelemetryFilterState(
+  JSON.stringify({ selectedVersion: ['4.6.7-debug', '4.6.7', '4.6.8-rc.1'] })
+)
 assert.deepEqual(mixedVersions.selectedVersion, ['4.6.7', '4.6.8-rc.1'])
 assert.deepEqual(mixedVersions.selectedBuildMode, [])
+
+// Public chip labels cannot expose engineering identifiers; display grouping
+// must leave record identities intact and keep identified chips out of unknowns.
+for (const [raw, label] of [
+  ['Qualcomm SM6225', 'Qualcomm 芯片（型号待识别）'],
+  ['MT6771', 'MediaTek 芯片（型号待识别）'],
+  ['SM7435', 'Snapdragon 7s Gen 2'],
+  ['SM7450', 'Snapdragon 7 Gen 1'],
+  ['SDM670', 'Snapdragon 670'],
+  ['Snapdragon(R) X - X126100', 'Snapdragon X'],
+  [
+    'snapdragon(r) x elite - x1e78100 - qualcomm(r) oryon(tm) cpu',
+    'Snapdragon X Elite'
+  ],
+  ['Qualcomm Dragonwing QCM6490', 'Qualcomm Dragonwing'],
+  ['iphone16,1', 'A17 Pro'],
+  ['amd ryzen 7 9800x3d 8-core processor', 'AMD Ryzen 7 9800X3D'],
+  [
+    'NVIDIA Corporation GB203 [GeForce RTX 5070 Ti] (rev a1)',
+    'GeForce RTX 5070 Ti'
+  ],
+  ['genuine intel(r) cpu 0000 @ 3.00ghz', 'Intel 芯片（型号待识别）']
+]) {
+  assert.equal(formatConsumerSocName(raw), label)
+  assert.equal(
+    formatConsumerSocName(label),
+    label,
+    'public labels are idempotent'
+  )
+  assert(!/\b(?:SM|SDM|MT|QCM)\d|_soc|X126100|X1E78100|iphone\d+,/i.test(label))
+}
+const publicGroupingRows = [
+  entry({ socName: 'Qualcomm SM6225', reportedSocNames: ['SM6225'] }),
+  entry({ socName: 'Qualcomm SM7635', reportedSocNames: ['SM7635'] }),
+  entry({ socName: 'MediaTek MT6771', reportedSocNames: ['MT6771'] }),
+  entry({ socName: 'MediaTek Helio P90', reportedSocNames: ['MT6779'] })
+]
+const publicBefore = JSON.stringify(publicGroupingRows)
+assert.deepEqual(
+  getTelemetryFilterOptions(publicGroupingRows, defaults).selectedSoc.sort(),
+  [
+    'Qualcomm 芯片（型号待识别）',
+    'MediaTek 芯片（型号待识别）',
+    'MediaTek Helio P90'
+  ].sort()
+)
+assert.equal(
+  filterLeaderboardData(publicGroupingRows, {
+    ...defaults,
+    selectedSoc: ['Qualcomm 芯片（型号待识别）']
+  }).length,
+  2
+)
+assert.equal(
+  filterLeaderboardData(publicGroupingRows, {
+    ...defaults,
+    selectedSoc: ['MediaTek 芯片（型号待识别）']
+  }).length,
+  1
+)
+assert.deepEqual(telemetrySocFilterLabels(publicGroupingRows, ['MT6779']), [
+  'MediaTek Helio P90'
+])
+assert.equal(
+  JSON.stringify(publicGroupingRows),
+  publicBefore,
+  'public labels must not mutate statistical identities'
+)
+console.log('Consumer SoC labels and grouped filter identity checks passed')
+const xFamilyRows = [
+  entry({socName:'Snapdragon X Elite', reportedSocNames:['x elite']}),
+  entry({socName:'Snapdragon(R) X - X126100', reportedSocNames:['x elite']})
+]
+assert.deepEqual(filterLeaderboardData(xFamilyRows, {...defaults, selectedSoc:['Snapdragon X Elite']}), [xFamilyRows[0]])

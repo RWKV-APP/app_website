@@ -7,9 +7,17 @@ The telemetry service normalizes verified public names so equivalent spellings a
 - Keep the reported identifier and meaningful suffixes. Match an explicit allowlist; do not infer a model by numeric prefix, remove `+` or `s`, or discard package suffixes such as `-AC` and `-AF`.
 - A chip-vendor document can establish a public name. A software platform code or shared Android kernel directory alone cannot establish a unique retail model. When joining OEM device specifications to device source, require the same model and record that inference.
 - Expand a complete, unambiguous public-name shorthand such as `8gen1` to `Snapdragon 8 Gen 1`. Preserve `8+gen1`, `8sgen3` and `8gen3` as different names. A partial string such as `778` is insufficient to choose `778G` or `778G+`.
-- Preserve unknown or ambiguous identifiers. Add an exact device constraint when a platform has several known public models; do not promote that device-specific result to a global alias.
+- Preserve unknown or ambiguous identifiers internally. Add an exact device constraint when a platform has several known public models; do not promote that device-specific result to a global alias.
 
 The shared registry is [`packages/contracts/src/telemetry-soc.ts`](../packages/contracts/src/telemetry-soc.ts), consumed by [`backend/src/telemetry/telemetry.service.ts`](../backend/src/telemetry/telemetry.service.ts) and the frontend. `resolveKnownSocName` feeds device normalization and SoC filter-key normalization. This shared path affects aggregation, filter candidates and record drilldowns; a mapping change must be checked on all three. New ingest retains the client-reported SoC identifier after ordinary string cleanup instead of replacing it with the inferred public name. Historical database rows are not rewritten. Read-time normalization cannot recover a suffix or identity already discarded by an older client or stored row.
+
+## Public consumer labels
+
+The public performance matrix, filters, reports and record details display consumer chip names. Internal SM, SDM, MT, QCM, PCI and Apple device identifiers must never be used as visible SoC labels or tooltip/accessibility text. Unknown parts use a vendor-qualified “芯片（型号待识别）” label. Do not guess a retail variant to avoid that label.
+
+The frontend consumer formatter is separate from statistical identity. Equal public labels form one filter option covering all corresponding identities. Matrix rows and record queries retain their original keys; a public family or unknown label never combines their measurements. Legacy filter selections resolve through their original canonical/reported identities before migrating to public groups. Original identifiers remain searchable.
+
+Snapdragon X CPU implementation strings are shown by their reported retail family; Dragonwing and Adreno also use public family names. These display labels do not assert an exact SKU. Desktop CPU/GPU labels omit trademark boilerplate, PCI implementation codes and revision strings. Raw ingest and historical rows remain unchanged.
 
 ## Verified public-name mappings
 
@@ -62,7 +70,7 @@ The following platform-to-single-model aliases must remain removed. The examples
 | `SM8250` | Snapdragon 865 | [Qualcomm bulletin](https://www.qualcomm.com/company/product-security/bulletins/february-2024-bulletin) identifies 865+ as `SM8250-AB`; [870 brief](https://www.qualcomm.com/content/dam/qcomm-martech/dm-assets/documents/prod_brief_qcom_sd870_5g.pdf) identifies `SM8250-AC`. |
 | `SM7635` | Snapdragon 7s Gen 3 | Qualcomm documents [7s Gen 3](https://docs.qualcomm.com/doc/87-78936-1/87-78936-1_REV_A_Snapdragon_7s_Gen_3_Mobile_Platform_Product_Brief.pdf) and [7s Gen 4](https://www.qualcomm.com/content/dam/qcomm-martech/dm-assets/documents/Snapdragon-7s-Gen-4-product-brief.pdf) as base and `-AC` variants. |
 
-Other ambiguous bare Qualcomm platforms include `SM6225`, `SM6375`, `SM7150`, `SM7250`, `SM4350`, `SM4450`, `SM7325` and `SM6150`. For example, [685](https://docs.qualcomm.com/bundle/publicresource/87-43683-1_REV_A_SNAPDRAGON_685_4G_MOBILE_PLATFORM_PRODUCT_BRIEF.pdf) uses SM6225-AD and [6s 4G Gen 2](https://www.qualcomm.com/content/dam/qcomm-martech/dm-assets/documents/snadragon-6s-4g-gen-2-product-brief.pdf) uses SM6225-AF. Keep the suffix; do not turn either into a bare-code 680 mapping. `SM8953`, `SDM670` and incomplete marketing names remain unchanged until their exact mapping is independently established.
+Other ambiguous bare Qualcomm platforms include `SM6225`, `SM6375`, `SM7150`, `SM7250`, `SM4350`, `SM4450`, `SM7325` and `SM6150`. For example, [685](https://docs.qualcomm.com/bundle/publicresource/87-43683-1_REV_A_SNAPDRAGON_685_4G_MOBILE_PLATFORM_PRODUCT_BRIEF.pdf) uses SM6225-AD and [6s 4G Gen 2](https://www.qualcomm.com/content/dam/qcomm-martech/dm-assets/documents/snadragon-6s-4g-gen-2-product-brief.pdf) uses SM6225-AF. Keep the suffix; do not turn either into a bare-code 680 mapping. `SM8953` and incomplete marketing names remain distinct internal identities until their exact mapping is independently established. `SDM670` is verified as Snapdragon 670 by [Google’s published processor table](https://csrc.nist.gov/CSRC/media/projects/cryptographic-module-validation-program/documents/security-policies/140sp4156.pdf), page 6.
 
 Other MediaTek codes remain explicit when source evidence does not uniquely determine a public name. MediaTek's [developer performance table](https://developer.mediatek.com/ai/64254ccbf55b040d6989a99a.html) directly groups 1100/1200 under MT6893 and 8000/8100 under MT6895. Ulefone pairs MT6789 with both [G99](https://store.ulefone.com/pages/power-armor-19t-specs) and [G100](https://store.ulefone.com/pages/armor-30-specs). These are positive counterexamples, not missing display aliases. [MT8788](https://www.mediatek.com/iot/modem-based-iot/mt8788) is itself an official MediaTek product name; the [MT8755 certification](https://opendevelopment.verizonwireless.com/design-and-build/approved-chipsets/chipset/27296) describes a tablet variant, not an exact phone-model alias. Shared architecture, rebranding or a reusable device tree is insufficient for a new aggregation alias.
 
@@ -84,3 +92,47 @@ Pixel 10a is an explicit exception to the other Pixel 10 models. Unknown or newe
 ## Verification when changing a mapping
 
 Update the focused checks in [`tools/check-telemetry.cjs`](../tools/check-telemetry.cjs) for equivalent names, unresolved/suffixed counterexamples, device constraints, unchanged stored history and raw ingest identity. Run `pnpm check:telemetry`, then verify that the selected SoC's displayed aggregate and record drilldown agree. SoC name normalization must not change model, quantization, backend, build-mode or other independent aggregation dimensions.
+
+## Additional exact device rules
+
+Each row requires both the reported platform and the exact device model. Sources are OEM specifications and, where needed, OEM manuals linking model identifiers. These rules do not apply to unlisted devices on the same platform.
+
+| Reported platform | Exact device model | Consumer chip | OEM evidence |
+| --- | --- | --- | --- |
+| `MT6789` | `22071219CG` | MediaTek Helio G99 | [Source 1](https://www.po.co/global/product/poco-m5/), [Source 2](https://ams-go.buy.mi.com/it/servicecenter/file/POCO_M5_Safety_Information_it/?binaryId=221160&namespaceId=2&publicationId=221166) |
+| `MT6789` | `24117RN76O` | MediaTek Helio G99 Ultra | [Source 1](https://www.mi.com/tw/product/redmi-note-14/specs/) |
+| `MT6789` | `SHARK 8` | MediaTek Helio G99 | [Source 1](https://store.blackview.hk/products/shark-8-price) |
+| `MT6789` | `Infinix X6833B` | MediaTek Helio G99 | [Source 1](https://mx.infinixmobility.com/note-30), [Source 2](https://wap.mx.infinixmobility.com/declaration_pdf/mx/Infinix_NOTE_30_X6833B_Manual_de_Usuario_Web_2023F.pdf) |
+| `MT6789` | `Infinix X678B` | MediaTek Helio G99 | [Source 1](https://mx.infinixmobility.com/note-30-pro), [Source 2](https://iq.infinixmobility.com/declaration_pdf/mx/Infinix_NOTE_30_PRO_X678B_Manual_de_Usuario_Web_2023F.pdf) |
+| `MT6789` | `SM-A245F` | MediaTek Helio G99 | [Source 1](https://news.samsung.com/id/samsung-galaxy-a24-pilihan-pasti-smartphone-tiga-jutaan-dengan-layar-super-amoled-dan-memori-besar), [Source 2](https://news.samsung.com/my/samsung-malaysia-redefines-awesome-with-new-and-improved-galaxy-a24) |
+| `MT6895` | `V2314A` | MediaTek Dimensity 8200 | [Source 1](https://m.vivo.com.cn/vivo/param/iqooz8) |
+| `MT6895` | `PJH110` | MediaTek Dimensity 8200 | [Source 1](https://www.oppo.com/cn/smartphones/series-reno/reno11/), [Source 2](https://www.oppo.com/cn/smartphones/series-reno/reno11/specs/) |
+| `MT6899` | `V2452A` | MediaTek Dimensity 8400 | [Source 1](https://www.vivo.com.cn/vivo/param/iqooz10turbo) |
+| `MT6899` | `SER-AN00` | MediaTek Dimensity 8500 Elite | [Source 1](https://www.honor.com/cn/phones/honor-power2/), [Source 2](https://developer.honor.com/cn/docs/game_center/guides/jieruzhinan/jixing) |
+| `MT6897` | `CPH2737` | MediaTek Dimensity 8350 | [Source 1](https://www.oppo.com/en/smartphones/series-reno/reno14/), [Source 2](https://www.oppo.com/dk/smartphones/series-reno/reno14/specs/) |
+| `MT6785` | `Redmi Note 8 Pro` | MediaTek Helio G90T | [Source 1](https://www.mi.com/es/redmi-note-8-pro/specs) |
+| `MT6769` | `SM-A225F` | MediaTek Helio G80 | [Source 1](https://news.samsung.com/br/samsung-apresenta-galaxy-a22-no-brasil), [Source 2](https://www.samsung.com/az/support/model/SM-A225FZKGCAU/) |
+| `MT6765` | `SM-A045F` | MediaTek Helio P35 | [Source 1](https://news.samsung.com/in/samsung-expands-entry-segment-portfolio-with-galaxy-a04-and-galaxy-a04e-fast-performance-with-up-to-8gb-ram-with-ram-plus-and-50mp-camera), [Source 2](https://www.samsung.com/ae/support/model/SM-A045FZKGMEA/) |
+| `MT6879` | `motorola edge 40 neo` | MediaTek Dimensity 7030 | [Source 1](https://www.motorola.com/gb/en/p/phones/motorola-edge/40-neo/pmipmge35mt) |
+| `SM6225` | `CPH2333` | Snapdragon 680 | [Source 1](https://www.oppo.com/en/smartphones/series-a/a96/specs/) |
+| `SM6225` | `CPH2565` | Snapdragon 680 | [Source 1](https://www.oppo.com/en/smartphones/series-a/a78/specs/) |
+| `SM6225` | `CPH2819` | Snapdragon 685 | [Source 1](https://www.oppo.com/en/smartphones/series-a/a6x/specs/) |
+| `SM6225` | `2201117TG` | Snapdragon 680 | [Source 1](https://www.mi.com/global/product/redmi-note-11/specs/), [Source 2](https://alsgp0.fds.api.xiaomi.com/xiaomi-b2c-i18n-upload/user-guides/7b913ad8e7ddc34c7cf886bc79869bc9.pdf) |
+| `SM6225` | `2201117TI` | Snapdragon 680 | [Source 1](https://www.mi.com/global/product/redmi-note-11/specs/), [Source 2](https://alsgp0.fds.api.xiaomi.com/xiaomi-b2c-i18n-upload/user-guides/003e5382815b50e70b09eb5e0bf744e2.pdf) |
+| `SM6225` | `220333QNY` | Snapdragon 680 | [Source 1](https://www.mi.com/global/product/redmi-10c/specs/), [Source 2](https://alsgp0.fds.api.xiaomi.com/xiaomi-b2c-i18n-upload/user-guides/f5fcab41ef941982faac95f509f6fee9.pdf) |
+| `SM6225` | `23021RAA2Y` | Snapdragon 685 | [Source 1](https://www.mi.com/global/product/redmi-note-12/specs/), [Source 2](https://alsgp0.fds.api.xiaomi.com/gl123/Redmi/Redmi%20Note%2012/%E9%87%8F%E4%BA%A7/M7N/M7N_QSG_%E6%AC%A7%E8%A7%8414%E8%AF%AD%E7%89%88_20221220.pdf) |
+| `SM6225` | `HEY-W09` | Snapdragon 680 | [Source 1](https://www.honor.com/es/tablets/honor-pad-8/buy/), [Source 2](https://www.honor.com/content/dam/honor/pl/support/product-manual/honor-pad-8-qsg.pdf), [Source 3](https://www.honor.com/mx/news/launch-press-release-honor-lanza-por-primera-vez-en/) |
+| `SM6225` | `SM-A057M` | Snapdragon 680 | [Source 1](https://www.samsung.com/br/smartphones/galaxy-a/galaxy-a05s-silver-128gb-sm-a057mzshzto/) |
+| `SM6225` | `SM-A235F` | Snapdragon 680 | [Source 1](https://news.samsung.com/id/galaxy-a23-sudah-bisa-dibeli-langsung-ini-empat-fitur-premium-yang-bikin-kamu-awesome), [Source 2](https://www.samsung.com/levant/support/model/SM-A235FZOKMEB/), [Source 3](https://images.samsung.com/is/content/samsung/assets/iran/smartphones/mobile-catalogue/samsung-mobile-digital-catalogue-20220425-mob.pdf) |
+| `SM6225` | `moto g play - 2024` | Snapdragon 680 | [Source 1](https://en-us.support.motorola.com/app/answers/detail/a_id/177738/~/specifications--moto-g-play-%282024%29) |
+| `SM6375` | `2201116SG` | Snapdragon 695 | [Source 1](https://www.mi.com/br/product/redmi-note-11-pro-5g/specs/), [Source 2](https://alsgp0.fds.api.xiaomi.com/xiaomi-b2c-i18n-upload/user-guides/494bed1d36680ca0c5e889dc84b00d2e.pdf) |
+| `SM6375` | `RMO-NX1` | Snapdragon 695 | [Source 1](https://www.honor.com/content/dam/honor/hr/support/product-manual/honor-magic5-lite-qsg.pdf), [Source 2](https://www.honor.com/uk/phones/honor-magic5-lite/buy/) |
+| `SM6375` | `moto g34 5G` | Snapdragon 695 | [Source 1](https://www.motorola.com/gb/en/p/phones/moto-g/34-5g/pmipmgk36mp) |
+| `SM6375` | `moto g71 5G` | Snapdragon 695 | [Source 1](https://motorolanews.com/new-moto-g-family-brings-premium-connectivity-to-the-market/) |
+| `SM8250` | `POCO F2 Pro` | Snapdragon 865 | [Source 1](https://www.po.co/global/poco-f2-pro/specs/) |
+| `SM8250` | `V2199A` | Snapdragon 870 | [Source 1](https://m.vivo.com.cn/vivo/param/iqooneo6se) |
+| `SM7635` | `Fairphone 6` | Snapdragon 7s Gen 3 | [Source 1](https://www.fairphone.com/the-new-fairphone) |
+| `MT6985` | `V2241A` | MediaTek Dimensity 9200 | [Source 1](https://www.vivo.com.cn/vivo/param/x90) |
+| `MT6985` | `V2362A` | MediaTek Dimensity 9200+ | [Source 1](https://m.vivo.com.cn/vivo/param/s19pro) |
+| `MT6985` | `PGFM10` | MediaTek Dimensity 9200 | [Source 1](https://www.oppo.com/cn/smartphones/series-find-x/find-x6/specs/) |
+| `MT6877` | `SM-A346E` | MediaTek Dimensity 1080 | [Source 1](https://i.mediatek.com/mediatek-india-news), [Source 2](https://www.samsung.com/eg/support/model/SM-A346EZKCMEA/) |

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ThemeSwitcher } from '@/components';
+import { formatConsumerSocName, resolveAppleDevicePresentation } from '@/utils/appleDeviceInfo';
 import {
   AdminTelemetryPerfFilters,
   AdminTelemetryPerfRecord,
@@ -128,6 +129,12 @@ function displayValue(value: string | number | null | undefined): string {
   return String(value);
 }
 
+function displayDevice(value: string | null | undefined): string {
+  if (!value) return '-';
+  const apple = resolveAppleDevicePresentation({ deviceModel: value });
+  return apple ? (apple.modelName ?? formatConsumerSocName(value)) : value;
+}
+
 function toggleFilterValue(values: string[], value: string): string[] {
   if (values.includes(value)) {
     return values.filter((item) => item !== value);
@@ -159,6 +166,23 @@ export default function TelemetryRecordsPage() {
   const [selectedVersion, setSelectedVersion] = useState<string[]>([]);
   const [selectedBuildMode, setSelectedBuildMode] = useState<string[]>([]);
   const [selectedRecordId, setSelectedRecordId] = useState('');
+  const socGroups = useMemo(() => {
+    const groups = new Map<string, string[]>();
+    for (const value of Array.from(new Set([...filters.socs, ...selectedSoc]))) {
+      const label = formatConsumerSocName(value);
+      groups.set(label, [...(groups.get(label) ?? []), value]);
+    }
+    return Array.from(groups, ([label, values]) => ({ label, values }));
+  }, [filters.socs, selectedSoc]);
+  const selectedSocLabels = useMemo(
+    () => new Set(selectedSoc.map(formatConsumerSocName)),
+    [selectedSoc],
+  );
+  const selectedSocQueryValues = useMemo(
+    () =>
+      socGroups.filter(({ label }) => selectedSocLabels.has(label)).flatMap(({ values }) => values),
+    [socGroups, selectedSocLabels],
+  );
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -202,7 +226,7 @@ export default function TelemetryRecordsPage() {
   }, []);
 
   useEffect(() => {
-    if (!pageReady) return;
+    if (!pageReady || loadingFilters) return;
     const controller = new AbortController();
     let cancelled = false;
     setLoading(true);
@@ -224,7 +248,7 @@ export default function TelemetryRecordsPage() {
       modelTag: selectedModelTag,
       modelSize: selectedSize,
       socBrand: selectedBrand,
-      socName: selectedSoc,
+      socName: selectedSocQueryValues,
     })
       .then((nextPageData) => {
         if (cancelled) return;
@@ -251,6 +275,7 @@ export default function TelemetryRecordsPage() {
       controller.abort();
     };
   }, [
+    loadingFilters,
     page,
     pageReady,
     selectedBatch,
@@ -260,7 +285,7 @@ export default function TelemetryRecordsPage() {
     selectedOs,
     selectedRecordId,
     selectedSize,
-    selectedSoc,
+    selectedSocQueryValues,
     selectedVersion,
   ]);
 
@@ -523,7 +548,7 @@ export default function TelemetryRecordsPage() {
             </FilterRow>
           ) : null}
 
-          {filters.socs.length > 0 ? (
+          {socGroups.length > 0 ? (
             <FilterRow label="SoC">
               <FilterButton
                 selected={selectedSoc.length === 0}
@@ -534,17 +559,21 @@ export default function TelemetryRecordsPage() {
               >
                 不限制
               </FilterButton>
-              {filters.socs.map((soc) => (
+              {socGroups.map(({ label, values }) => (
                 <FilterButton
-                  key={soc}
-                  selected={selectedSoc.includes(soc)}
-                  title={soc}
+                  key={label}
+                  selected={selectedSocLabels.has(label)}
+                  title={label}
                   onClick={() => {
-                    setSelectedSoc((current) => toggleFilterValue(current, soc));
+                    setSelectedSoc((current) =>
+                      selectedSocLabels.has(label)
+                        ? current.filter((value) => formatConsumerSocName(value) !== label)
+                        : [...current, ...values],
+                    );
                     resetToFirstPage({ clearRecordId: true });
                   }}
                 >
-                  {soc}
+                  {label}
                 </FilterButton>
               ))}
             </FilterRow>
@@ -763,11 +792,11 @@ function RecordRow({ record }: { record: AdminTelemetryPerfRecord }) {
       <td>{displayValue(record.appVersion)}</td>
       <td>{displayValue(record.appBuild)}</td>
       <td>{displayValue(record.socBrand)}</td>
-      <td>{displayValue(record.socName)}</td>
-      <td>{displayValue(record.deviceModel)}</td>
-      <td>{displayValue(record.deviceDisplayName)}</td>
-      <td>{displayValue(record.cpuName)}</td>
-      <td>{displayValue(record.gpuName)}</td>
+      <td>{formatConsumerSocName(record.socName)}</td>
+      <td>{displayDevice(record.deviceModel)}</td>
+      <td>{displayDevice(record.deviceDisplayName)}</td>
+      <td>{record.cpuName ? formatConsumerSocName(record.cpuName) : '-'}</td>
+      <td>{record.gpuName ? formatConsumerSocName(record.gpuName) : '-'}</td>
       <td>{formatMemory(record.totalMemoryMb)}</td>
       <td>{formatMemory(record.totalVramMb)}</td>
       <td>{displayValue(record.modelName)}</td>

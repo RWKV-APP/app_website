@@ -478,7 +478,15 @@ async function main() {
   )
   for (const [code, model, canonical] of [
     ['mt6779', 'BV8900', 'MediaTek Helio P90'],
-    ['mt6983', 'CPH2493', 'MediaTek Dimensity 9000']
+    ['mt6983', 'CPH2493', 'MediaTek Dimensity 9000'],
+    ['SM6225', 'CPH2333', 'Snapdragon 680'],
+    ['SM6225', 'CPH2819', 'Snapdragon 685'],
+    ['SM8250', 'POCO F2 Pro', 'Snapdragon 865'],
+    ['SM8250', 'V2199A', 'Snapdragon 870'],
+    ['MT6789', 'SHARK 8', 'MediaTek Helio G99'],
+    ['MT6789', '24117RN76O', 'MediaTek Helio G99 Ultra'],
+    ['MT6895', 'V2314A', 'MediaTek Dimensity 8200'],
+    ['MT6899', 'SER-AN00', 'MediaTek Dimensity 8500 Elite']
   ]) {
     const service = new TelemetryService(
       await telemetryDatabase([

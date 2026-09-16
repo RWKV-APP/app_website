@@ -7,8 +7,9 @@ import {
   deriveWeightLabel,
   getBackendFamily,
   getHardwareBrandKeys,
-  telemetrySocKey,
+  telemetrySocFilterLabels,
 } from './telemetryRules';
+import { formatConsumerSocName } from '../../utils/appleDeviceInfo';
 
 export type TelemetryFilterSelections = {
   selectedPlatforms: string[];
@@ -42,7 +43,8 @@ export function getTelemetryFilterOptions(
   filters: TelemetryFilterSelections,
 ): Record<keyof TelemetryFilterSelections, string[]> {
   const selections = FILTER_KEYS.map(
-    (key) => new Set(key === 'selectedSoc' ? filters[key].map(telemetrySocKey) : filters[key]),
+    (key) =>
+      new Set(key === 'selectedSoc' ? telemetrySocFilterLabels(data, filters[key]) : filters[key]),
   );
   const counts = FILTER_KEYS.map(() => new Map<string, number>());
 
@@ -54,17 +56,12 @@ export function getTelemetryFilterOptions(
       selectedSize: [deriveWeightLabel(entry)],
       selectedModelTag: [deriveModelTag(entry)],
       selectedBrand: getHardwareBrandKeys(entry),
-      selectedSoc: [entry.socName],
+      selectedSoc: [formatConsumerSocName(entry.socName)],
     };
     const failedGroups = FILTER_KEYS.filter(
       (key, index) =>
         selections[index].size > 0 &&
-        !(key === 'selectedSoc'
-          ? [...attributes[key], ...(entry.reportedSocNames ?? [])]
-          : attributes[key]
-        ).some((value) =>
-          selections[index].has(key === 'selectedSoc' ? telemetrySocKey(value) : value),
-        ),
+        !attributes[key].some((value) => selections[index].has(value)),
     );
     if (failedGroups.length > 1) continue;
 
@@ -80,6 +77,10 @@ export function getTelemetryFilterOptions(
     FILTER_KEYS.map((key, index) => {
       const order = FIXED_ORDER[key];
       const values = Array.from(counts[index].keys()).sort((a, b) => {
+        if (key === 'selectedSoc') {
+          const unknownOrder = Number(a.includes('型号待识别')) - Number(b.includes('型号待识别'));
+          if (unknownOrder) return unknownOrder;
+        }
         if (order) {
           const rank = (value: string) => {
             const position = order.indexOf(value);

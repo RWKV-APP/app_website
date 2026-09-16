@@ -7,6 +7,7 @@ import {
 } from '@app/contracts';
 import type { TelemetryLeaderboardEntry } from '@/types/telemetry';
 import type { TelemetryFilterSelections } from './telemetryFilters';
+import { formatConsumerSocName } from '../../utils/appleDeviceInfo';
 
 export type CellMetricBasis = 'top10' | 'decode_div_batch';
 
@@ -269,6 +270,30 @@ export function telemetrySocKey(value: string): string {
   return normalizeTelemetrySocName(value).toLowerCase();
 }
 
+// Public filter labels may cover several distinct statistics identities.
+export function telemetrySocFilterLabels(
+  data: TelemetryLeaderboardEntry[],
+  values: string[],
+): string[] {
+  return Array.from(
+    new Set(
+      values.flatMap((value) => {
+        // Current public groups must not be reinterpreted as historical raw aliases.
+        if (formatConsumerSocName(value) === value) return [value];
+        const key = telemetrySocKey(value);
+        const matches = data.filter((entry) =>
+          [entry.socName, ...(entry.reportedSocNames ?? [])].some(
+            (name) => telemetrySocKey(name) === key,
+          ),
+        );
+        return matches.length
+          ? matches.map((entry) => formatConsumerSocName(entry.socName))
+          : [formatConsumerSocName(value)];
+      }),
+    ),
+  );
+}
+
 export function filterLeaderboardData(
   data: TelemetryLeaderboardEntry[],
   filters: TelemetryFilterSelections,
@@ -298,12 +323,8 @@ export function filterLeaderboardData(
     );
   }
   if (filters.selectedSoc.length > 0) {
-    const selectedSocs = new Set(filters.selectedSoc.map(telemetrySocKey));
-    filtered = filtered.filter((entry) =>
-      [entry.socName, ...(entry.reportedSocNames ?? [])].some((name) =>
-        selectedSocs.has(telemetrySocKey(name)),
-      ),
-    );
+    const selectedSocs = new Set(telemetrySocFilterLabels(data, filters.selectedSoc));
+    filtered = filtered.filter((entry) => selectedSocs.has(formatConsumerSocName(entry.socName)));
   }
   return filtered;
 }

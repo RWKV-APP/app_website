@@ -58,7 +58,8 @@ export function summarizeHeaderDeviceModels(input: {
   fallbackDeviceModels?: Array<string | null | undefined> | null;
   limit?: number;
 }): string | null {
-  const values = (input.deviceLabels?.length ? input.deviceLabels : input.fallbackDeviceModels) ?? [];
+  const values =
+    (input.deviceLabels?.length ? input.deviceLabels : input.fallbackDeviceModels) ?? [];
   const labels: string[] = [];
   const seen = new Set<string>();
 
@@ -80,6 +81,90 @@ export function summarizeHeaderDeviceModels(input: {
 
 export function resolveAndroidSocName(value: string | null | undefined): string | null {
   return resolveTelemetrySocName(value) ?? simplifySnapdragonXEliteCpuName(value);
+}
+
+/** Public labels only. Never use these labels as aggregation or record-query identities. */
+export function formatConsumerSocName(value: string): string {
+  const raw = value.trim();
+  if (raw.endsWith('（型号待识别）') || raw === '芯片型号待识别') return raw;
+  const apple = resolveAppleDevicePresentation({ socName: raw });
+  if (apple) return apple.socName ?? apple.modelName ?? 'Apple 芯片（型号待识别）';
+
+  const name = (resolveTelemetrySocName(raw) ?? raw)
+    .replace(/\((?:r|tm)\)|[®™]/gi, '')
+    .replace(/\s+/g, ' ')
+    .replace(/^Intel Corporation /i, 'Intel ')
+    .replace(/RadeonT\b/g, 'Radeon')
+    .trim();
+  // Windows CPU strings include SKU and CPU implementation details after the retail family.
+  const snapdragonX = name.match(/^snapdragon\s+(x2?)(?:\s+(elite(?:\s+extreme)?|plus))?\b/i);
+  if (snapdragonX) {
+    return `Snapdragon ${snapdragonX[1].toUpperCase()}${snapdragonX[2] ? ` ${snapdragonX[2].replace(/\b\w/g, (letter) => letter.toUpperCase())}` : ''}`;
+  }
+  if (/^(?:qualcomm\s+)?dragonwing\b/i.test(name)) return 'Qualcomm Dragonwing';
+  if (/\badreno\b/i.test(name)) return 'Qualcomm Adreno GPU';
+  if (/^Snapdragon\s+(?:\d|X)/.test(name)) return name;
+  if (/^(?:MediaTek (?:Dimensity|Helio)|Kirin |Exynos |Google Tensor|Apple M\d)/.test(name))
+    return name;
+  if (/^(?:Apple )?[AM]\d+(?:\s+(?:Bionic|Pro|Max|Ultra))*$/i.test(name))
+    return normalizeSocLabel(name);
+
+  // Prefer the retail GPU name already supplied in PCI descriptions, discarding board/revision codes.
+  const gpu = name.match(/\[((?:GeForce|Tesla|Radeon|Iris|UHD)[^\]]+)\]/i);
+  if (gpu) return formatConsumerSocName(gpu[1]);
+  const intelCpu = name.match(
+    /\b(?:intel\s+)?(core\s+(?:(?:ultra\s+)?[3579]\s+|i[3579]-)[\w+-]+(?:\s+plus)?|xeon\s+(?:cpu\s+)?[\w-]+(?:\s+v\d+)?)/i,
+  );
+  if (intelCpu)
+    return `Intel ${intelCpu[1]
+      .replace(/\bcpu\s+/i, '')
+      .replace(
+        /\b(?:core|ultra|xeon|plus)\b/gi,
+        (word) => word[0].toUpperCase() + word.slice(1).toLowerCase(),
+      )
+      .replace(/\b(\d[\da-z]*[a-z][\da-z]*)\b/gi, (model) => model.toUpperCase())}`;
+  const amdCpu = name.match(
+    /\b(?:ryzen\s+(?:(?:ai\s+)?[3579]\s+(?:(?:hx|pro)\s+)?|ai\s+max\+?\s+)[\w+]+|athlon\s+(?:silver|gold)\s+[\w+]+)/i,
+  );
+  if (amdCpu)
+    return `AMD ${amdCpu[0]
+      .replace(
+        /\b(?:ryzen|athlon|silver|gold|max)\b/gi,
+        (word) => word[0].toUpperCase() + word.slice(1).toLowerCase(),
+      )
+      .replace(/\b(?:ai|hx|pro)\b/gi, (word) => word.toUpperCase())
+      .replace(/\b(\d[\da-z]*[a-z][\da-z]*)\b/gi, (model) => model.toUpperCase())}`;
+  if (/^(?:NVIDIA\s+)?(?:GeForce|Tesla|Quadro|TITAN|RTX|GTX)\b/i.test(name))
+    return name
+      .replace(/^nvidia\s+/i, 'NVIDIA ')
+      .replace(/\bgeforce\b/gi, 'GeForce')
+      .replace(/\bquadro\b/gi, 'Quadro')
+      .replace(/\btesla\b/gi, 'Tesla')
+      .replace(/\b(?:rtx|gtx|titan|super)\b/gi, (word) => word.toUpperCase())
+      .replace(/\s*\(rev.*$/i, '');
+  if (/^(?:(?:AMD|Intel)\s+)?(?:Radeon|FirePro|Arc|Iris|UHD|HD Graphics|Graphics)\b/i.test(name))
+    return name.replace(/\s*\(rev.*$/i, '');
+
+  const brand = /qualcomm|snapdragon|\b(?:sm|sdm|qcm)\d|^(?:778|x1)$/i.test(name)
+    ? 'Qualcomm'
+    : /mediatek|dimensity|helio|\bmt\d/i.test(name)
+      ? 'MediaTek'
+      : /apple|iphone|ipad|ipod/i.test(name)
+        ? 'Apple'
+        : /exynos|samsung|^sm-/i.test(name)
+          ? 'Samsung'
+          : /intel/i.test(name)
+            ? 'Intel'
+            : /amd|advanced micro devices/i.test(name)
+              ? 'AMD'
+              : /nvidia/i.test(name)
+                ? 'NVIDIA'
+                : /kirin|huawei/i.test(name)
+                  ? 'Huawei'
+                  : /tensor|google|pixel/i.test(name)
+                    ? 'Google'
+                    : null;
+  return brand ? `${brand} 芯片（型号待识别）` : '芯片型号待识别';
 }
 
 export function simplifySnapdragonXEliteCpuName(value: string | null | undefined): string | null {
@@ -106,9 +191,7 @@ function normalizeSocLabel(value: string): string {
 function resolveAppleSocName(modelName: string | null): string | null {
   if (!modelName) return null;
 
-  const embeddedSocMatch = modelName.match(
-    /\(((?:A|M)\d+(?:\s+(?:Bionic|Pro|Max|Ultra))?)\)/i,
-  );
+  const embeddedSocMatch = modelName.match(/\(((?:A|M)\d+(?:\s+(?:Bionic|Pro|Max|Ultra))?)\)/i);
   if (embeddedSocMatch) {
     return normalizeSocLabel(embeddedSocMatch[1]);
   }

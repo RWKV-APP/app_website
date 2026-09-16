@@ -4,6 +4,7 @@ export const TELEMETRY_SOC_ALIASES: Record<string, readonly string[]> = {
   'Snapdragon 4 Gen 1': ['SM4375'],
   'Snapdragon 6 Gen 3': ['SM6475', 'SM6475-AB'],
   'Snapdragon 710': ['SDM710'],
+  'Snapdragon 670': ['SDM670'],
   'Snapdragon 7 Gen 3': ['SM7550', 'SM7550-AB'],
   'Snapdragon 6 Gen 1': ['SM6450'],
   'Snapdragon 7+ Gen 2': ['SM7475', 'SM7475-AB'],
@@ -108,9 +109,12 @@ export function normalizeTelemetrySocName(value: string): string {
 
 export function telemetrySocSearchText(value: string): string {
   const canonical = normalizeTelemetrySocName(value)
-  return [value, canonical, aliasKey(canonical), ...(TELEMETRY_SOC_ALIASES[canonical] ?? [])].join(
-    ' '
-  )
+  return [
+    value,
+    canonical,
+    aliasKey(canonical),
+    ...(TELEMETRY_SOC_ALIASES[canonical] ?? [])
+  ].join(' ')
 }
 
 // Device-specific evidence can disambiguate a generic *_soc report, but never
