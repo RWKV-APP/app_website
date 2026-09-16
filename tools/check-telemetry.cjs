@@ -451,6 +451,140 @@ async function main() {
     assert.equal(socBoard.find((row) => row.socName === socName).sampleCount, 1)
   }
 
+  // A reported platform shared by identified and unresolved devices is not a
+  // canonical filter identity. Public drilldowns must retain matrix membership.
+  const sharedPlatformRows = Array.from({ length: 5 }, (_, index) => ({
+    ...rows[0],
+    id: index + 1,
+    socName: 'sm7635',
+    deviceModel: index < 2 ? 'unidentified-device' : 'Fairphone 6',
+    decodeSpeed: index + 10
+  }))
+  const sharedPlatformService = new TelemetryService(
+    await telemetryDatabase(sharedPlatformRows)
+  )
+  const sharedPlatformQuery = { socName: 'Qualcomm SM7635' }
+  assert.equal(
+    (await sharedPlatformService.publicRecords(sharedPlatformQuery)).total,
+    5
+  )
+  const canonicalUnknown = {
+    ...sharedPlatformQuery,
+    socMatch: 'canonical',
+    limit: '1'
+  }
+  for (const [page, id] of [
+    ['1', 2],
+    ['2', 1]
+  ]) {
+    const result = await sharedPlatformService.publicRecords({
+      ...canonicalUnknown,
+      page
+    })
+    assert.equal(result.total, 2)
+    assert.equal(result.totalPages, 2)
+    assert.deepEqual(
+      result.items.map((row) => row.id),
+      [id]
+    )
+    assert(result.items.every((row) => row.socName === 'Qualcomm SM7635'))
+  }
+  const identifiedPage = await sharedPlatformService.publicRecords({
+    socName: 'Snapdragon 7s Gen 3',
+    socMatch: 'canonical',
+    page: '2',
+    limit: '2'
+  })
+  assert.equal(identifiedPage.total, 3)
+  assert.equal(identifiedPage.totalPages, 2)
+  assert.deepEqual(
+    identifiedPage.items.map((row) => row.id),
+    [3]
+  )
+  assert.equal(
+    (
+      await sharedPlatformService.publicRecords({
+        socName: 'Qualcomm SM7635,Snapdragon 7s Gen 3',
+        socMatch: 'canonical'
+      })
+    ).total,
+    5
+  )
+  const sharedRecordQuery = {
+    ...sharedPlatformQuery,
+    modelSha256: 'model-hash',
+    backend: 'qnn'
+  }
+  assert.equal(
+    (await sharedPlatformService.records(sharedRecordQuery)).length,
+    5
+  )
+  assert.deepEqual(
+    (
+      await sharedPlatformService.records({
+        ...sharedRecordQuery,
+        socMatch: 'canonical'
+      })
+    ).map((row) => row.id),
+    [2, 1]
+  )
+  assert.deepEqual(
+    (
+      await sharedPlatformService.records({
+        ...sharedRecordQuery,
+        socMatch: 'canonical',
+        limit: '1'
+      })
+    ).map((row) => row.id),
+    [2]
+  )
+  assert.deepEqual(
+    (
+      await sharedPlatformService.records({
+        ...sharedRecordQuery,
+        socName: 'Snapdragon 7s Gen 3',
+        socMatch: 'canonical'
+      })
+    ).map((row) => row.id),
+    [5, 4, 3]
+  )
+
+  const commaSocService = new TelemetryService(
+    await telemetryDatabase([
+      { ...rows[0], id: 1, os: 'ios', socBrand: 'apple', socName: 'ipad16,8' },
+      { ...rows[0], id: 2, socName: 'sm7635' }
+    ])
+  )
+  const commaSocBrowse = await commaSocService.publicRecords({
+    socName: JSON.stringify([' ipad16,8 ', 'ipad16,8']),
+    socMatch: 'canonical'
+  })
+  assert.equal(commaSocBrowse.total, 1)
+  assert.deepEqual(
+    commaSocBrowse.items.map((row) => row.id),
+    [1]
+  )
+  assert.equal(
+    (
+      await commaSocService.publicRecords({
+        socName: JSON.stringify(['ipad16,8', 'Qualcomm SM7635']),
+        socMatch: 'canonical'
+      })
+    ).total,
+    2
+  )
+  assert.deepEqual(
+    (
+      await commaSocService.records({
+        socName: 'ipad16,8',
+        socMatch: 'canonical',
+        modelSha256: 'model-hash',
+        backend: 'qnn'
+      })
+    ).map((row) => row.id),
+    [1]
+  )
+
   const gpuRows = ['4060', '4070'].map((gpu, index) => ({
     ...rows[0],
     id: index + 1,

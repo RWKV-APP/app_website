@@ -17,6 +17,8 @@ The public performance matrix, filters, reports and record details display consu
 
 The frontend consumer formatter is separate from statistical identity. Equal public labels form one filter option covering all corresponding identities; different unresolved identifiers have separate options. Matrix rows and record queries retain their original keys; a public family or unknown label never combines their measurements. Legacy filter selections resolve through their original canonical/reported identities before migrating to public groups. Older vendor-wide unidentified groups expand into the current unidentified chip options for that vendor, excluding chips that have since been identified. Original identifiers remain searchable.
 
+Public browse and matrix drilldown requests use `socMatch=canonical`: filters match the current normalized identity before pagination and counting. A previously reported code must not pull an identified chip into an unidentified group. Public browse encodes its SoC list as a JSON array so identifiers containing commas remain intact; drilldown takes one identifier. API callers that omit this option retain historical alias matching.
+
 Snapdragon X CPU implementation strings are shown by their reported retail family; Dragonwing and Adreno also use public family names. These display labels do not assert an exact SKU. Desktop CPU/GPU labels omit trademark boilerplate, PCI implementation codes and revision strings. Raw ingest and historical rows remain unchanged.
 
 ## Verified public-name mappings

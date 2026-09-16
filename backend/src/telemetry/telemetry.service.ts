@@ -73,6 +73,7 @@ interface LeaderboardQuery {
 
 interface RecordsQuery {
   socName: string;
+  socMatch?: string;
   modelSha256: string;
   backend: string;
   isBatch?: string;
@@ -95,6 +96,7 @@ interface AdminRecordsQuery {
   modelSize?: string;
   socBrand?: string;
   socName?: string;
+  socMatch?: string;
 }
 
 interface LeaderboardAccumulator {
@@ -168,6 +170,20 @@ function pickTopDecileValue(values: number[]): number | null {
 
 function normalizeSocFilterKey(value: string): string {
   return normalizeLookupKey(resolveKnownSocName(value) ?? value);
+}
+
+function parseSocNameFilters(value: string | undefined, match: string | undefined): string[] {
+  if (match === 'canonical' && value) {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
+        return Array.from(new Set(parsed.map((item) => item.trim()).filter(Boolean)));
+      }
+    } catch {
+      // Older callers still send comma-separated names.
+    }
+  }
+  return parseFilterList(value);
 }
 
 function simplifySnapdragonXEliteCpuName(value: string | null | undefined): string | null {
@@ -1254,7 +1270,8 @@ export class TelemetryService {
       .filter(
         (row) =>
           row.socNameKey === querySocNameKey ||
-          normalizeSocFilterKey(row.reportedSocName) === querySocNameKey,
+          (query.socMatch !== 'canonical' &&
+            normalizeSocFilterKey(row.reportedSocName) === querySocNameKey),
       )
       .sort((left, right) => right.decodeSpeed - left.decodeSpeed)
       .slice(0, limit)
@@ -1295,7 +1312,7 @@ export class TelemetryService {
       ),
     );
     const socNameKeys = new Set(
-      parseFilterList(query.socName)
+      parseSocNameFilters(query.socName, query.socMatch)
         .map(normalizeSocFilterKey)
         .filter((socName) => socName.length > 0),
     );
@@ -1360,7 +1377,7 @@ export class TelemetryService {
       if (
         socNameKeys.size > 0 &&
         !socNameKeys.has(normalized.socNameKey) &&
-        !socNameKeys.has(normalizeSocFilterKey(row.socName))
+        (query.socMatch === 'canonical' || !socNameKeys.has(normalizeSocFilterKey(row.socName)))
       ) {
         return false;
       }

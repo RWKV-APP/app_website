@@ -305,7 +305,7 @@ async function fetchTelemetryBrowse(
       .map((item) => String(item).trim())
       .filter((item) => item.length > 0 && item !== 'all');
     if (values.length > 0) {
-      params.set(key, values.join(','));
+      params.set(key, publicAccess && key === 'socName' ? JSON.stringify(values) : values.join(','));
     }
   };
 
@@ -326,6 +326,7 @@ async function fetchTelemetryBrowse(
   setFilterParam('modelSize', options?.modelSize);
   setFilterParam('socBrand', options?.socBrand);
   setFilterParam('socName', options?.socName);
+  if (publicAccess) params.set('socMatch', 'canonical');
   const query = params.toString();
   const response = publicAccess
     ? await fetch(`${API_BASE_URL}/public-api/telemetry/browse?${query}`, {
@@ -405,6 +406,7 @@ export async function fetchPublicTelemetryRecords(params: {
 }): Promise<TelemetryRecordEntry[]> {
   const query = new URLSearchParams({
     socName: params.socName,
+    socMatch: 'canonical',
     modelSha256: params.modelSha256,
     backend: params.backend,
     isBatch: String(params.isBatch),

@@ -53,6 +53,7 @@ export class TelemetryController {
     @Query('modelSize') modelSize?: string,
     @Query('socBrand') socBrand?: string,
     @Query('socName') socName?: string,
+    @Query('socMatch') socMatch?: string,
   ) {
     return this.respond(
       req,
@@ -69,6 +70,7 @@ export class TelemetryController {
         modelSize,
         socBrand,
         socName,
+        socMatch,
       }),
     );
   }
@@ -120,6 +122,7 @@ export class TelemetryController {
     @Query('appVersion') appVersion?: string,
     @Query('buildMode') buildMode?: string,
     @Query('limit') limit?: string,
+    @Query('socMatch') socMatch?: string,
   ) {
     if (!socName || !modelSha256 || !backend) {
       return res.status(400).json({ error: 'socName, modelSha256, and backend are required' });
@@ -129,6 +132,7 @@ export class TelemetryController {
       res,
       await this.telemetryService.records({
         socName,
+        socMatch,
         modelSha256,
         backend,
         isBatch,
