@@ -14,6 +14,104 @@ const { TelemetryController } = backendRequire(
   './src/telemetry/telemetry.controller'
 )
 
+// Use an isolated real SQLite database and the generated Prisma client, including
+// historical NULL modes. Filtering, raw result types and pagination all execute.
+const sqlite3 = backendRequire('sqlite3')
+const { PrismaClient } = backendRequire('@prisma/client')
+const { mkdtempSync, rmSync } = require('node:fs')
+const { tmpdir } = require('node:os')
+const databases = []
+async function telemetryDatabase(rows, onRead = () => {}) {
+  const directory = mkdtempSync(path.join(tmpdir(), 'telemetry-check-'))
+  const file = path.join(directory, 'telemetry.db')
+  const database = new sqlite3.Database(file)
+  const query = (sql, values = []) =>
+    new Promise((resolve, reject) => {
+      database.all(sql, values, (error, result) =>
+        error ? reject(error) : resolve(result)
+      )
+    })
+  const numeric = [
+    'id',
+    'modelSizeB',
+    'batchCount',
+    'prefillSpeed',
+    'decodeSpeed',
+    'totalMemoryMb',
+    'totalVramMb',
+    'schemaVersion'
+  ]
+  const columns = [
+    ...new Set([
+      ...Object.keys(rows[0]),
+      'osVersion',
+      'cpuName',
+      'gpuName',
+      'totalMemoryMb',
+      'totalVramMb',
+      'appBuild',
+      'clientTimestamp',
+      'createdAt',
+      'schemaVersion'
+    ])
+  ]
+  const type = (key) =>
+    key === 'isBatch'
+      ? 'BOOLEAN'
+      : key.endsWith('Timestamp') || key === 'createdAt'
+        ? 'DATETIME'
+        : numeric.includes(key)
+          ? ['modelSizeB', 'prefillSpeed', 'decodeSpeed'].includes(key)
+            ? 'REAL'
+            : 'INTEGER'
+          : 'TEXT'
+  await query(
+    `CREATE TABLE TelemetryPerf (${columns.map((key) => `"${key}" ${type(key)}`).join(',')})`
+  )
+  for (const row of rows) {
+    const defaults = {
+      appBuild: '749',
+      clientTimestamp: Date.now(),
+      createdAt: Date.now()
+    }
+    await query(
+      `INSERT INTO TelemetryPerf (${columns.map((key) => `"${key}"`).join(',')}) VALUES (${columns.map(() => '?').join(',')})`,
+      columns.map((key) => row[key] ?? defaults[key] ?? null)
+    )
+  }
+  await new Promise((resolve, reject) =>
+    database.close((error) => (error ? reject(error) : resolve()))
+  )
+  const prisma = new PrismaClient({
+    datasources: { db: { url: `file:${file}` } }
+  })
+  databases.push({ prisma, directory })
+  return {
+    storedVersions: async () => {
+      const rows =
+        await prisma.$queryRaw`SELECT id, appVersion, buildMode FROM TelemetryPerf ORDER BY id`
+      return rows.map((row) => ({ ...row, id: Number(row.id) }))
+    },
+    $queryRaw: async (statement) => {
+      onRead()
+      assert(
+        !statement.sql.includes('installIdHash'),
+        'raw SQL must preserve the public column allowlist'
+      )
+      return prisma.$queryRaw(statement)
+    },
+    telemetryPerf: {
+      findMany: async (options) => {
+        onRead()
+        assert.equal(options.select.installIdHash, undefined)
+        return prisma.telemetryPerf.findMany(options)
+      },
+      count: (options) => prisma.telemetryPerf.count(options),
+      groupBy: (options) => prisma.telemetryPerf.groupBy(options)
+    }
+  }
+}
+
 async function main() {
   let reads = 0
   let fail = false
@@ -37,23 +135,10 @@ async function main() {
     buildMode: 'release',
     installIdHash: 'MUST_NOT_BE_PUBLIC'
   }))
-  const prisma = {
-    telemetryPerf: {
-      findMany: async ({ select, skip = 0, take = rows.length }) => {
-        reads++
-        if (fail) throw new Error('temporary database failure')
-        assert.equal(select.installIdHash, undefined)
-        return rows
-          .slice(skip, skip + take)
-          .map((row) =>
-            Object.fromEntries(
-              Object.keys(select).map((key) => [key, row[key] ?? null])
-            )
-          )
-      },
-      count: async () => rows.length
-    }
-  }
+  const prisma = await telemetryDatabase(rows, () => {
+    reads++
+    if (fail) throw new Error('temporary database failure')
+  })
   const service = new TelemetryService(prisma)
   const [first, concurrent] = await Promise.all([
     service.leaderboard({ limit: '5000' }),
@@ -163,24 +248,9 @@ async function main() {
     })
   }
   const originalRows = structuredClone(historicalRows)
-  const normalizedService = new TelemetryService({
-    telemetryPerf: {
-      findMany: async ({ select, where = {} }) =>
-        historicalRows
-          .filter((row) =>
-            Object.entries(where).every(([key, value]) =>
-              typeof value === 'object'
-                ? value.in.includes(row[key])
-                : row[key] === value
-            )
-          )
-          .map((row) =>
-            Object.fromEntries(
-              Object.keys(select).map((key) => [key, row[key] ?? null])
-            )
-          )
-    }
-  })
+  const normalizedService = new TelemetryService(
+    await telemetryDatabase(historicalRows)
+  )
   const normalized = await normalizedService.leaderboard({ limit: '5000' })
   for (const [alias, canonical] of canonicalCases) {
     const entry = normalized.find((row) => row.socName === canonical)
@@ -277,6 +347,221 @@ async function main() {
     'normalization must leave stored records untouched'
   )
 
+  const { normalizeTelemetryAppVersion, normalizeTelemetryAppDimensions } =
+    backendRequire('@app/contracts')
+  assert.equal(normalizeTelemetryAppVersion('4.6.7-debug'), '4.6.7')
+  for (const version of [
+    '4.6.7-rc.1',
+    '4.6.7-rc.1-debug',
+    '4.6.7-beta',
+    '4.6.7.1-debug',
+    '4..6.7-debug',
+    'preview-debug'
+  ]) {
+    assert.equal(normalizeTelemetryAppVersion(version), version)
+  }
+  assert.deepEqual(
+    normalizeTelemetryAppDimensions('4.6.7-debug', ' RELEASE '),
+    { appVersion: '4.6.7', buildMode: 'release' }
+  )
+  const versionCases = [
+    ['4.6.7', 'debug'],
+    ['4.6.7-debug', 'unknown'],
+    ['4.6.7-debug', null],
+    ['4.6.7-debug', 'release'],
+    ['4.6.7-profile', 'unknown'],
+    ['4.6.7-release', ''],
+    ['4.6.7', 'unknown'],
+    ['4.6.7', null],
+    ['4.6.8-debug', 'unknown'],
+    ['4.6.7-rc.1-debug', 'unknown'],
+    ['4.6.7-beta', 'release'],
+    ['4.6.7', 'profile'],
+    ['4.6.7-debug', 'invalid'],
+    ['4.6.7', 'release'],
+    ['4.6.7.1-debug', 'unknown'],
+    ['4.6.7-unknown', 'unknown'],
+    ['4.x.7-debug', 'unknown'],
+    ['4..6.7-debug', 'unknown'],
+    ['4.6.7-debug', 'profile'],
+    ['4.6.7-Debug', 'unknown'],
+    ['4.6.7-RELEASE', null]
+  ]
+  const versionRows = versionCases.map(([appVersion, buildMode], index) => ({
+    ...rows[0],
+    id: index + 1,
+    appVersion,
+    buildMode
+  }))
+  const originalVersionRows = structuredClone(versionRows)
+  const versionDatabase = await telemetryDatabase(versionRows)
+  const versionService = new TelemetryService(versionDatabase)
+  const queryCases = [
+    [{ appVersion: '4.6.7' }, [1, 2, 3, 4, 5, 6, 7, 8, 12, 13, 14, 19, 20, 21]],
+    [{ appVersion: '4.6.7', buildMode: 'debug' }, [1, 2, 3, 13, 20]],
+    [{ appVersion: '4.6.7', buildMode: 'profile' }, [5, 12, 19]],
+    [{ appVersion: '4.6.7', buildMode: 'release' }, [4, 6, 14, 21]],
+    [{ appVersion: '4.6.7', buildMode: 'unknown' }, [7, 8]],
+    [
+      { appVersion: '4.6.7', buildMode: 'debug,release' },
+      [1, 2, 3, 4, 6, 13, 14, 20, 21]
+    ],
+    [{ appVersion: '4.6.7,4.6.8', buildMode: 'debug' }, [1, 2, 3, 9, 13, 20]],
+    [{ appVersion: '4.6.7-Debug' }, [20]],
+    [{ appVersion: "4.6.7') OR 1=1 --" }, []],
+    [{ appVersion: '4.6.7-debug' }, [2, 3, 4, 13, 19]],
+    [{ appVersion: '4.6.7-debug', buildMode: 'release' }, [4]],
+    [{ appVersion: '4.6.7-rc.1-debug', buildMode: 'unknown' }, [10]],
+    [{ appVersion: '4.6.7-beta', buildMode: 'release' }, [11]],
+    [{ buildMode: 'unknown' }, [7, 8, 10, 15, 16, 17, 18]],
+    [{ appVersion: '4.6.7', buildMode: 'debug', os: 'ios' }, []]
+  ]
+  const sortedIds = (items) => items.map((row) => row.id).sort((a, b) => a - b)
+  for (const [query, ids] of queryCases) {
+    const records = await versionService.records({
+      socName: 'Snapdragon 865',
+      modelSha256: 'model-hash',
+      backend: 'qnn',
+      ...query
+    })
+    assert.deepEqual(
+      sortedIds(records),
+      ids,
+      `record SQL: ${JSON.stringify(query)}`
+    )
+    assert(
+      records.every(
+        (record) =>
+          record.clientTimestamp instanceof Date &&
+          record.createdAt instanceof Date
+      )
+    )
+    const browse = await versionService.publicRecords(query)
+    const admin = await versionService.adminRecords(query)
+    assert.deepEqual(
+      sortedIds(browse.items),
+      ids,
+      `public browse SQL: ${JSON.stringify(query)}`
+    )
+    assert.deepEqual(
+      sortedIds(admin.items),
+      ids,
+      `admin browse SQL: ${JSON.stringify(query)}`
+    )
+    assert.equal(browse.total, ids.length)
+    assert.equal(admin.total, ids.length)
+    const leaderboard = await versionService.leaderboard(query)
+    assert.equal(
+      leaderboard.reduce((sum, row) => sum + row.sampleCount, 0),
+      ids.length,
+      `leaderboard SQL: ${JSON.stringify(query)}`
+    )
+    for (const record of [...records, ...browse.items, ...admin.items]) {
+      const original = versionRows.find((row) => row.id === record.id)
+      const expected = normalizeTelemetryAppDimensions(
+        original.appVersion,
+        original.buildMode
+      )
+      assert.equal(typeof record.id, 'number')
+      assert.equal(typeof record.isBatch, 'boolean')
+      assert.equal(record.appVersion, expected.appVersion)
+      assert.equal(record.buildMode, expected.buildMode)
+    }
+  }
+  const paginated = await versionService.adminRecords({
+    appVersion: '4.6.7',
+    buildMode: 'debug',
+    page: '2',
+    limit: '2'
+  })
+  assert.equal(paginated.total, 5)
+  assert.equal(paginated.totalPages, 3)
+  assert.deepEqual(sortedIds(paginated.items), [2, 3])
+  const derived = await versionService.publicRecords({
+    appVersion: '4.6.7',
+    buildMode: 'debug',
+    socBrand: 'qualcomm',
+    page: '2',
+    limit: '2'
+  })
+  assert.equal(derived.total, 5)
+  assert.deepEqual(sortedIds(derived.items), [2, 3])
+  for (const facets of [
+    await versionService.filters(),
+    await versionService.publicFilters(),
+    await versionService.adminFilters()
+  ]) {
+    assert.equal(
+      facets.appVersions.filter((version) => version === '4.6.7').length,
+      1
+    )
+    assert(!facets.appVersions.includes('4.6.7-debug'))
+    assert(facets.appVersions.includes('4.6.7-rc.1-debug'))
+    assert(facets.appVersions.includes('4.6.7-beta'))
+    assert.deepEqual(facets.buildModes, [
+      'debug',
+      'profile',
+      'release',
+      'unknown'
+    ])
+  }
+  let inserted
+  const ingestService = new TelemetryService({
+    telemetryPerf: {
+      create: async ({ data }) => {
+        inserted = data
+      }
+    }
+  })
+  for (const [appVersion, buildMode] of [
+    ['4.6.7-Debug', undefined],
+    ['4.6.7-profile', 'unknown'],
+    ['4.6.7-debug', 'release'],
+    ['4.6.7-rc.1', undefined]
+  ]) {
+    const accepted = await ingestService.ingest(
+      {
+        schemaVersion: 1,
+        installId: 'test-only-install',
+        device: {
+          socName: 'Snapdragon 865',
+          socBrand: 'qualcomm',
+          os: 'android'
+        },
+        app: { version: appVersion, build: '749', buildMode },
+        model: {
+          name: 'test',
+          fileName: 'test.bin',
+          sha256: 'test',
+          backend: 'qnn'
+        },
+        perf: { prefillSpeed: 20, decodeSpeed: 10 },
+        clientTimestamp: Date.now()
+      },
+      null
+    )
+    assert.equal(accepted.accepted, true)
+    assert.deepEqual(
+      { appVersion: inserted.appVersion, buildMode: inserted.buildMode },
+      normalizeTelemetryAppDimensions(appVersion, buildMode)
+    )
+  }
+  assert.deepEqual(
+    versionRows,
+    originalVersionRows,
+    'historical version/mode records must not be rewritten'
+  )
+
+  assert.deepEqual(
+    await versionDatabase.storedVersions(),
+    originalVersionRows.map(({ id, appVersion, buildMode }) => ({
+      id,
+      appVersion,
+      buildMode
+    })),
+    'database history must retain original versions and modes'
+  )
+
   // Exercise the actual HTTP handler, including content negotiation and decode parity.
   const express = backendRequire('express')
   const app = express()
@@ -321,10 +606,17 @@ async function main() {
     server.close()
   }
   console.log(
-    'telemetry: normalization, vendor filters, drilldown, cache, public field allowlist, limits and gzip passed'
+    'telemetry: SQLite version/mode filters, ingestion, normalization, vendor filters, drilldown, cache, privacy, pagination and gzip passed'
   )
 }
-main().catch((error) => {
-  console.error(error)
-  process.exitCode = 1
-})
+main()
+  .catch((error) => {
+    console.error(error)
+    process.exitCode = 1
+  })
+  .finally(async () => {
+    for (const { prisma, directory } of databases) {
+      await prisma.$disconnect()
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })

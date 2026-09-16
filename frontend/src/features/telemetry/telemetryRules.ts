@@ -43,6 +43,34 @@ export const MODEL_TAG_LABELS: Record<string, string> = Object.fromEntries(
   TELEMETRY_ADMIN_FILTER_MODEL_TAG_ORDER.map((tag) => [tag, tag]),
 );
 
+// The filter groups NeuroPilot runtimes; raw backend identities still separate metrics.
+export function getBackendFamily(backend: string): string {
+  switch (backend) {
+    case 'mtkneuropilot7':
+    case 'mtkneuropilot9':
+    case 'mtk_np7':
+    case 'mtk_np9':
+      return 'mtkneuropilot';
+    default:
+      return backend;
+  }
+}
+
+export function formatBackendLabel(backend: string): string {
+  switch (backend) {
+    case 'mtkneuropilot':
+      return 'MTK NeuroPilot';
+    case 'mtkneuropilot7':
+    case 'mtk_np7':
+      return 'MTK NeuroPilot 7';
+    case 'mtkneuropilot9':
+    case 'mtk_np9':
+      return 'MTK NeuroPilot 9';
+    default:
+      return backend;
+  }
+}
+
 export function inferBrand(socName: string, socBrand: string): string {
   if (socBrand && socBrand !== 'unknown') {
     if (socBrand.toLowerCase() === 'snapdragon') return 'qualcomm';
@@ -249,7 +277,9 @@ export function filterLeaderboardData(
     filtered = filtered.filter((entry) => filters.selectedPlatforms.includes(entry.os));
   }
   if (filters.selectedBackend.length > 0) {
-    filtered = filtered.filter((entry) => filters.selectedBackend.includes(entry.backend));
+    filtered = filtered.filter((entry) =>
+      filters.selectedBackend.includes(getBackendFamily(entry.backend)),
+    );
   }
   if (filters.selectedBatch.length > 0) {
     filtered = filtered.filter((entry) => filters.selectedBatch.includes(String(entry.batchCount)));

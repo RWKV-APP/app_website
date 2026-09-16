@@ -5,6 +5,7 @@ import {
   OS_ORDER,
   deriveModelTag,
   deriveWeightLabel,
+  getBackendFamily,
   getHardwareBrandKeys,
   telemetrySocKey,
 } from './telemetryRules';
@@ -48,7 +49,7 @@ export function getTelemetryFilterOptions(
   for (const entry of data) {
     const attributes: TelemetryFilterSelections = {
       selectedPlatforms: [entry.os],
-      selectedBackend: [entry.backend],
+      selectedBackend: [getBackendFamily(entry.backend)],
       selectedBatch: [String(entry.batchCount)],
       selectedSize: [deriveWeightLabel(entry)],
       selectedModelTag: [deriveModelTag(entry)],

@@ -112,9 +112,10 @@ identical in-flight requests, and discard failures. HTTP responses cache for
 data freshness). Ingest remains uncached.
 
 The matrix searches loaded data locally and displays all matching rows and model
-columns in one continuous scrollable matrix, without pagination. Rows fill in
-automatically in idle-time batches. All filter groups and SoC options remain
-expanded and visible. Exported reports preserve all filtered columns.
+columns in one continuous scrollable matrix, without pagination. Only populated
+cells allocate DOM; empty intersections use background grid lines. Every cell has
+an explicit row/column position, and keyboard order follows visible column order.
+All filter groups and SoC options remain expanded and visible. Exported reports preserve all filtered columns.
 Version/build-mode changes cancel superseded network requests; matrix rows,
 record actions and exports are usable only after the selected query has succeeded.
 All local filter candidates include the search term and every other selected
@@ -126,3 +127,11 @@ visible and retry refreshes both options and results. Unknown chip identities
 and model sizes remain explicitly labeled, with raw sample details retained.
 Empty results retain the filters and reset control. `pnpm check:telemetry` covers query reuse,
 expiry, retries, field privacy and HTTP compression negotiation.
+
+Backend filtering groups MTK NeuroPilot 7/9 under MTK NeuroPilot. Matrix columns,
+record queries and exported statistics retain the original backend identity.
+Numeric release versions with a debug/profile/release suffix are displayed and
+queried as a release version plus a separate build mode. A valid explicit mode
+wins; missing/unknown mode falls back to the suffix. Other prerelease suffixes
+remain part of the version. Historical database values are normalized on read;
+new reports normalize the dimensions on ingest, without rewriting stored history.

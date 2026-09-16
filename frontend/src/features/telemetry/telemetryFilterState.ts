@@ -1,4 +1,6 @@
+import { normalizeTelemetryAppDimensions } from '@app/contracts';
 import type { TelemetryFilterSelections } from './telemetryFilters';
+import { getBackendFamily } from './telemetryRules';
 
 export type TelemetryFilterState = TelemetryFilterSelections & {
   selectedVersion: string[];
@@ -38,6 +40,20 @@ export function parseTelemetryFilterState(value: string | null): TelemetryFilter
         state[key] = Array.from(new Set(field.filter(Boolean)));
       }
     }
+    // Historical variant selections now select the complete NeuroPilot family.
+    state.selectedBackend = Array.from(new Set(state.selectedBackend.map(getBackendFamily)));
+    const versions = state.selectedVersion.map((version) =>
+      normalizeTelemetryAppDimensions(version),
+    );
+    // A saved flavor-only version selection keeps its original mode constraint.
+    if (
+      !state.selectedBuildMode.length &&
+      versions.length &&
+      versions.every((version) => version.buildMode !== 'unknown')
+    ) {
+      state.selectedBuildMode = Array.from(new Set(versions.map((version) => version.buildMode)));
+    }
+    state.selectedVersion = Array.from(new Set(versions.map((version) => version.appVersion)));
     return state;
   } catch {
     return null;

@@ -21,6 +21,7 @@ import {
   deriveSortOrder,
   deriveWeightLabel,
   filterLeaderboardData,
+  formatBackendLabel,
   formatFilterSelection,
   formatHardwareSummary,
   formatMetricBasisLabel,
@@ -138,26 +139,6 @@ interface StackedCellLabel {
 const LS_KEY_MODEL_TAG = 'rwkv-perf-filter-model-tag';
 const LS_KEY_SIZE = 'rwkv-perf-filter-size';
 const LS_KEY_BRAND = 'rwkv-perf-filter-brand';
-const INITIAL_RENDERED_ROWS = 12;
-const RENDER_ROW_CHUNK = 12;
-
-type IdleWindow = Window & {
-  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
-  cancelIdleCallback?: (handle: number) => void;
-};
-
-function scheduleRowRender(callback: () => void): () => void {
-  if (typeof window === 'undefined') return () => {};
-  const idleWindow = window as IdleWindow;
-  if (idleWindow.requestIdleCallback && idleWindow.cancelIdleCallback) {
-    const handle = idleWindow.requestIdleCallback(callback, { timeout: 120 });
-    return () => idleWindow.cancelIdleCallback?.(handle);
-  }
-
-  const handle = window.setTimeout(callback, 16);
-  return () => window.clearTimeout(handle);
-}
-
 function parseFilterList(value: string | null | undefined): string[] {
   if (!value) return [];
   const seen = new Set<string>();
@@ -453,7 +434,7 @@ function getWeightColumnReportLabel(column: WeightColumn): string {
     parts.push(`batch×${column.batchCount}`);
   }
   parts.push(column.quant);
-  parts.push(column.backend);
+  parts.push(formatBackendLabel(column.backend));
   return parts.join(' | ');
 }
 
@@ -579,7 +560,7 @@ function buildSocReportHtml(input: {
         <td>${escapeHtml(item.isBatch ? formatSpeed(item.displayDecodePerBatch) : '—')}</td>
         <td>${escapeHtml(item.displayMetricBasis)}</td>
         <td>${escapeHtml(item.batchCount > 1 ? `x${item.batchCount}` : 'x1')}</td>
-        <td>${escapeHtml(item.backend)}</td>
+        <td>${escapeHtml(formatBackendLabel(item.backend))}</td>
         <td>${escapeHtml(String(item.sampleCount))}</td>
       </tr>
     `,
@@ -1146,6 +1127,7 @@ export default function ModelFitPreviewPage() {
             entry.modelName,
             entry.modelFileName,
             entry.backend,
+            formatBackendLabel(entry.backend),
           ]
             .join(' ')
             .toLowerCase()
@@ -1188,30 +1170,11 @@ export default function ModelFitPreviewPage() {
     return platforms.flatMap((p) => p.rows.map((r) => ({ ...r, osLabel: p.label, osId: p.id })));
   }, [platforms]);
 
-  const [renderProgress, setRenderProgress] = useState({
-    rows: displayRows,
-    limit: INITIAL_RENDERED_ROWS,
-  });
-  // A new result starts small during render, before effects run. Reusing the
-  // previous result's full row count would briefly build the entire new matrix.
-  const renderedRowLimit =
-    renderProgress.rows === displayRows
-      ? renderProgress.limit
-      : Math.min(INITIAL_RENDERED_ROWS, displayRows.length);
-
-  useEffect(() => {
-    if (renderedRowLimit >= displayRows.length) return;
-    return scheduleRowRender(() => {
-      setRenderProgress({
-        rows: displayRows,
-        limit: Math.min(renderedRowLimit + RENDER_ROW_CHUNK, displayRows.length),
-      });
-    });
-  }, [displayRows, renderedRowLimit]);
-
-  const renderedDisplayRows = useMemo(
-    () => displayRows.slice(0, renderedRowLimit),
-    [displayRows, renderedRowLimit],
+  // Keep the complete scrollable matrix, but allocate DOM only for actual samples.
+  // An empty SoC/model intersection needs no element or recurring idle render.
+  const weightColumnPositions = useMemo(
+    () => new Map(weightColumns.map((column, index) => [column.key, { column, index }])),
+    [weightColumns],
   );
 
   const matrixGridStyle = useMemo<CSSProperties>(
@@ -1230,7 +1193,9 @@ export default function ModelFitPreviewPage() {
       sanitizeFileNamePart(
         formatFilterSelection(selectedBatch, 'all-batches', (batchCount) => `batch-${batchCount}`),
       ),
-      sanitizeFileNamePart(formatFilterSelection(selectedBackend, 'all-backends')),
+      sanitizeFileNamePart(
+        formatFilterSelection(selectedBackend, 'all-backends', formatBackendLabel),
+      ),
       sanitizeFileNamePart(formatFilterSelection(selectedModelTag, 'all-types')),
       sanitizeFileNamePart(formatFilterSelection(selectedSize, 'all-weights')),
       sanitizeFileNamePart(formatFilterSelection(selectedBrand, 'all-brands', capitalizeBrand)),
@@ -1286,7 +1251,10 @@ export default function ModelFitPreviewPage() {
           label: 'Batch',
           value: formatFilterSelection(selectedBatch, '不限制', (value) => `x${value}`),
         },
-        { label: 'Backend', value: formatFilterSelection(selectedBackend, '不限制') },
+        {
+          label: 'Backend',
+          value: formatFilterSelection(selectedBackend, '不限制', formatBackendLabel),
+        },
         { label: 'Type', value: formatFilterSelection(selectedModelTag, '不限制') },
         { label: 'Weight', value: formatFilterSelection(selectedSize, '不限制') },
         { label: 'Chip', value: socDisplay.primaryLabel },
@@ -1500,6 +1468,7 @@ export default function ModelFitPreviewPage() {
               label="Backend"
               options={options.selectedBackend}
               selected={selectedBackend}
+              format={formatBackendLabel}
               onChange={(values) => startFilterTransition(() => setSelectedBackend(values))}
               pending={!resultsReady}
             />
@@ -1614,10 +1583,16 @@ export default function ModelFitPreviewPage() {
               <section className={styles.tableSection} aria-busy={loading}>
                 <div className={styles.tableWrap}>
                   <div className={styles.matrixGrid} style={matrixGridStyle}>
-                    <div className={`${styles.rowHead} ${styles.cornerHead}`}>SoC</div>
+                    <div
+                      className={`${styles.rowHead} ${styles.cornerHead}`}
+                      style={{ gridRow: 1, gridColumn: 1 }}
+                    >
+                      SoC
+                    </div>
                     {weightColumns.map((col, colIndex) => (
                       <div
                         key={col.key}
+                        style={{ gridRow: 1, gridColumn: colIndex + 2 }}
                         className={`${styles.weightHead} ${colIndex === weightColumns.length - 1 ? styles.lastCol : ''}`}
                       >
                         <div className={styles.weightTitle}>{col.label}</div>
@@ -1631,14 +1606,14 @@ export default function ModelFitPreviewPage() {
                           {col.isBatch ? (
                             <span className={styles.batchTag}>×{col.batchCount}</span>
                           ) : null}
-                          {col.quant} · {col.backend}
+                          {col.quant} · {formatBackendLabel(col.backend)}
                         </div>
                       </div>
                     ))}
 
-                    {renderedDisplayRows.flatMap((row, rowIndex) => {
+                    {displayRows.flatMap((row, rowIndex) => {
                       const rowKey = `${row.osLabel ?? ''}-${row.socName}`;
-                      const isLastRow = rowIndex === renderedDisplayRows.length - 1;
+                      const isLastRow = rowIndex === displayRows.length - 1;
                       const rowHeadClass = `${styles.rowCell} ${isLastRow ? styles.lastRow : ''}`;
                       const socDisplay = getSocDisplayInfo({
                         socName: row.socName,
@@ -1668,7 +1643,17 @@ export default function ModelFitPreviewPage() {
                       });
 
                       return [
-                        <div key={`${rowKey}__head`} className={rowHeadClass}>
+                        <div
+                          key={`${rowKey}__line`}
+                          aria-hidden="true"
+                          className={`${styles.matrixRowLine} ${isLastRow ? styles.lastRow : ''}`}
+                          style={{ gridRow: rowIndex + 2, gridColumn: '1 / -1' }}
+                        />,
+                        <div
+                          key={`${rowKey}__head`}
+                          className={rowHeadClass}
+                          style={{ gridRow: rowIndex + 2, gridColumn: 1 }}
+                        >
                           <div className={styles.rowTopline}>
                             {socDisplay.brand !== 'unknown' ? (
                               <span className={styles.vendorTag}>
@@ -1692,56 +1677,61 @@ export default function ModelFitPreviewPage() {
                           ) : null}
                           {rowMeta ? <div className={styles.rowMeta}>{rowMeta}</div> : null}
                         </div>,
-                        ...weightColumns.map((col, colIndex) => {
-                          const cell = row.cells[col.key];
-                          const isLastCol = colIndex === weightColumns.length - 1;
-                          const cellBaseClass = `${styles.speedCell} ${isLastCol ? styles.lastCol : ''} ${isLastRow ? styles.lastRow : ''}`;
+                        ...Object.entries(row.cells)
+                          .sort(
+                            ([a], [b]) =>
+                              (weightColumnPositions.get(a)?.index ?? 0) -
+                              (weightColumnPositions.get(b)?.index ?? 0),
+                          )
+                          .map(([key, cell]) => {
+                            const position = weightColumnPositions.get(key);
+                            if (!position) return null;
+                            const { column: col, index: colIndex } = position;
+                            const isLastCol = colIndex === weightColumns.length - 1;
+                            const cellBaseClass = `${styles.speedCell} ${isLastCol ? styles.lastCol : ''} ${isLastRow ? styles.lastRow : ''}`;
 
-                          if (!cell) {
-                            return <div key={`${rowKey}__${col.key}`} className={cellBaseClass} />;
-                          }
-
-                          const prefill = cell.prefillDisplay;
-                          const decode = cell.decodeDisplay;
-                          const decodeRaw = cell.decodeRawDisplay;
-                          const isBatchMetric = cell.metricBasis === 'decode_div_batch';
-                          return (
-                            <button
-                              key={`${rowKey}__${col.key}`}
-                              type="button"
-                              className={`${cellBaseClass} ${buildCellClass(decode)} ${styles.speedCellClickable} ${styles.matrixButtonCell}`}
-                              disabled={!actionsReady}
-                              onClick={() => handleCellClick(cell, col.label)}
-                              aria-label={
-                                isBatchMetric
-                                  ? `${ariaSocLabel} ${col.label} prefill ${formatSpeed(prefill)} decode ${formatSpeed(decodeRaw)} decode per batch ${formatSpeed(decode)}`
-                                  : `${ariaSocLabel} ${col.label} prefill ${formatSpeed(prefill)} decode ${formatSpeed(decode)}`
-                              }
-                            >
-                              <div className={styles.metricLine}>
-                                <span className={styles.metricLabel}>Prefill</span>
-                                <strong className={styles.metricValue}>
-                                  {formatSpeed(prefill)}
-                                </strong>
-                              </div>
-                              <div className={styles.metricLine}>
-                                <span className={styles.metricLabel}>Decode</span>
-                                <strong className={styles.metricValue}>
-                                  {formatSpeed(isBatchMetric ? decodeRaw : decode)}
-                                </strong>
-                              </div>
-                              {isBatchMetric ? (
+                            const prefill = cell.prefillDisplay;
+                            const decode = cell.decodeDisplay;
+                            const decodeRaw = cell.decodeRawDisplay;
+                            const isBatchMetric = cell.metricBasis === 'decode_div_batch';
+                            return (
+                              <button
+                                key={`${rowKey}__${col.key}`}
+                                style={{ gridRow: rowIndex + 2, gridColumn: colIndex + 2 }}
+                                type="button"
+                                className={`${cellBaseClass} ${buildCellClass(decode)} ${styles.speedCellClickable} ${styles.matrixButtonCell}`}
+                                disabled={!actionsReady}
+                                onClick={() => handleCellClick(cell, col.label)}
+                                aria-label={
+                                  isBatchMetric
+                                    ? `${ariaSocLabel} ${col.label} prefill ${formatSpeed(prefill)} decode ${formatSpeed(decodeRaw)} decode per batch ${formatSpeed(decode)}`
+                                    : `${ariaSocLabel} ${col.label} prefill ${formatSpeed(prefill)} decode ${formatSpeed(decode)}`
+                                }
+                              >
                                 <div className={styles.metricLine}>
-                                  <span className={styles.metricLabel}>Decode / Batch</span>
+                                  <span className={styles.metricLabel}>Prefill</span>
                                   <strong className={styles.metricValue}>
-                                    {formatSpeed(decode)}
+                                    {formatSpeed(prefill)}
                                   </strong>
                                 </div>
-                              ) : null}
-                              <div className={styles.noteTag}>{getCellFooterNote(cell)}</div>
-                            </button>
-                          );
-                        }),
+                                <div className={styles.metricLine}>
+                                  <span className={styles.metricLabel}>Decode</span>
+                                  <strong className={styles.metricValue}>
+                                    {formatSpeed(isBatchMetric ? decodeRaw : decode)}
+                                  </strong>
+                                </div>
+                                {isBatchMetric ? (
+                                  <div className={styles.metricLine}>
+                                    <span className={styles.metricLabel}>Decode / Batch</span>
+                                    <strong className={styles.metricValue}>
+                                      {formatSpeed(decode)}
+                                    </strong>
+                                  </div>
+                                ) : null}
+                                <div className={styles.noteTag}>{getCellFooterNote(cell)}</div>
+                              </button>
+                            );
+                          }),
                       ];
                     })}
                   </div>
@@ -1851,7 +1841,7 @@ export default function ModelFitPreviewPage() {
                         <strong>{r.decodeSpeed.toFixed(1)}</strong> t/s
                       </span>
                       <span className={styles.recordColInfo}>
-                        {r.backend}
+                        {formatBackendLabel(r.backend)}
                         {r.isBatch ? ` batch×${r.batchCount}` : ''}
                       </span>
                       <span className={styles.recordColInfo}>

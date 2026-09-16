@@ -362,6 +362,23 @@
 .matrixGrid {
   display: grid;
   width: max-content;
+  /* Draw empty column boundaries without allocating a node per empty cell. */
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent 0,
+    transparent calc(var(--metric-column-width) - 1px),
+    var(--color-border) calc(var(--metric-column-width) - 1px),
+    var(--color-border) var(--metric-column-width)
+  );
+  background-position-x: var(--soc-column-width);
+  background-size: var(--metric-column-width) 1px;
+}
+
+.matrixRowLine {
+  min-height: var(--matrix-row-min-height);
+  border-bottom: 1px solid var(--color-border);
+  box-sizing: border-box;
+  pointer-events: none;
 }
 
 .rowHead,
@@ -655,7 +672,7 @@
   background-color: transparent;
 }
 
-/* Hover: highlight row header and column header */
+/* Hover and keyboard focus highlight the populated cell. */
 .speedCellClickable {
   cursor: pointer;
   position: relative;
@@ -665,7 +682,8 @@
     background-color 0.15s ease;
 }
 
-.speedCellClickable:hover {
+.speedCellClickable:hover,
+.speedCellClickable:focus-visible {
   box-shadow: inset 0 0 0 2px var(--color-accent);
 }
 

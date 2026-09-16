@@ -1,11 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { aos as aosDevices, isAndroidDeviceString } from '@naverpay/device-info';
 import { createHash } from 'crypto';
+import { Prisma } from '@prisma/client';
 import {
   TELEMETRY_ADMIN_FILTER_BRAND_ORDER,
   TELEMETRY_ADMIN_FILTER_MODEL_TAG_ORDER,
   TELEMETRY_ADMIN_FILTER_OS_ORDER,
   TELEMETRY_BUILD_MODE_ORDER,
+  normalizeTelemetryAppVersion,
+  normalizeTelemetryAppDimensions,
   type TelemetryBuildMode,
 } from '@app/contracts';
 import { PrismaService } from '../prisma/prisma.service';
@@ -352,7 +355,7 @@ interface TelemetryRecordRow extends TelemetryLeaderboardRow {
   id: number;
   appVersion: string;
   appBuild: string;
-  buildMode: string;
+  buildMode: string | null;
   clientTimestamp: Date;
   createdAt: Date;
 }
@@ -415,12 +418,6 @@ function normalizeTelemetryBuildMode(value: string | null | undefined): Telemetr
   const normalized = cleanOptionalString(value)?.toLowerCase();
   if (!normalized) return null;
   return TELEMETRY_BUILD_MODE_ORDER.find((mode) => mode === normalized) ?? null;
-}
-
-function normalizeTelemetryBuildModeOrUnknown(
-  value: string | null | undefined,
-): TelemetryBuildMode {
-  return normalizeTelemetryBuildMode(value) ?? 'unknown';
 }
 
 function normalizeAndroidDeviceIdentifier(value: string | null | undefined): string | null {
@@ -524,7 +521,9 @@ function parseNumberFilterList(value: string | string[] | null | undefined): num
   return values;
 }
 
-function applyStringFilter(where: any, key: string, values: string[]): void {
+type TelemetryWhere = Record<string, string | number | boolean | { in: string[] | number[] }>;
+
+function applyStringFilter(where: TelemetryWhere, key: string, values: string[]): void {
   if (values.length === 1) {
     where[key] = values[0];
   } else if (values.length > 1) {
@@ -532,7 +531,46 @@ function applyStringFilter(where: any, key: string, values: string[]): void {
   }
 }
 
-function applyNumberFilter(where: any, key: string, values: number[]): void {
+// Legacy rows may have absent modes. SQL handles those rows before
+// pagination/counting; Prisma's current non-null field cannot express IS NULL.
+function telemetryWhereSql(where: TelemetryWhere): Prisma.Sql {
+  const explicitMode = Prisma.sql`lower(trim(coalesce("buildMode", ''), char(9) || char(10) || char(11) || char(12) || char(13) || ' '))`;
+  const version = Prisma.sql`substr("appVersion", 1, instr("appVersion", '-') - 1)`;
+  const suffix = Prisma.sql`lower(substr("appVersion", instr("appVersion", '-') + 1))`;
+  const mode = Prisma.sql`CASE
+    WHEN ${explicitMode} IN ('debug', 'profile', 'release') THEN ${explicitMode}
+    WHEN ${suffix} IN ('debug', 'profile', 'release')
+      AND ${version} GLOB '[0-9]*.[0-9]*.[0-9]*'
+      AND ${version} NOT GLOB '*[^0-9.]*'
+      AND length(${version}) - length(replace(${version}, '.', '')) = 2
+    THEN ${suffix} ELSE 'unknown' END`;
+  const conditions = Object.entries(where).map(([key, value]) => {
+    // Keys and projection columns come only from this service's allowlists;
+    // every request value remains a bound parameter.
+    const column = key === 'buildMode' ? mode : Prisma.raw(`"${key}"`);
+    const values = typeof value === 'object' ? value.in : [value];
+    if (key === 'appVersion') {
+      // Canonical releases include known historical suffixes (including -Debug);
+      // a directly requested raw suffixed version retains its exact-match meaning.
+      const canonicalVersions = values.filter(
+        (version): version is string =>
+          typeof version === 'string' && /^\d+\.\d+\.\d+$/.test(version),
+      );
+      if (canonicalVersions.length) {
+        const suffixVersions = canonicalVersions.flatMap((version: string) =>
+          ['debug', 'profile', 'release'].map((mode) => `${version}-${mode}`),
+        );
+        return Prisma.sql`(${column} IN (${Prisma.join(values)}) OR ${column} COLLATE NOCASE IN (${Prisma.join(suffixVersions)}))`;
+      }
+    }
+    return value && typeof value === 'object' && 'in' in value
+      ? Prisma.sql`${column} IN (${Prisma.join(value.in)})`
+      : Prisma.sql`${column} = ${value}`;
+  });
+  return conditions.length ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}` : Prisma.empty;
+}
+
+function applyNumberFilter(where: TelemetryWhere, key: string, values: number[]): void {
   if (values.length === 1) {
     where[key] = values[0];
   } else if (values.length > 1) {
@@ -758,7 +796,7 @@ function normalizeTelemetryRecordRow(row: TelemetryRecordRow): NormalizedTelemet
   const normalized = normalizeTelemetryDevice(row, row.backend);
   return {
     ...row,
-    buildMode: normalizeTelemetryBuildModeOrUnknown(row.buildMode),
+    ...normalizeTelemetryAppDimensions(row.appVersion, row.buildMode),
     ...normalized,
   };
 }
@@ -805,6 +843,58 @@ export class TelemetryService {
   }
 
   constructor(private readonly prisma: PrismaService) {}
+
+  private async findTelemetryRows<T extends Prisma.TelemetryPerfSelect>(options: {
+    where?: TelemetryWhere;
+    select: T;
+    orderBy?: Array<Record<string, 'asc' | 'desc'>>;
+    skip?: number;
+    take?: number;
+  }): Promise<Array<Prisma.TelemetryPerfGetPayload<{ select: T }>>> {
+    if (!options.where?.buildMode && !options.where?.appVersion && !options.select.buildMode) {
+      return this.prisma.telemetryPerf.findMany(options);
+    }
+    const columns = Object.keys(options.select).filter((key) => options.select[key]);
+    const projection = Prisma.join(columns.map((key) => Prisma.raw(`"${key}"`)));
+    const order = options.orderBy?.length
+      ? Prisma.sql`ORDER BY ${Prisma.join(
+          options.orderBy.flatMap((entry) =>
+            Object.entries(entry).map(([key, direction]) => Prisma.raw(`"${key}" ${direction}`)),
+          ),
+        )}`
+      : Prisma.empty;
+    const pagination =
+      options.take !== undefined
+        ? Prisma.sql`LIMIT ${options.take} OFFSET ${options.skip ?? 0}`
+        : Prisma.empty;
+    const rows = await this.prisma.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
+      SELECT ${projection} FROM "TelemetryPerf"
+      ${telemetryWhereSql(options.where ?? {})} ${order} ${pagination}
+    `);
+    // Raw SQLite reads preserve null legacy fields, unlike the generated model.
+    return rows.map((row) =>
+      Object.fromEntries(
+        Object.entries(row).map(([key, value]) => [
+          key,
+          value == null
+            ? value
+            : key === 'isBatch'
+              ? Boolean(value)
+              : typeof value === 'bigint'
+                ? Number(value)
+                : value,
+        ]),
+      ),
+    ) as Array<Prisma.TelemetryPerfGetPayload<{ select: T }>>;
+  }
+
+  private async countTelemetryRows(where: TelemetryWhere): Promise<number> {
+    if (!where.buildMode && !where.appVersion) return this.prisma.telemetryPerf.count({ where });
+    const [row] = await this.prisma.$queryRaw<Array<{ total: number | bigint }>>(Prisma.sql`
+      SELECT count(*) AS total FROM "TelemetryPerf" ${telemetryWhereSql(where)}
+    `);
+    return Number(row.total);
+  }
 
   async ingest(
     body: TelemetryPerfBody,
@@ -864,9 +954,8 @@ export class TelemetryService {
           gpuName: normalizedDevice.gpuName,
           totalMemoryMb: normalizedDevice.totalMemoryMb,
           totalVramMb: normalizedDevice.totalVramMb,
-          appVersion: body.app?.version ?? '',
+          ...normalizeTelemetryAppDimensions(body.app?.version, body.app?.buildMode),
           appBuild: body.app?.build ?? '',
-          buildMode: normalizeTelemetryBuildModeOrUnknown(body.app?.buildMode),
           modelName: body.model.name ?? '',
           modelFileName: body.model.fileName ?? '',
           modelSha256: (body.model.sha256 || body.model.fileName || '').toLowerCase().trim(),
@@ -898,7 +987,7 @@ export class TelemetryService {
   private async queryLeaderboard(query: LeaderboardQuery): Promise<any[]> {
     const limit = Math.min(Math.max(parseInt(query.limit ?? '100', 10) || 100, 1), 5000);
 
-    const where: any = {};
+    const where: TelemetryWhere = {};
     if (query.modelSha256) where.modelSha256 = query.modelSha256.toLowerCase().trim();
     if (query.backend) where.backend = query.backend.toLowerCase().trim();
     applyStringFilter(where, 'os', parseLookupFilterList(query.os));
@@ -906,7 +995,7 @@ export class TelemetryService {
     applyStringFilter(where, 'appVersion', parseFilterList(query.appVersion));
     applyStringFilter(where, 'buildMode', parseBuildModeFilterList(query.buildMode));
 
-    const rows = await this.prisma.telemetryPerf.findMany({
+    const rows = await this.findTelemetryRows({
       where,
       select: {
         os: true,
@@ -931,9 +1020,7 @@ export class TelemetryService {
       },
     });
 
-    const querySocNameKeys = new Set(
-      parseFilterList(query.socName).map(normalizeSocFilterKey),
-    );
+    const querySocNameKeys = new Set(parseFilterList(query.socName).map(normalizeSocFilterKey));
     const groups = new Map<string, LeaderboardAccumulator>();
     const socDisplayNames = new Map<string, string>();
     for (const rawRow of rows) {
@@ -1064,10 +1151,13 @@ export class TelemetryService {
       _count: { id: true },
       orderBy: { _count: { id: 'desc' } },
     });
-    const appVersions = versions
-      .map((v) => v.appVersion)
-      .filter((v) => v && v.length > 0)
-      .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+    const appVersions = [
+      ...new Set(
+        versions
+          .map((v) => normalizeTelemetryAppVersion(v.appVersion))
+          .filter((v) => v && v.length > 0),
+      ),
+    ].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
     return { appVersions, buildModes: [...TELEMETRY_BUILD_MODE_ORDER] };
   }
 
@@ -1078,7 +1168,7 @@ export class TelemetryService {
   private async queryRecords(query: RecordsQuery): Promise<any[]> {
     const limit = Math.min(Math.max(parseInt(query.limit ?? '50', 10) || 50, 1), 200);
 
-    const where: any = {
+    const where: TelemetryWhere = {
       modelSha256: query.modelSha256.toLowerCase().trim(),
       backend: query.backend.toLowerCase().trim(),
     };
@@ -1089,7 +1179,7 @@ export class TelemetryService {
     applyStringFilter(where, 'appVersion', parseFilterList(query.appVersion));
     applyStringFilter(where, 'buildMode', parseBuildModeFilterList(query.buildMode));
 
-    const rows = await this.prisma.telemetryPerf.findMany({
+    const rows = await this.findTelemetryRows({
       where,
       select: {
         id: true,
@@ -1144,7 +1234,7 @@ export class TelemetryService {
     const page = Math.max(parseInt(query.page ?? '1', 10) || 1, 1);
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: TelemetryWhere = {};
     const recordId = Math.max(parseInt(query.recordId ?? '', 10) || 0, 0);
     if (recordId > 0) where.id = recordId;
     const osValues = parseLookupFilterList(query.os);
@@ -1200,17 +1290,19 @@ export class TelemetryService {
       decodeSpeed: true,
     };
 
-    const decorateRows = (rows: any[]) =>
+    type AdminRecordRow = Prisma.TelemetryPerfGetPayload<{ select: typeof select }>;
+    const decorateRows = (rows: AdminRecordRow[]) =>
       rows.map((row) => {
         const normalized = normalizeTelemetryDevice(row, row.backend);
         return {
           ...row,
           ...normalized,
+          ...normalizeTelemetryAppDimensions(row.appVersion, row.buildMode),
           deviceDisplayName: resolveDeviceDisplayName(normalized.os, normalized.deviceModel),
         };
       });
 
-    const matchesDerivedFilters = (row: any) => {
+    const matchesDerivedFilters = (row: AdminRecordRow) => {
       const normalized = normalizeTelemetryDevice(row, row.backend);
       if (modelTagValues.size > 0 && !modelTagValues.has(deriveAdminModelTag(row))) {
         return false;
@@ -1232,8 +1324,8 @@ export class TelemetryService {
 
     if (!hasDerivedFilters) {
       const [total, rows] = await Promise.all([
-        this.prisma.telemetryPerf.count({ where }),
-        this.prisma.telemetryPerf.findMany({
+        this.countTelemetryRows(where),
+        this.findTelemetryRows({
           where,
           select,
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -1251,7 +1343,7 @@ export class TelemetryService {
       };
     }
 
-    const rows = await this.prisma.telemetryPerf.findMany({
+    const rows = await this.findTelemetryRows({
       where,
       select,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -1278,7 +1370,7 @@ export class TelemetryService {
     socBrands: string[];
     socs: string[];
   }> {
-    const rows = await this.prisma.telemetryPerf.findMany({
+    const rows = await this.findTelemetryRows({
       select: {
         os: true,
         appVersion: true,
@@ -1305,7 +1397,7 @@ export class TelemetryService {
 
     for (const row of rows) {
       if (row.os) osSet.add(row.os);
-      if (row.appVersion) appVersionSet.add(row.appVersion);
+      if (row.appVersion) appVersionSet.add(normalizeTelemetryAppVersion(row.appVersion));
       if (row.batchCount) batchCountSet.add(row.batchCount);
 
       modelTagSet.add(deriveAdminModelTag(row));

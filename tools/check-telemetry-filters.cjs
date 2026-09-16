@@ -18,6 +18,8 @@ const { getTelemetryFilterOptions } = frontendRequire(
 const {
   deriveWeightLabel,
   filterLeaderboardData,
+  formatBackendLabel,
+  getBackendFamily,
   getHardwareBrandKeys,
   telemetrySocKey
 } = frontendRequire('./src/features/telemetry/telemetryRules')
@@ -216,6 +218,57 @@ assert.equal(
   'case-insensitive matching is limited to SoC identity'
 )
 
+const neuropilotRows = [
+  entry({
+    os: 'android',
+    socName: 'MediaTek test device',
+    hardwareBrands: ['mediatek'],
+    modelSha256: 'same-model-digest',
+    backend: 'mtkneuropilot7'
+  }),
+  entry({
+    os: 'android',
+    socName: 'MediaTek test device',
+    hardwareBrands: ['mediatek'],
+    modelSha256: 'same-model-digest',
+    backend: 'mtkneuropilot9'
+  })
+]
+const familyFilters = { ...defaults, selectedBackend: ['mtkneuropilot'] }
+assert.deepEqual(
+  getTelemetryFilterOptions(neuropilotRows, defaults).selectedBackend,
+  ['mtkneuropilot'],
+  'NeuroPilot variants share one backend candidate'
+)
+assert.deepEqual(
+  getTelemetryFilterOptions(neuropilotRows, familyFilters).selectedSoc,
+  ['MediaTek test device'],
+  'other facets match a selected NeuroPilot family'
+)
+const neuropilotMatches = filterLeaderboardData(neuropilotRows, familyFilters)
+assert.deepEqual(neuropilotMatches, neuropilotRows)
+assert.strictEqual(neuropilotMatches[0], neuropilotRows[0])
+assert.strictEqual(neuropilotMatches[1], neuropilotRows[1])
+assert.deepEqual(
+  neuropilotMatches.map((row) => row.backend),
+  ['mtkneuropilot7', 'mtkneuropilot9'],
+  'family filtering preserves each raw backend and original entry'
+)
+for (const [backend, label] of [
+  ['mtkneuropilot7', 'MTK NeuroPilot 7'],
+  ['mtk_np7', 'MTK NeuroPilot 7'],
+  ['mtkneuropilot9', 'MTK NeuroPilot 9'],
+  ['mtk_np9', 'MTK NeuroPilot 9'],
+  ['mtkneuropilot', 'MTK NeuroPilot']
+]) {
+  assert.equal(getBackendFamily(backend), 'mtkneuropilot')
+  assert.equal(formatBackendLabel(backend), label)
+}
+for (const backend of ['mlx', 'qnn', 'cuda', 'mtkneuropilot10']) {
+  assert.equal(getBackendFamily(backend), backend)
+  assert.equal(formatBackendLabel(backend), backend)
+}
+
 const storedState = {
   selectedPlatforms: ['macos', 'android'],
   selectedBackend: ['web-rwkv', 'qnn'],
@@ -231,6 +284,34 @@ const storedState = {
 assert.deepEqual(
   parseTelemetryFilterState(JSON.stringify(storedState)),
   storedState
+)
+for (const historicalSelection of [
+  ['mtkneuropilot7'],
+  ['mtkneuropilot9'],
+  ['mtkneuropilot7', 'mtkneuropilot9'],
+  ['mtkneuropilot', 'mtk_np7', 'mtk_np9']
+]) {
+  const migrated = parseTelemetryFilterState(
+    JSON.stringify({ ...storedState, selectedBackend: historicalSelection })
+  )
+  assert.deepEqual(migrated, {
+    ...storedState,
+    selectedBackend: ['mtkneuropilot']
+  })
+  assert.deepEqual(
+    filterLeaderboardData(neuropilotRows, {
+      ...defaults,
+      selectedBackend: migrated.selectedBackend
+    }),
+    neuropilotRows,
+    'restored legacy variant selections consistently select the complete family'
+  )
+}
+assert.deepEqual(
+  parseTelemetryFilterState(
+    JSON.stringify({ selectedBackend: ['mlx', 'mtkneuropilot7', 'qnn', 'mtkneuropilot9'] })
+  ).selectedBackend,
+  ['mlx', 'mtkneuropilot', 'qnn']
 )
 for (const malformed of [
   null,
@@ -269,5 +350,15 @@ assert.notEqual(
   telemetryQueryKey(['4.7.2'], ['release'])
 )
 console.log(
-  'telemetry filters: disjunctive facets, OR/AND, empty recovery, ordering, unknown sizes, SoC identity, persisted state and query identity passed'
+  'telemetry filters: disjunctive facets, OR/AND, empty recovery, ordering, unknown sizes, SoC identity, backend families, raw backend identity, persisted state and query identity passed'
 )
+
+const legacyDebugVersion = parseTelemetryFilterState(JSON.stringify({ selectedVersion: ['4.6.7-debug'] }))
+assert.deepEqual(legacyDebugVersion.selectedVersion, ['4.6.7'])
+assert.deepEqual(legacyDebugVersion.selectedBuildMode, ['debug'])
+const explicitModeVersion = parseTelemetryFilterState(JSON.stringify({ selectedVersion: ['4.6.7-debug'], selectedBuildMode: ['release'] }))
+assert.deepEqual(explicitModeVersion.selectedVersion, ['4.6.7'])
+assert.deepEqual(explicitModeVersion.selectedBuildMode, ['release'])
+const mixedVersions = parseTelemetryFilterState(JSON.stringify({ selectedVersion: ['4.6.7-debug', '4.6.7', '4.6.8-rc.1'] }))
+assert.deepEqual(mixedVersions.selectedVersion, ['4.6.7', '4.6.8-rc.1'])
+assert.deepEqual(mixedVersions.selectedBuildMode, [])
