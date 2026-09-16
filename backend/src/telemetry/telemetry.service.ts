@@ -35,6 +35,9 @@ const SOC_NAME_ALIASES: Record<string, string> = {
   pixel7a: 'Google Tensor G2',
   pixel7pro: 'Google Tensor G2',
 };
+const CANONICAL_SOC_NAMES = new Map(
+  Object.values(SOC_NAME_ALIASES).map((name) => [normalizeSocAliasKey(name), name]),
+);
 
 interface TelemetryPerfBody {
   schemaVersion: number;
@@ -156,7 +159,7 @@ function leaderboardGroupKey(input: {
     input.modelFileName,
     input.modelSizeB ?? '',
     input.quantization ?? '',
-    input.socName,
+    normalizeLookupKey(input.socName),
     input.socBrand,
     input.backend,
     input.isBatch ? '1' : '0',
@@ -187,7 +190,11 @@ function normalizeSocAliasKey(value: string | null | undefined): string {
 
 function resolveKnownSocName(value: string | null | undefined): string | null {
   const key = normalizeSocAliasKey(value);
-  return SOC_NAME_ALIASES[key] ?? null;
+  return SOC_NAME_ALIASES[key] ?? CANONICAL_SOC_NAMES.get(key) ?? null;
+}
+
+function normalizeSocFilterKey(value: string): string {
+  return normalizeLookupKey(resolveKnownSocName(value) ?? value);
 }
 
 function simplifySnapdragonXEliteCpuName(value: string | null | undefined): string | null {
@@ -377,11 +384,6 @@ const TELEMETRY_DEVICE_ALIASES: Record<string, TelemetryDeviceAlias> = {
     socName: 'Exynos 2600',
     deviceName: 'Galaxy S26',
     cpuName: 'Exynos 2600',
-  },
-  'windows 11 home china': {
-    socBrand: 'intel',
-    cpuName: 'Intel(R) Core(TM) Ultra X7 358H',
-    gpuName: 'Intel(R) Arc(TM) B390 GPU',
   },
   '(tm) 8060s graphics': {
     socBrand: 'amd',
@@ -613,12 +615,10 @@ function inferBrandFromHardware(values: Array<string | null | undefined>): strin
   return 'unknown';
 }
 
-function isGenericSocName(value: string | null | undefined, os: string): boolean {
+function isNonHardwareSocName(value: string | null | undefined, os: string): boolean {
   const key = normalizeLookupKey(value);
   if (!key || key === 'unknown') return true;
   if (key === os) return true;
-  if (key.endsWith('_soc')) return true;
-  if (key === 'soc') return true;
   if (key.startsWith('windows ')) return true;
   if (key === 'windows') return true;
   if (key.startsWith('linux')) return true;
@@ -626,7 +626,13 @@ function isGenericSocName(value: string | null | undefined, os: string): boolean
   if (key.startsWith('macos')) return true;
   if (key === 'android') return true;
   if (key === 'ios') return true;
+  if (/\b(?:orayidddriver|microsoft basic (?:display|render) driver)\b/.test(key)) return true;
   return false;
+}
+
+function isGenericSocName(value: string | null | undefined, os: string): boolean {
+  const key = normalizeLookupKey(value);
+  return isNonHardwareSocName(value, os) || key.endsWith('_soc') || key === 'soc';
 }
 
 function shouldPreferGpuAsSocName(backend: string | null | undefined): boolean {
@@ -706,12 +712,20 @@ function normalizeTelemetryDevice(
     canonicalSocName = alias.gpuName;
   }
 
-  if (!canonicalSocName) {
-    canonicalSocName = gpuName ?? cpuName ?? deviceModel ?? rawSocName ?? os;
-  }
-
-  if (socBrand === 'unknown') {
-    socBrand = inferBrandFromHardware([canonicalSocName]);
+  if (!canonicalSocName || isNonHardwareSocName(canonicalSocName, os)) {
+    canonicalSocName = 'Unknown';
+    socBrand = 'unknown';
+  } else {
+    canonicalSocName = resolveKnownSocName(canonicalSocName) ?? canonicalSocName;
+    const inferredBrand = inferBrandFromHardware([canonicalSocName]);
+    // A named integrated SoC outranks stale client branding. Desktop CPU/GPU
+    // vendor combinations remain available through their separate fields.
+    if (
+      socBrand === 'unknown' ||
+      ['snapdragon', 'mediatek', 'huawei', 'google', 'samsung', 'apple'].includes(inferredBrand)
+    ) {
+      socBrand = inferredBrand;
+    }
   }
 
   const osVersion = stripOsVersion(cleanOptionalString(device.osVersion) ?? undefined);
@@ -918,14 +932,17 @@ export class TelemetryService {
     });
 
     const querySocNameKeys = new Set(
-      parseFilterList(query.socName).map((value) => normalizeLookupKey(value)),
+      parseFilterList(query.socName).map(normalizeSocFilterKey),
     );
     const groups = new Map<string, LeaderboardAccumulator>();
+    const socDisplayNames = new Map<string, string>();
     for (const rawRow of rows) {
       const row = normalizeTelemetryLeaderboardRow(rawRow);
       if (querySocNameKeys.size > 0 && !querySocNameKeys.has(row.socNameKey)) {
         continue;
       }
+      row.socName = socDisplayNames.get(row.socNameKey) ?? row.socName;
+      socDisplayNames.set(row.socNameKey, row.socName);
 
       const key = leaderboardGroupKey(row);
       const existing = groups.get(key);
@@ -1103,7 +1120,7 @@ export class TelemetryService {
       },
     });
 
-    const querySocNameKey = normalizeLookupKey(query.socName);
+    const querySocNameKey = normalizeSocFilterKey(query.socName);
 
     return rows
       .map((row) => normalizeTelemetryRecordRow(row))
@@ -1148,7 +1165,7 @@ export class TelemetryService {
     );
     const socNameKeys = new Set(
       parseFilterList(query.socName)
-        .map((socName) => normalizeLookupKey(socName))
+        .map(normalizeSocFilterKey)
         .filter((socName) => socName.length > 0),
     );
     const hasDerivedFilters =
@@ -1284,7 +1301,7 @@ export class TelemetryService {
     const modelTagSet = new Set<string>();
     const modelSizeSet = new Set<string>();
     const socBrandSet = new Set<string>();
-    const socCounts = new Map<string, number>();
+    const socCounts = new Map<string, { name: string; count: number }>();
 
     for (const row of rows) {
       if (row.os) osSet.add(row.os);
@@ -1299,7 +1316,11 @@ export class TelemetryService {
         socBrandSet.add(brand);
       }
       if (normalized.socName) {
-        socCounts.set(normalized.socName, (socCounts.get(normalized.socName) ?? 0) + 1);
+        const previous = socCounts.get(normalized.socNameKey);
+        socCounts.set(normalized.socNameKey, {
+          name: previous?.name ?? normalized.socName,
+          count: (previous?.count ?? 0) + 1,
+        });
       }
     }
 
@@ -1325,9 +1346,9 @@ export class TelemetryService {
         return sortDiff || left.localeCompare(right, undefined, { numeric: true });
       }),
       socBrands: ADMIN_FILTER_BRAND_ORDER.filter((brand) => socBrandSet.has(brand)),
-      socs: Array.from(socCounts.entries())
-        .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
-        .map(([socName]) => socName),
+      socs: Array.from(socCounts.values())
+        .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name))
+        .map(({ name }) => name),
     };
   }
 }

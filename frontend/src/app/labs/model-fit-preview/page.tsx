@@ -1,6 +1,6 @@
 'use client';
 
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import {
   useCallback,
   useDeferredValue,
@@ -13,7 +13,6 @@ import {
 import Link from 'next/link';
 import {
   BRAND_LABELS,
-  BRAND_ORDER,
   BUILD_MODE_LABELS,
   capitalizeBrand,
   CellMetricBasis,
@@ -27,14 +26,20 @@ import {
   formatMetricBasisLabel,
   formatSpeed,
   getDisplaySpeeds,
-  getHardwareBrandKeys,
   inferBrand,
   isBatchColumn,
   MODEL_TAG_LABELS,
   OS_LABELS,
   OS_ORDER,
-  toggleFilterValue,
+  telemetrySocKey,
 } from '@/features/telemetry/telemetryRules';
+import { getTelemetryFilterOptions } from '@/features/telemetry/telemetryFilters';
+import {
+  defaultTelemetryFilters,
+  FILTER_STORAGE_KEY,
+  parseTelemetryFilterState,
+  telemetryQueryKey,
+} from '@/features/telemetry/telemetryFilterState';
 import { ThemeSwitcher } from '@/components';
 import {
   fetchPublicTelemetryFilters,
@@ -168,15 +173,72 @@ function parseFilterList(value: string | null | undefined): string[] {
   return values;
 }
 
-function readLs(key: string, fallback: string[]): string[] {
-  if (typeof window === 'undefined') return fallback;
+function readLegacyFilter(key: string, fallback: string[]): string[] {
   const value = localStorage.getItem(key);
   return value === null ? fallback : parseFilterList(value);
 }
 
-function writeLs(key: string, value: string[]): void {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(key, value.length > 0 ? value.join(',') : 'all');
+function FilterGroup({
+  label,
+  options,
+  selected,
+  onChange,
+  format = (value) => value,
+  valueKey = (value) => value,
+  pending = false,
+}: {
+  label: string;
+  options: string[];
+  selected: string[];
+  onChange: (values: string[]) => void;
+  format?: (value: string) => ReactNode;
+  valueKey?: (value: string) => string;
+  pending?: boolean;
+}) {
+  const selectedKeys = new Set(selected.map(valueKey));
+  const optionKeys = new Set(options.map(valueKey));
+  const visibleOptions = Array.from(
+    new Map([...selected, ...options].map((value) => [valueKey(value), value])).values(),
+  );
+  return (
+    <div className={styles.tabRow} role="group" aria-label={label}>
+      <span className={styles.filterLabel}>{label}</span>
+      <button
+        type="button"
+        className={`${styles.tabButtonSmall} ${selected.length === 0 ? styles.tabButtonSelected : ''}`}
+        aria-pressed={selected.length === 0}
+        onClick={() => onChange([])}
+      >
+        不限制
+      </button>
+      {visibleOptions.map((value) => {
+        const active = selectedKeys.has(valueKey(value));
+        const unavailable = !pending && !optionKeys.has(valueKey(value));
+        return (
+          <button
+            key={value}
+            type="button"
+            className={`${styles.tabButtonSmall} ${active ? styles.tabButtonSelected : ''} ${unavailable ? styles.unavailableFilter : ''}`}
+            aria-pressed={active}
+            onClick={() =>
+              onChange(
+                active
+                  ? selected.filter((item) => valueKey(item) !== valueKey(value))
+                  : [...selected, value],
+              )
+            }
+            title={unavailable ? '当前条件下无匹配数据，点击取消此条件' : undefined}
+          >
+            {format(value)}
+            {unavailable ? '（无匹配）' : ''}
+          </button>
+        );
+      })}
+      {visibleOptions.length === 0 ? (
+        <span className={styles.filterHint}>{pending ? '加载中…' : '当前条件下无可选项'}</span>
+      ) : null}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -220,6 +282,9 @@ function getSocDisplayInfo(input: {
   deviceModel?: string | null;
   deviceModels?: string[] | null;
 }): SocDisplayInfo {
+  if (input.socName.toLowerCase() === 'unknown') {
+    return { brand: 'unknown', primaryLabel: '芯片未知', secondaryLabel: null, metaLabel: null };
+  }
   const applePresentation = resolveAppleDevicePresentation({
     socName: input.socName,
     deviceModel: input.deviceModel,
@@ -873,8 +938,10 @@ async function fetchLeaderboard(
   return fetchPublicTelemetryLeaderboard({ appVersions, buildModes, limit: 5000, signal });
 }
 
-async function fetchFilters(): Promise<{ appVersions: string[]; buildModes: string[] }> {
-  return fetchPublicTelemetryFilters();
+async function fetchFilters(
+  signal?: AbortSignal,
+): Promise<{ appVersions: string[]; buildModes: string[] }> {
+  return fetchPublicTelemetryFilters(signal);
 }
 
 async function fetchRecords(params: {
@@ -896,7 +963,7 @@ async function fetchRecords(params: {
 // ---------------------------------------------------------------------------
 
 export default function ModelFitPreviewPage() {
-  const [, startFilterTransition] = useTransition();
+  const [filterPending, startFilterTransition] = useTransition();
   const [data, setData] = useState<LeaderboardEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -907,16 +974,22 @@ export default function ModelFitPreviewPage() {
   const [selectedBatch, setSelectedBatch] = useState<string[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<string[]>([]);
   const [selectedBuildMode, setSelectedBuildMode] = useState<string[]>([]);
-  const [selectedSize, setSelectedSize] = useState<string[]>(() => readLs(LS_KEY_SIZE, []));
-  const [selectedModelTag, setSelectedModelTag] = useState<string[]>(() =>
-    readLs(LS_KEY_MODEL_TAG, ['Chat']),
-  );
-  const [selectedBrand, setSelectedBrand] = useState<string[]>(() => readLs(LS_KEY_BRAND, []));
+  const [selectedSize, setSelectedSize] = useState<string[]>([]);
+  const [selectedModelTag, setSelectedModelTag] = useState<string[]>(['Chat']);
+  const [selectedBrand, setSelectedBrand] = useState<string[]>([]);
   const [selectedSoc, setSelectedSoc] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search.trim().toLowerCase());
   const [renderedRowLimit, setRenderedRowLimit] = useState(INITIAL_RENDERED_ROWS);
   const [reloadKey, setReloadKey] = useState(0);
+  const [filtersReady, setFiltersReady] = useState(false);
+  const [filtersError, setFiltersError] = useState<string | null>(null);
+  const [filtersLoading, setFiltersLoading] = useState(true);
+  const [loadedQueryKey, setLoadedQueryKey] = useState<string | null>(null);
+  const queryKey = telemetryQueryKey(selectedVersion, selectedBuildMode);
+  const resultsReady = filtersReady && !loading && !error && loadedQueryKey === queryKey;
+  const actionsReady =
+    resultsReady && !filterPending && deferredSearch === search.trim().toLowerCase();
   const [sidebarError, setSidebarError] = useState<string | null>(null);
   const recordsRequest = useRef<AbortController | null>(null);
   const sidebarDialog = useRef<HTMLDialogElement>(null);
@@ -928,21 +1001,95 @@ export default function ModelFitPreviewPage() {
   });
 
   useEffect(() => {
-    fetchFilters()
-      .then((filters) => {
-        setAppVersions(filters.appVersions);
-        setBuildModes(filters.buildModes);
-      })
-      .catch(() => {});
+    let saved = defaultTelemetryFilters();
+    try {
+      saved = parseTelemetryFilterState(localStorage.getItem(FILTER_STORAGE_KEY)) ?? {
+        ...saved,
+        selectedModelTag: readLegacyFilter(LS_KEY_MODEL_TAG, ['Chat']),
+        selectedSize: readLegacyFilter(LS_KEY_SIZE, []),
+        selectedBrand: readLegacyFilter(LS_KEY_BRAND, []),
+      };
+    } catch {
+      /* Storage may be unavailable; filters still work in memory. */
+    }
+    setSelectedPlatforms(saved.selectedPlatforms);
+    setSelectedBackend(saved.selectedBackend);
+    setSelectedBatch(saved.selectedBatch);
+    setSelectedModelTag(saved.selectedModelTag);
+    setSelectedSize(saved.selectedSize);
+    setSelectedBrand(saved.selectedBrand);
+    setSelectedSoc(saved.selectedSoc);
+    setSelectedVersion(saved.selectedVersion);
+    setSelectedBuildMode(saved.selectedBuildMode);
+    setSearch(saved.search);
+    setFiltersReady(true);
   }, []);
 
   useEffect(() => {
+    if (!filtersReady) return;
+    try {
+      localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify({
+          selectedPlatforms,
+          selectedBackend,
+          selectedBatch,
+          selectedModelTag,
+          selectedSize,
+          selectedBrand,
+          selectedSoc,
+          selectedVersion,
+          selectedBuildMode,
+          search,
+        }),
+      );
+    } catch {
+      /* A blocked storage area must not interrupt querying. */
+    }
+  }, [
+    filtersReady,
+    selectedPlatforms,
+    selectedBackend,
+    selectedBatch,
+    selectedModelTag,
+    selectedSize,
+    selectedBrand,
+    selectedSoc,
+    selectedVersion,
+    selectedBuildMode,
+    search,
+  ]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setFiltersLoading(true);
+    setFiltersError(null);
+    fetchFilters(controller.signal)
+      .then((filters) => {
+        if (controller.signal.aborted) return;
+        setAppVersions(filters.appVersions);
+        setBuildModes(filters.buildModes);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setFiltersError('版本与构建模式选项加载失败，请重试。');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setFiltersLoading(false);
+      });
+    return () => controller.abort();
+  }, [reloadKey]);
+
+  useEffect(() => {
+    if (!filtersReady) return;
     const controller = new AbortController();
     setLoading(true);
     setError(null);
     fetchLeaderboard(selectedVersion, selectedBuildMode, controller.signal)
       .then((entries) => {
-        if (!controller.signal.aborted) setData(entries);
+        if (!controller.signal.aborted) {
+          setData(entries);
+          setLoadedQueryKey(queryKey);
+        }
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted)
@@ -952,7 +1099,7 @@ export default function ModelFitPreviewPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [selectedBuildMode, selectedVersion, reloadKey]);
+  }, [filtersReady, selectedBuildMode, selectedVersion, queryKey, reloadKey]);
 
   useEffect(() => () => recordsRequest.current?.abort(), []);
 
@@ -960,139 +1107,60 @@ export default function ModelFitPreviewPage() {
     if (sidebar.open) sidebarDialog.current?.showModal();
   }, [sidebar.open]);
 
-  // Available batch counts from data
-  const availableBatchCounts = useMemo(() => {
-    if (!data) return [];
-    const counts = new Set(data.map((e) => e.batchCount));
-    return Array.from(counts).sort((a, b) => a - b);
-  }, [data]);
-
-  // Available inference backends from data
-  const availableBackends = useMemo(() => {
-    if (!data) return [];
-    const counts = new Map<string, number>();
-    for (const entry of data) {
-      counts.set(entry.backend, (counts.get(entry.backend) ?? 0) + entry.sampleCount);
-    }
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .map(([backend]) => backend);
-  }, [data]);
-
-  // Available model tags from data
-  const availableModelTags = useMemo(() => {
-    if (!data) return [];
-    const tags = new Set(data.map((e) => deriveModelTag(e)));
-    // Fixed order
-    return ['Chat', 'VL', 'TTS', 'Translate', 'Neko'].filter((t) => tags.has(t));
-  }, [data]);
-
-  // Available weight sizes from data
-  const availableSizes = useMemo(() => {
-    if (!data) return [];
-    const sizes = new Map<string, number>();
-    for (const entry of data) {
-      const label = deriveWeightLabel(entry);
-      const sort = deriveSortOrder(entry);
-      if (!sizes.has(label)) sizes.set(label, sort);
-    }
-    return Array.from(sizes.entries())
-      .sort((a, b) => a[1] - b[1])
-      .map(([label]) => label);
-  }, [data]);
-
-  const socOptionData = useMemo(() => {
-    if (!data) return [];
-    return filterLeaderboardData(data, {
-      selectedPlatforms: [],
+  const selections = useMemo(
+    () => ({
+      selectedPlatforms,
       selectedBackend,
       selectedBatch,
       selectedSize,
       selectedModelTag,
       selectedBrand,
-      selectedSoc: [],
-    });
-  }, [data, selectedBackend, selectedBatch, selectedSize, selectedModelTag, selectedBrand]);
+      selectedSoc,
+    }),
+    [
+      selectedPlatforms,
+      selectedBackend,
+      selectedBatch,
+      selectedSize,
+      selectedModelTag,
+      selectedBrand,
+      selectedSoc,
+    ],
+  );
 
-  // Available individual SoCs after upper filters, sorted by data count desc
-  const availableSocs = useMemo(() => {
-    if (socOptionData.length === 0) return [];
-    const counts = new Map<string, number>();
-    for (const entry of socOptionData) {
-      counts.set(entry.socName, (counts.get(entry.socName) ?? 0) + entry.sampleCount);
-    }
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([name]) => name);
-  }, [socOptionData]);
-
-  const availableSocSet = useMemo(() => new Set(availableSocs), [availableSocs]);
-
-  useEffect(() => {
-    if (!data) return;
-    setSelectedSoc((current) => {
-      const next = current.filter((soc) => availableSocSet.has(soc));
-      return next.length === current.length ? current : next;
-    });
-  }, [availableSocSet, data]);
-
-  // Available SoC brands from data
-  const availableBrands = useMemo(() => {
-    if (!data) return [];
-    const brands = new Set<string>();
-    for (const entry of data) {
-      for (const brand of getHardwareBrandKeys(entry)) {
-        brands.add(brand);
-      }
-    }
-    return BRAND_ORDER.filter((b) => brands.has(b));
-  }, [data]);
-
-  // Persist filter selections to localStorage
-  const handleModelTagChange = useCallback((tag: string) => {
-    setSelectedModelTag((current) => {
-      const next = toggleFilterValue(current, tag);
-      writeLs(LS_KEY_MODEL_TAG, next);
-      return next;
-    });
-  }, []);
-
-  const handleSizeChange = useCallback((size: string) => {
-    setSelectedSize((current) => {
-      const next = toggleFilterValue(current, size);
-      writeLs(LS_KEY_SIZE, next);
-      return next;
-    });
-  }, []);
-
-  const handleBrandChange = useCallback((brand: string) => {
-    setSelectedBrand((current) => {
-      const next = toggleFilterValue(current, brand);
-      writeLs(LS_KEY_BRAND, next);
-      return next;
-    });
-  }, []);
-
-  const clearModelTagFilter = useCallback(() => {
-    setSelectedModelTag([]);
-    writeLs(LS_KEY_MODEL_TAG, []);
-  }, []);
-
-  const clearSizeFilter = useCallback(() => {
-    setSelectedSize([]);
-    writeLs(LS_KEY_SIZE, []);
-  }, []);
-
-  const clearBrandFilter = useCallback(() => {
-    setSelectedBrand([]);
-    writeLs(LS_KEY_BRAND, []);
-  }, []);
+  // Search and facets use the same population. A facet ignores only its own group
+  // so multi-select remains OR within a group and AND between groups.
+  const searchedData = useMemo(
+    () =>
+      (data ?? []).filter(
+        (entry) =>
+          !deferredSearch ||
+          [
+            entry.socName,
+            formatSocFilterLabel(entry),
+            ...entry.deviceModels,
+            ...entry.deviceDisplayNames,
+            entry.modelName,
+            entry.modelFileName,
+            entry.backend,
+          ]
+            .join(' ')
+            .toLowerCase()
+            .includes(deferredSearch),
+      ),
+    [data, deferredSearch],
+  );
+  const options = useMemo(
+    () => getTelemetryFilterOptions(searchedData, selections),
+    [searchedData, selections],
+  );
+  const filteredData = useMemo(
+    () => (resultsReady ? filterLeaderboardData(searchedData, selections) : []),
+    [resultsReady, searchedData, selections],
+  );
 
   const handleResetFilters = useCallback(() => {
     setSearch('');
-    writeLs(LS_KEY_MODEL_TAG, []);
-    writeLs(LS_KEY_SIZE, []);
-    writeLs(LS_KEY_BRAND, []);
     startFilterTransition(() => {
       setSelectedPlatforms([]);
       setSelectedBackend([]);
@@ -1105,54 +1173,6 @@ export default function ModelFitPreviewPage() {
       setSelectedBuildMode([]);
     });
   }, [startFilterTransition]);
-
-  // Filter data by batch + size + model tag + brand first, then apply platform selection.
-  const baseFilteredData = useMemo(() => {
-    if (!data) return [];
-    return filterLeaderboardData(data, {
-      selectedPlatforms: [],
-      selectedBackend,
-      selectedBatch,
-      selectedSize,
-      selectedModelTag,
-      selectedBrand,
-      selectedSoc,
-    });
-  }, [
-    data,
-    selectedBackend,
-    selectedBatch,
-    selectedSize,
-    selectedModelTag,
-    selectedBrand,
-    selectedSoc,
-  ]);
-
-  // Compute available OS filters from data after non-platform filters.
-  const availableOsTabs = useMemo(() => {
-    const osSet = new Set(baseFilteredData.map((e) => e.os));
-    return OS_ORDER.filter((os) => osSet.has(os));
-  }, [baseFilteredData]);
-
-  const filteredData = useMemo(() => {
-    return baseFilteredData.filter(
-      (entry) =>
-        (selectedPlatforms.length === 0 || selectedPlatforms.includes(entry.os)) &&
-        (!deferredSearch ||
-          [
-            entry.socName,
-            formatSocFilterLabel(entry),
-            ...entry.deviceModels,
-            ...entry.deviceDisplayNames,
-            entry.modelName,
-            entry.modelFileName,
-            entry.backend,
-          ]
-            .join(' ')
-            .toLowerCase()
-            .includes(deferredSearch)),
-    );
-  }, [baseFilteredData, selectedPlatforms, deferredSearch]);
 
   // Build matrix for current platform selection.
   const { platforms, weightColumns } = useMemo(() => {
@@ -1233,6 +1253,7 @@ export default function ModelFitPreviewPage() {
 
   const handleExportRow = useCallback(
     (row: DisplayRow) => {
+      if (!actionsReady) return;
       const socDisplay = getSocDisplayInfo({
         socName: row.socName,
         socBrand: row.socBrand,
@@ -1323,6 +1344,7 @@ export default function ModelFitPreviewPage() {
       openHtmlReport(filename, html);
     },
     [
+      actionsReady,
       exportFileBaseName,
       filteredData,
       selectedBatch,
@@ -1338,6 +1360,7 @@ export default function ModelFitPreviewPage() {
 
   const handleCellClick = useCallback(
     async (cell: MatrixCell, weightLabel: string) => {
+      if (!actionsReady) return;
       const socLabel = formatSocFilterLabel({ socName: cell.socName });
       const info = {
         socName: cell.socName,
@@ -1374,7 +1397,7 @@ export default function ModelFitPreviewPage() {
         }
       }
     },
-    [selectedBuildMode, selectedVersion],
+    [actionsReady, selectedBuildMode, selectedVersion],
   );
 
   const closeSidebar = useCallback(() => {
@@ -1412,512 +1435,342 @@ export default function ModelFitPreviewPage() {
           </p>
         </section>
 
-        {loading && !data ? (
-          <section className={styles.comingSoonBox}>
-            <h3 className={styles.comingSoonTitle}>正在加载性能数据…</h3>
-            <p className={styles.comingSoonText}>正在从服务器获取性能数据</p>
-          </section>
-        ) : error && !data ? (
-          <section className={styles.comingSoonBox}>
-            <h3 className={styles.comingSoonTitle}>加载失败</h3>
-            <p className={styles.comingSoonText}>{error}</p>
-            <button
-              className={styles.resetButton}
-              onClick={() => setReloadKey((value) => value + 1)}
-            >
-              重新加载
-            </button>
-          </section>
-        ) : (
-          <>
-            {/* Filters */}
-            <section className={styles.tabSection} aria-label="查询条件">
-              <div className={styles.searchToolbar}>
-                <label className={styles.searchLabel}>
-                  <span>查找设备或模型</span>
-                  <input
-                    type="search"
-                    placeholder="搜索芯片、设备、模型或推理后端…"
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                  />
-                </label>
-                <button type="button" className={styles.resetButton} onClick={handleResetFilters}>
-                  重置筛选
-                </button>
-              </div>
-              {/* Platform */}
-              <div className={styles.tabRow}>
-                <span className={styles.filterLabel}>平台</span>
+        <>
+          {/* Filters */}
+          <section className={styles.tabSection} aria-label="查询条件">
+            <div className={styles.searchToolbar}>
+              <label className={styles.searchLabel}>
+                <span>查找设备或模型</span>
+                <input
+                  type="search"
+                  placeholder="搜索芯片、设备、模型或推理后端…"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              </label>
+              <button type="button" className={styles.resetButton} onClick={handleResetFilters}>
+                重置筛选
+              </button>
+            </div>
+            <FilterGroup
+              label="平台"
+              options={options.selectedPlatforms}
+              selected={selectedPlatforms}
+              onChange={(values) => startFilterTransition(() => setSelectedPlatforms(values))}
+              pending={!resultsReady}
+              format={(value) => OS_LABELS[value] ?? value}
+            />
+            <FilterGroup
+              label="类型"
+              options={options.selectedModelTag}
+              selected={selectedModelTag}
+              onChange={(values) => startFilterTransition(() => setSelectedModelTag(values))}
+              pending={!resultsReady}
+              format={(value) => MODEL_TAG_LABELS[value] ?? value}
+            />
+            <FilterGroup
+              label="权重大小"
+              options={options.selectedSize}
+              selected={selectedSize}
+              onChange={(values) => startFilterTransition(() => setSelectedSize(values))}
+              pending={!resultsReady}
+            />
+            <FilterGroup
+              label="并发"
+              options={options.selectedBatch}
+              selected={selectedBatch}
+              onChange={(values) => startFilterTransition(() => setSelectedBatch(values))}
+              pending={!resultsReady}
+              format={(value) => (value === '1' ? '单条' : `batch×${value}`)}
+            />
+            <FilterGroup
+              label="Backend"
+              options={options.selectedBackend}
+              selected={selectedBackend}
+              onChange={(values) => startFilterTransition(() => setSelectedBackend(values))}
+              pending={!resultsReady}
+            />
+            <FilterGroup
+              label="品牌"
+              options={options.selectedBrand}
+              selected={selectedBrand}
+              onChange={(values) => startFilterTransition(() => setSelectedBrand(values))}
+              pending={!resultsReady}
+              format={(value) => (
+                <>
+                  <BrandIcon brand={value} className={styles.brandFilterIcon} />
+                  {BRAND_LABELS[value] ?? value}
+                </>
+              )}
+            />
+            <FilterGroup
+              label="SoC"
+              valueKey={telemetrySocKey}
+              options={options.selectedSoc}
+              selected={selectedSoc}
+              onChange={(values) => startFilterTransition(() => setSelectedSoc(values))}
+              pending={!resultsReady}
+              format={(value) => formatSocFilterLabel({ socName: value })}
+            />
+            <FilterGroup
+              label="APP 版本"
+              options={appVersions}
+              selected={selectedVersion}
+              onChange={setSelectedVersion}
+              pending={filtersLoading || !!filtersError}
+              format={(value) => `v${value}`}
+            />
+            <FilterGroup
+              label="构建模式"
+              options={buildModes}
+              selected={selectedBuildMode}
+              onChange={setSelectedBuildMode}
+              pending={filtersLoading || !!filtersError}
+              format={(value) => BUILD_MODE_LABELS[value] ?? value}
+            />
+            {filtersError ? (
+              <div role="alert" className={styles.filterMessage}>
+                {filtersError}
                 <button
-                  type="button"
-                  className={`${styles.tabButtonSmall} ${selectedPlatforms.length === 0 ? styles.tabButtonSelected : ''}`}
-                  aria-pressed={selectedPlatforms.length === 0}
-                  onClick={() => setSelectedPlatforms([])}
+                  className={styles.resetButton}
+                  onClick={() => setReloadKey((value) => value + 1)}
                 >
-                  不限制
+                  重试选项
                 </button>
-                {availableOsTabs.map((os) => (
-                  <button
-                    key={os}
-                    type="button"
-                    className={`${styles.tabButtonSmall} ${selectedPlatforms.includes(os) ? styles.tabButtonSelected : ''}`}
-                    aria-pressed={selectedPlatforms.includes(os)}
-                    onClick={() =>
-                      setSelectedPlatforms((current) => toggleFilterValue(current, os))
-                    }
-                  >
-                    {OS_LABELS[os] ?? os}
-                  </button>
-                ))}
               </div>
-
-              {/* Model type */}
-              {availableModelTags.length > 1 ? (
-                <div className={styles.tabRow}>
-                  <span className={styles.filterLabel}>类型</span>
+            ) : null}
+            <div className={styles.metaBlock} role="status" aria-live="polite">
+              <span>
+                <strong>{displayRows.length}</strong> 个芯片 / 平台
+              </span>
+              <span>
+                <strong>{weightColumns.length}</strong> 组模型配置
+              </span>
+              <span>
+                {!resultsReady && !error
+                  ? '正在更新查询…'
+                  : '组内多选取并集 · 组间取交集 · 单位 tokens/s'}
+              </span>
+              {error ? (
+                <span role="alert">
+                  查询失败，请重试；已保留所有筛选条件。
                   <button
-                    type="button"
-                    className={`${styles.tabButtonSmall} ${selectedModelTag.length === 0 ? styles.tabButtonSelected : ''}`}
-                    aria-pressed={selectedModelTag.length === 0}
-                    onClick={clearModelTagFilter}
+                    className={styles.resetButton}
+                    onClick={() => setReloadKey((value) => value + 1)}
                   >
-                    不限制
+                    重试
                   </button>
-                  {availableModelTags.map((tag) => (
-                    <button
-                      key={tag}
-                      type="button"
-                      className={`${styles.tabButtonSmall} ${selectedModelTag.includes(tag) ? styles.tabButtonSelected : ''}`}
-                      aria-pressed={selectedModelTag.includes(tag)}
-                      onClick={() => handleModelTagChange(tag)}
-                    >
-                      {MODEL_TAG_LABELS[tag] ?? tag}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-
-              {/* Weight size */}
-              {availableSizes.length > 1 ? (
-                <div className={styles.tabRow}>
-                  <span className={styles.filterLabel}>权重</span>
-                  <button
-                    type="button"
-                    className={`${styles.tabButtonSmall} ${selectedSize.length === 0 ? styles.tabButtonSelected : ''}`}
-                    aria-pressed={selectedSize.length === 0}
-                    onClick={clearSizeFilter}
-                  >
-                    不限制
-                  </button>
-                  {availableSizes.map((size) => (
-                    <button
-                      key={size}
-                      type="button"
-                      className={`${styles.tabButtonSmall} ${selectedSize.includes(size) ? styles.tabButtonSelected : ''}`}
-                      aria-pressed={selectedSize.includes(size)}
-                      onClick={() => handleSizeChange(size)}
-                    >
-                      {size}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-
-              {/* Batch */}
-              {availableBatchCounts.length > 1 ? (
-                <div className={styles.tabRow}>
-                  <span className={styles.filterLabel}>并发</span>
-                  <button
-                    type="button"
-                    className={`${styles.tabButtonSmall} ${selectedBatch.length === 0 ? styles.tabButtonSelected : ''}`}
-                    aria-pressed={selectedBatch.length === 0}
-                    onClick={() => setSelectedBatch([])}
-                  >
-                    不限制
-                  </button>
-                  {availableBatchCounts.map((bc) => (
-                    <button
-                      key={bc}
-                      type="button"
-                      className={`${styles.tabButtonSmall} ${selectedBatch.includes(String(bc)) ? styles.tabButtonSelected : ''}`}
-                      aria-pressed={selectedBatch.includes(String(bc))}
-                      onClick={() =>
-                        setSelectedBatch((current) => toggleFilterValue(current, String(bc)))
-                      }
-                    >
-                      {bc === 1 ? '单条' : `batch×${bc}`}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-
-              {/* Backend */}
-              {availableBackends.length > 1 ? (
-                <div className={styles.tabRow}>
-                  <span className={styles.filterLabel}>Backend</span>
-                  <button
-                    type="button"
-                    className={`${styles.tabButtonSmall} ${selectedBackend.length === 0 ? styles.tabButtonSelected : ''}`}
-                    aria-pressed={selectedBackend.length === 0}
-                    onClick={() => setSelectedBackend([])}
-                  >
-                    不限制
-                  </button>
-                  {availableBackends.map((backend) => (
-                    <button
-                      key={backend}
-                      type="button"
-                      className={`${styles.tabButtonSmall} ${selectedBackend.includes(backend) ? styles.tabButtonSelected : ''}`}
-                      aria-pressed={selectedBackend.includes(backend)}
-                      onClick={() =>
-                        setSelectedBackend((current) => toggleFilterValue(current, backend))
-                      }
-                    >
-                      {backend}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-
-              {/* SoC brand */}
-              {availableBrands.length > 1 ? (
-                <div className={styles.tabRow}>
-                  <span className={styles.filterLabel}>芯片</span>
-                  <button
-                    type="button"
-                    className={`${styles.brandFilterTag} ${selectedBrand.length === 0 ? styles.tabButtonSelected : ''}`}
-                    aria-pressed={selectedBrand.length === 0}
-                    onClick={clearBrandFilter}
-                  >
-                    不限制
-                  </button>
-                  {availableBrands.map((brand) => (
-                    <button
-                      key={brand}
-                      type="button"
-                      className={`${styles.brandFilterTag} ${selectedBrand.includes(brand) ? styles.tabButtonSelected : ''}`}
-                      aria-pressed={selectedBrand.includes(brand)}
-                      onClick={() => handleBrandChange(brand)}
-                    >
-                      <BrandIcon brand={brand} className={styles.brandFilterIcon} />
-                      {BRAND_LABELS[brand] ?? brand}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-
-              {/* Individual SoC */}
-              {availableSocs.length > 1 ? (
-                <div className={styles.tabRow}>
-                  <span className={styles.filterLabel}>SoC</span>
-                  <button
-                    type="button"
-                    className={`${styles.tabButtonSmall} ${selectedSoc.length === 0 ? styles.tabButtonSelected : ''}`}
-                    aria-pressed={selectedSoc.length === 0}
-                    onClick={() => setSelectedSoc([])}
-                  >
-                    不限制
-                  </button>
-                  {availableSocs.map((soc) => (
-                    <button
-                      key={soc}
-                      type="button"
-                      className={`${styles.tabButtonSmall} ${selectedSoc.includes(soc) ? styles.tabButtonSelected : ''}`}
-                      aria-pressed={selectedSoc.includes(soc)}
-                      onClick={() =>
-                        setSelectedSoc((current) => toggleFilterValue(current, soc))
-                      }
-                      title={soc}
-                    >
-                      {formatSocFilterLabel({ socName: soc })}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-
-              {/* APP version */}
-              {appVersions.length > 0 ? (
-                <div className={styles.tabRow}>
-                  <span className={styles.filterLabel}>APP 版本</span>
-                  <button
-                    type="button"
-                    className={`${styles.tabButtonSmall} ${selectedVersion.length === 0 ? styles.tabButtonSelected : ''}`}
-                    aria-pressed={selectedVersion.length === 0}
-                    onClick={() => setSelectedVersion([])}
-                  >
-                    不限制
-                  </button>
-                  {appVersions.map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      className={`${styles.tabButtonSmall} ${selectedVersion.includes(v) ? styles.tabButtonSelected : ''}`}
-                      aria-pressed={selectedVersion.includes(v)}
-                      onClick={() =>
-                        setSelectedVersion((current) => toggleFilterValue(current, v))
-                      }
-                    >
-                      v{v}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-
-              {buildModes.length > 0 ? (
-                <div className={styles.tabRow}>
-                  <span className={styles.filterLabel}>构建模式</span>
-                  <button
-                    type="button"
-                    className={`${styles.tabButtonSmall} ${selectedBuildMode.length === 0 ? styles.tabButtonSelected : ''}`}
-                    aria-pressed={selectedBuildMode.length === 0}
-                    onClick={() => setSelectedBuildMode([])}
-                  >
-                    不限制
-                  </button>
-                  {buildModes.map((buildMode) => (
-                    <button
-                      key={buildMode}
-                      type="button"
-                      className={`${styles.tabButtonSmall} ${selectedBuildMode.includes(buildMode) ? styles.tabButtonSelected : ''}`}
-                      aria-pressed={selectedBuildMode.includes(buildMode)}
-                      onClick={() =>
-                        setSelectedBuildMode((current) => toggleFilterValue(current, buildMode))
-                      }
-                    >
-                      {BUILD_MODE_LABELS[buildMode] ?? buildMode}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-
-              <div className={styles.metaBlock} role="status" aria-live="polite">
-                <span>
-                  <strong>{displayRows.length}</strong> 个芯片 / 平台
                 </span>
-                <span>
-                  <strong>{weightColumns.length}</strong> 组模型配置
-                </span>
-                <span>{loading ? '正在更新查询…' : '筛选支持多选 · 单位 tokens/s'}</span>
-                {error ? (
-                  <span role="alert">
-                    更新失败，当前仍是上次结果。
-                    <button
-                      className={styles.resetButton}
-                      onClick={() => setReloadKey((value) => value + 1)}
-                    >
-                      重试
-                    </button>
-                  </span>
-                ) : null}
-              </div>
+              ) : null}
+            </div>
+          </section>
+
+          {/* Table */}
+          {displayRows.length === 0 ? (
+            <section className={styles.comingSoonBox}>
+              <h3 className={styles.comingSoonTitle}>
+                {error
+                  ? '性能数据加载失败'
+                  : !resultsReady
+                    ? '正在加载性能数据…'
+                    : '没有匹配的性能记录'}
+              </h3>
+              <p className={styles.comingSoonText}>
+                {error
+                  ? '请使用上方重试按钮重新查询。'
+                  : !resultsReady
+                    ? '正在获取当前版本与构建模式的数据。'
+                    : '已保留所有选择。可取消标注“无匹配”的条件，或减少筛选条件。无上报记录不代表硬件不支持。'}
+              </p>
             </section>
-
-            {/* Table */}
-            {displayRows.length === 0 ? (
-              <section className={styles.comingSoonBox}>
-                <h3 className={styles.comingSoonTitle}>没有匹配的性能记录</h3>
-                <p className={styles.comingSoonText}>
-                  试试减少筛选条件，或搜索其他芯片、设备和模型。
+          ) : (
+            <>
+              <section className={styles.sectionHeader}>
+                <h2 className={styles.sectionTitle}>
+                  {formatFilterSelection(selectedPlatforms, '全平台', (os) => OS_LABELS[os] ?? os)}{' '}
+                  性能矩阵
+                </h2>
+                <p className={styles.sectionDescription}>
+                  Prefill 为输入处理速度，Decode
+                  为生成速度。点击成绩查看样本；左右滚动对比模型，芯片名称固定在左侧。
                 </p>
               </section>
-            ) : (
-              <>
-                <section className={styles.sectionHeader}>
-                  <h2 className={styles.sectionTitle}>
-                    {formatFilterSelection(
-                      selectedPlatforms,
-                      '全平台',
-                      (os) => OS_LABELS[os] ?? os,
-                    )}{' '}
-                    性能矩阵
-                  </h2>
-                  <p className={styles.sectionDescription}>
-                    Prefill 为输入处理速度，Decode
-                    为生成速度。点击成绩查看样本；左右滚动对比模型，芯片名称固定在左侧。
-                  </p>
-                </section>
 
-                <section className={styles.tableSection} aria-busy={loading}>
-                  <div className={styles.tableWrap}>
-                    <div className={styles.matrixGrid} style={matrixGridStyle}>
-                      <div className={`${styles.rowHead} ${styles.cornerHead}`}>SoC</div>
-                      {weightColumns.map((col, colIndex) => (
-                        <div
-                          key={col.key}
-                          className={`${styles.weightHead} ${colIndex === weightColumns.length - 1 ? styles.lastCol : ''}`}
-                        >
-                          <div className={styles.weightTitle}>{col.label}</div>
-                          <div className={styles.weightName} title={col.fileName}>
-                            {col.modelName || col.fileName}
-                          </div>
-                          <div className={styles.weightMeta}>
-                            {col.modelTag !== 'Chat' ? (
-                              <span className={styles.modelTag}>{col.modelTag}</span>
-                            ) : null}
-                            {col.isBatch ? (
-                              <span className={styles.batchTag}>×{col.batchCount}</span>
-                            ) : null}
-                            {col.quant} · {col.backend}
-                          </div>
+              <section className={styles.tableSection} aria-busy={loading}>
+                <div className={styles.tableWrap}>
+                  <div className={styles.matrixGrid} style={matrixGridStyle}>
+                    <div className={`${styles.rowHead} ${styles.cornerHead}`}>SoC</div>
+                    {weightColumns.map((col, colIndex) => (
+                      <div
+                        key={col.key}
+                        className={`${styles.weightHead} ${colIndex === weightColumns.length - 1 ? styles.lastCol : ''}`}
+                      >
+                        <div className={styles.weightTitle}>{col.label}</div>
+                        <div className={styles.weightName} title={col.fileName}>
+                          {col.modelName || col.fileName}
                         </div>
-                      ))}
+                        <div className={styles.weightMeta}>
+                          {col.modelTag !== 'Chat' ? (
+                            <span className={styles.modelTag}>{col.modelTag}</span>
+                          ) : null}
+                          {col.isBatch ? (
+                            <span className={styles.batchTag}>×{col.batchCount}</span>
+                          ) : null}
+                          {col.quant} · {col.backend}
+                        </div>
+                      </div>
+                    ))}
 
-                      {renderedDisplayRows.flatMap((row, rowIndex) => {
-                        const rowKey = `${row.osLabel ?? ''}-${row.socName}`;
-                        const isLastRow = rowIndex === renderedDisplayRows.length - 1;
-                        const rowHeadClass = `${styles.rowCell} ${isLastRow ? styles.lastRow : ''}`;
-                        const socDisplay = getSocDisplayInfo({
-                          socName: row.socName,
-                          socBrand: row.socBrand,
-                          deviceModels: row.deviceModels,
-                        });
-                        const rowPlatformLabel = row.osLabel ?? OS_LABELS[row.osId] ?? row.osId;
-                        const rowDeviceSummary = summarizeHeaderDeviceModels({
-                          deviceLabels: row.deviceDisplayNames,
-                          fallbackDeviceModels: row.deviceModels,
-                        });
-                        const rowMeta = [
-                          rowPlatformLabel,
-                          rowDeviceSummary &&
-                          rowDeviceSummary !== socDisplay.secondaryLabel &&
-                          rowDeviceSummary !== socDisplay.metaLabel
-                            ? rowDeviceSummary
-                            : null,
-                          socDisplay.metaLabel,
-                        ]
-                          .filter(Boolean)
-                          .join(' · ');
-                        const ariaSocLabel = formatSocFilterLabel({
-                          socName: row.socName,
-                          socBrand: row.socBrand,
-                          deviceModels: row.deviceModels,
-                        });
+                    {renderedDisplayRows.flatMap((row, rowIndex) => {
+                      const rowKey = `${row.osLabel ?? ''}-${row.socName}`;
+                      const isLastRow = rowIndex === renderedDisplayRows.length - 1;
+                      const rowHeadClass = `${styles.rowCell} ${isLastRow ? styles.lastRow : ''}`;
+                      const socDisplay = getSocDisplayInfo({
+                        socName: row.socName,
+                        socBrand: row.socBrand,
+                        deviceModels: row.deviceModels,
+                      });
+                      const rowPlatformLabel = row.osLabel ?? OS_LABELS[row.osId] ?? row.osId;
+                      const rowDeviceSummary = summarizeHeaderDeviceModels({
+                        deviceLabels: row.deviceDisplayNames,
+                        fallbackDeviceModels: row.deviceModels,
+                      });
+                      const rowMeta = [
+                        rowPlatformLabel,
+                        rowDeviceSummary &&
+                        rowDeviceSummary !== socDisplay.secondaryLabel &&
+                        rowDeviceSummary !== socDisplay.metaLabel
+                          ? rowDeviceSummary
+                          : null,
+                        socDisplay.metaLabel,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ');
+                      const ariaSocLabel = formatSocFilterLabel({
+                        socName: row.socName,
+                        socBrand: row.socBrand,
+                        deviceModels: row.deviceModels,
+                      });
 
-                        return [
-                          <div key={`${rowKey}__head`} className={rowHeadClass}>
-                            <div className={styles.rowTopline}>
-                              {socDisplay.brand !== 'unknown' ? (
-                                <span className={styles.vendorTag}>
-                                  <BrandIcon
-                                    brand={socDisplay.brand}
-                                    className={styles.vendorIcon}
-                                  />
-                                  {capitalizeBrand(socDisplay.brand)}
-                                </span>
-                              ) : null}
-                              <strong className={styles.rowName}>{socDisplay.primaryLabel}</strong>
-                              <button
-                                type="button"
-                                className={styles.rowExportButton}
-                                onClick={() => handleExportRow(row)}
-                                aria-label={`打开 ${ariaSocLabel} 报表`}
-                              >
-                                报表
-                              </button>
-                            </div>
-                            {socDisplay.secondaryLabel ? (
-                              <div className={styles.rowSubtitle}>{socDisplay.secondaryLabel}</div>
+                      return [
+                        <div key={`${rowKey}__head`} className={rowHeadClass}>
+                          <div className={styles.rowTopline}>
+                            {socDisplay.brand !== 'unknown' ? (
+                              <span className={styles.vendorTag}>
+                                <BrandIcon brand={socDisplay.brand} className={styles.vendorIcon} />
+                                {capitalizeBrand(socDisplay.brand)}
+                              </span>
                             ) : null}
-                            {rowMeta ? <div className={styles.rowMeta}>{rowMeta}</div> : null}
-                          </div>,
-                          ...weightColumns.map((col, colIndex) => {
-                            const cell = row.cells[col.key];
-                            const isLastCol = colIndex === weightColumns.length - 1;
-                            const cellBaseClass = `${styles.speedCell} ${isLastCol ? styles.lastCol : ''} ${isLastRow ? styles.lastRow : ''}`;
+                            <strong className={styles.rowName}>{socDisplay.primaryLabel}</strong>
+                            <button
+                              type="button"
+                              className={styles.rowExportButton}
+                              disabled={!actionsReady}
+                              onClick={() => handleExportRow(row)}
+                              aria-label={`打开 ${ariaSocLabel} 报表`}
+                            >
+                              报表
+                            </button>
+                          </div>
+                          {socDisplay.secondaryLabel ? (
+                            <div className={styles.rowSubtitle}>{socDisplay.secondaryLabel}</div>
+                          ) : null}
+                          {rowMeta ? <div className={styles.rowMeta}>{rowMeta}</div> : null}
+                        </div>,
+                        ...weightColumns.map((col, colIndex) => {
+                          const cell = row.cells[col.key];
+                          const isLastCol = colIndex === weightColumns.length - 1;
+                          const cellBaseClass = `${styles.speedCell} ${isLastCol ? styles.lastCol : ''} ${isLastRow ? styles.lastRow : ''}`;
 
-                            if (!cell) {
-                              return (
-                                <div key={`${rowKey}__${col.key}`} className={cellBaseClass} />
-                              );
-                            }
+                          if (!cell) {
+                            return <div key={`${rowKey}__${col.key}`} className={cellBaseClass} />;
+                          }
 
-                            const prefill = cell.prefillDisplay;
-                            const decode = cell.decodeDisplay;
-                            const decodeRaw = cell.decodeRawDisplay;
-                            const isBatchMetric = cell.metricBasis === 'decode_div_batch';
-                            return (
-                              <button
-                                key={`${rowKey}__${col.key}`}
-                                type="button"
-                                className={`${cellBaseClass} ${buildCellClass(decode)} ${styles.speedCellClickable} ${styles.matrixButtonCell}`}
-                                disabled={loading}
-                                onClick={() => handleCellClick(cell, col.label)}
-                                aria-label={
-                                  isBatchMetric
-                                    ? `${ariaSocLabel} ${col.label} prefill ${formatSpeed(prefill)} decode ${formatSpeed(decodeRaw)} decode per batch ${formatSpeed(decode)}`
-                                    : `${ariaSocLabel} ${col.label} prefill ${formatSpeed(prefill)} decode ${formatSpeed(decode)}`
-                                }
-                              >
+                          const prefill = cell.prefillDisplay;
+                          const decode = cell.decodeDisplay;
+                          const decodeRaw = cell.decodeRawDisplay;
+                          const isBatchMetric = cell.metricBasis === 'decode_div_batch';
+                          return (
+                            <button
+                              key={`${rowKey}__${col.key}`}
+                              type="button"
+                              className={`${cellBaseClass} ${buildCellClass(decode)} ${styles.speedCellClickable} ${styles.matrixButtonCell}`}
+                              disabled={!actionsReady}
+                              onClick={() => handleCellClick(cell, col.label)}
+                              aria-label={
+                                isBatchMetric
+                                  ? `${ariaSocLabel} ${col.label} prefill ${formatSpeed(prefill)} decode ${formatSpeed(decodeRaw)} decode per batch ${formatSpeed(decode)}`
+                                  : `${ariaSocLabel} ${col.label} prefill ${formatSpeed(prefill)} decode ${formatSpeed(decode)}`
+                              }
+                            >
+                              <div className={styles.metricLine}>
+                                <span className={styles.metricLabel}>Prefill</span>
+                                <strong className={styles.metricValue}>
+                                  {formatSpeed(prefill)}
+                                </strong>
+                              </div>
+                              <div className={styles.metricLine}>
+                                <span className={styles.metricLabel}>Decode</span>
+                                <strong className={styles.metricValue}>
+                                  {formatSpeed(isBatchMetric ? decodeRaw : decode)}
+                                </strong>
+                              </div>
+                              {isBatchMetric ? (
                                 <div className={styles.metricLine}>
-                                  <span className={styles.metricLabel}>Prefill</span>
+                                  <span className={styles.metricLabel}>Decode / Batch</span>
                                   <strong className={styles.metricValue}>
-                                    {formatSpeed(prefill)}
+                                    {formatSpeed(decode)}
                                   </strong>
                                 </div>
-                                <div className={styles.metricLine}>
-                                  <span className={styles.metricLabel}>Decode</span>
-                                  <strong className={styles.metricValue}>
-                                    {formatSpeed(isBatchMetric ? decodeRaw : decode)}
-                                  </strong>
-                                </div>
-                                {isBatchMetric ? (
-                                  <div className={styles.metricLine}>
-                                    <span className={styles.metricLabel}>Decode / Batch</span>
-                                    <strong className={styles.metricValue}>
-                                      {formatSpeed(decode)}
-                                    </strong>
-                                  </div>
-                                ) : null}
-                                <div className={styles.noteTag}>{getCellFooterNote(cell)}</div>
-                              </button>
-                            );
-                          }),
-                        ];
-                      })}
-                    </div>
+                              ) : null}
+                              <div className={styles.noteTag}>{getCellFooterNote(cell)}</div>
+                            </button>
+                          );
+                        }),
+                      ];
+                    })}
                   </div>
-                </section>
-              </>
-            )}
+                </div>
+              </section>
+            </>
+          )}
 
-            {/* Legend */}
-            <section className={styles.legend}>
-              <div className={styles.legendItem}>
-                <span className={`${styles.legendSwatch} ${styles.cellStrong}`} />
-                <span>着色值 ≥ 35</span>
-              </div>
-              <div className={styles.legendItem}>
-                <span className={`${styles.legendSwatch} ${styles.cellGood}`} />
-                <span>着色值 15-34.9</span>
-              </div>
-              <div className={styles.legendItem}>
-                <span className={`${styles.legendSwatch} ${styles.cellTight}`} />
-                <span>着色值 6-14.9</span>
-              </div>
-              <div className={styles.legendItem}>
-                <span className={`${styles.legendSwatch} ${styles.cellWeak}`} />
-                <span>着色值 &lt; 6</span>
-              </div>
-            </section>
+          {/* Legend */}
+          <section className={styles.legend}>
+            <div className={styles.legendItem}>
+              <span className={`${styles.legendSwatch} ${styles.cellStrong}`} />
+              <span>着色值 ≥ 35</span>
+            </div>
+            <div className={styles.legendItem}>
+              <span className={`${styles.legendSwatch} ${styles.cellGood}`} />
+              <span>着色值 15-34.9</span>
+            </div>
+            <div className={styles.legendItem}>
+              <span className={`${styles.legendSwatch} ${styles.cellTight}`} />
+              <span>着色值 6-14.9</span>
+            </div>
+            <div className={styles.legendItem}>
+              <span className={`${styles.legendSwatch} ${styles.cellWeak}`} />
+              <span>着色值 &lt; 6</span>
+            </div>
+          </section>
 
-            <section className={styles.notes}>
-              <h3 className={styles.notesTitle}>统计与导出说明</h3>
-              <ul className={styles.notesList}>
-                <li>非 batch 单元格显示 top 10% 位次的 Prefill / Decode。</li>
-                <li>
-                  batch 单元格同时显示 Decode 总值和 Decode / Batch，颜色按 Decode / Batch 计算。
-                </li>
-                <li>
-                  样本来自社区上报，不同后端、量化、并发和构建模式应分别比较；不作为官方兼容性保证。
-                </li>
-                <li>
-                  芯片旁的「报表」包含当前筛选下的全部模型统计，与矩阵中的筛选结果一致。空白单元格表示暂无样本，不代表不支持。
-                </li>
-              </ul>
-            </section>
-          </>
-        )}
+          <section className={styles.notes}>
+            <h3 className={styles.notesTitle}>统计与导出说明</h3>
+            <ul className={styles.notesList}>
+              <li>非 batch 单元格显示 top 10% 位次的 Prefill / Decode。</li>
+              <li>
+                batch 单元格同时显示 Decode 总值和 Decode / Batch，颜色按 Decode / Batch 计算。
+              </li>
+              <li>
+                样本来自社区上报，不同后端、量化、并发和构建模式应分别比较；不作为官方兼容性保证。
+              </li>
+              <li>
+                芯片旁的「报表」包含当前筛选下的全部模型统计，与矩阵中的筛选结果一致。空白单元格表示暂无样本，不代表不支持。
+              </li>
+            </ul>
+          </section>
+        </>
       </div>
 
       {/* Sidebar */}

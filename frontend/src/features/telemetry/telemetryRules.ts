@@ -5,6 +5,7 @@ import {
   TELEMETRY_BUILD_MODE_ORDER,
 } from '@app/contracts';
 import type { TelemetryLeaderboardEntry } from '@/types/telemetry';
+import type { TelemetryFilterSelections } from './telemetryFilters';
 
 export type CellMetricBasis = 'top10' | 'decode_div_batch';
 
@@ -95,7 +96,7 @@ export function deriveWeightLabel(entry: TelemetryLeaderboardEntry): string {
   }
   const match = entry.modelFileName.match(/(\d+\.?\d*)B/i);
   if (match) return `${match[1]}B`;
-  return entry.modelName || entry.modelFileName;
+  return '大小未知';
 }
 
 function normalizeBrandKey(brand: string): string {
@@ -111,7 +112,7 @@ export function getHardwareBrandKeys(entry: TelemetryLeaderboardEntry): string[]
     }
   }
 
-  if (brands.size === 0) {
+  if (entry.hardwareBrands == null) {
     const inferred = normalizeBrandKey(inferBrand(entry.socName, entry.socBrand));
     if (inferred && inferred !== 'unknown' && BRAND_LABELS[inferred]) {
       brands.add(inferred);
@@ -235,17 +236,13 @@ export function formatMetricBasisLabel(metricBasis: CellMetricBasis): string {
   return metricBasis === 'decode_div_batch' ? 'decode / batchCount' : 'top10';
 }
 
+export function telemetrySocKey(value: string): string {
+  return value.trim().toLowerCase();
+}
+
 export function filterLeaderboardData(
   data: TelemetryLeaderboardEntry[],
-  filters: {
-    selectedPlatforms: string[];
-    selectedBackend: string[];
-    selectedBatch: string[];
-    selectedSize: string[];
-    selectedModelTag: string[];
-    selectedBrand: string[];
-    selectedSoc: string[];
-  },
+  filters: TelemetryFilterSelections,
 ): TelemetryLeaderboardEntry[] {
   let filtered = data;
   if (filters.selectedPlatforms.length > 0) {
@@ -255,8 +252,7 @@ export function filterLeaderboardData(
     filtered = filtered.filter((entry) => filters.selectedBackend.includes(entry.backend));
   }
   if (filters.selectedBatch.length > 0) {
-    const batchCounts = new Set(filters.selectedBatch.map((value) => parseInt(value, 10)));
-    filtered = filtered.filter((entry) => batchCounts.has(entry.batchCount));
+    filtered = filtered.filter((entry) => filters.selectedBatch.includes(String(entry.batchCount)));
   }
   if (filters.selectedSize.length > 0) {
     filtered = filtered.filter((entry) => filters.selectedSize.includes(deriveWeightLabel(entry)));
@@ -271,7 +267,8 @@ export function filterLeaderboardData(
     );
   }
   if (filters.selectedSoc.length > 0) {
-    filtered = filtered.filter((entry) => filters.selectedSoc.includes(entry.socName));
+    const selectedSocs = new Set(filters.selectedSoc.map(telemetrySocKey));
+    filtered = filtered.filter((entry) => selectedSocs.has(telemetrySocKey(entry.socName)));
   }
   return filtered;
 }

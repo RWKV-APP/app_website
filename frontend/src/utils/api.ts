@@ -381,8 +381,10 @@ export async function fetchPublicTelemetryLeaderboard(options?: {
   return (await response.json()) as TelemetryLeaderboardEntry[];
 }
 
-export async function fetchPublicTelemetryFilters(): Promise<TelemetryPublicFilters> {
-  const response = await fetch(`${API_BASE_URL}/public-api/telemetry/filters`);
+export async function fetchPublicTelemetryFilters(
+  signal?: AbortSignal,
+): Promise<TelemetryPublicFilters> {
+  const response = await fetch(`${API_BASE_URL}/public-api/telemetry/filters`, { signal });
   if (!response.ok) {
     throw new Error(await parseErrorResponse(response));
   }

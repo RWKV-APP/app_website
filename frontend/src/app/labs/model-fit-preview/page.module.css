@@ -164,6 +164,29 @@
   padding-top: 9px;
 }
 
+.filterHint {
+  padding: 9px 0;
+  font-size: 0.8125rem;
+  color: var(--color-secondary);
+}
+
+.unavailableFilter {
+  border-style: dashed;
+}
+
+.filterMessage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+}
+
+.rowExportButton:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
 .resetButton {
   display: inline-flex;
   align-items: center;

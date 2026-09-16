@@ -115,6 +115,14 @@ The matrix searches loaded data locally and displays all matching rows and model
 columns in one continuous scrollable matrix, without pagination. Rows fill in
 automatically in idle-time batches. All filter groups and SoC options remain
 expanded and visible. Exported reports preserve all filtered columns.
-Version/build-mode changes cancel superseded network requests. Empty results
-retain the filters and reset control. `pnpm check:telemetry` covers query reuse,
+Version/build-mode changes cancel superseded network requests; matrix rows,
+record actions and exports are usable only after the selected query has succeeded.
+All local filter candidates include the search term and every other selected
+facet, with OR inside a group and AND between groups. Selected zero-match values
+remain visible and removable; no selection is cleared automatically. Every group
+remains expanded even with zero or one candidate. All nine filter groups and the
+search text restore together from versioned local storage. Metadata failures are
+visible and retry refreshes both options and results. Unknown chip identities
+and model sizes remain explicitly labeled, with raw sample details retained.
+Empty results retain the filters and reset control. `pnpm check:telemetry` covers query reuse,
 expiry, retries, field privacy and HTTP compression negotiation.
