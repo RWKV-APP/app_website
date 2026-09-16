@@ -118,7 +118,7 @@ async function main() {
   const rows = [10, 20, 30].map((speed, index) => ({
     id: index + 1,
     os: 'android',
-    socName: 'sm8250',
+    socName: 'sm7435',
     socBrand: 'qualcomm',
     deviceModel: 'test',
     modelName: 'RWKV 0.1B',
@@ -147,7 +147,7 @@ async function main() {
   assert.equal(reads, 1, 'identical in-flight queries must share a read')
   assert.deepEqual(first, concurrent)
   assert.equal(first.length, 1)
-  assert.equal(first[0].socName, 'Snapdragon 865')
+  assert.equal(first[0].socName, 'Snapdragon 7s Gen 2')
   assert.equal(first[0].sampleCount, 3)
   assert.equal(first[0].decodeSpeed.avg, 20)
   await service.leaderboard({ limit: '5000' })
@@ -172,7 +172,7 @@ async function main() {
   assert.equal(
     (
       await service.records({
-        socName: 'Snapdragon 865',
+        socName: 'Snapdragon 7s Gen 2',
         modelSha256: 'model-hash',
         backend: 'qnn',
         limit: '-1'
@@ -184,10 +184,10 @@ async function main() {
   // Historical aliases, stale vendor tags and invalid identifiers use the same
   // normalization in aggregates, facets and record drilldown without rewriting rows.
   const canonicalCases = [
-    ['sm8250', 'Snapdragon 865', 'snapdragon 865', 'qualcomm'],
-    ['tensor_soc', 'Google Tensor', 'google tensor', 'google'],
+    ['sm7435', 'Snapdragon 7s Gen 2', 'snapdragon 7s gen 2', 'qualcomm'],
+    ['pixel6', 'Google Tensor', 'google tensor', 'google'],
     ['pixel7', 'Google Tensor G2', 'google tensor g2', 'google'],
-    ['mt6765', 'MediaTek Helio P35', 'mediatek helio p35', 'mediatek']
+    ['SM7125', 'Snapdragon 720G', 'snapdragon 720g', 'qualcomm']
   ]
   const historicalRows = canonicalCases.flatMap(
     ([alias, canonical, lower, brand]) =>
@@ -274,7 +274,7 @@ async function main() {
       assert(records.every((row) => row.socName === canonical))
     }
   }
-  const kirin = normalized.filter((row) => row.socName.startsWith('kirin'))
+  const kirin = normalized.filter((row) => row.socName.startsWith('Kirin'))
   assert.equal(kirin.length, 4)
   assert(
     kirin.every((row) => row.socBrand === 'huawei' && row.sampleCount === 2)
@@ -285,7 +285,7 @@ async function main() {
   const qualcomm = await normalizedService.publicRecords({
     socBrand: 'qualcomm'
   })
-  assert.equal(qualcomm.total, 3, 'Kirin must not match the Qualcomm filter')
+  assert.equal(qualcomm.total, 6, 'Kirin must not match the Qualcomm filter')
   const unknown = normalized.filter((row) => row.socName === 'Unknown')
   assert.equal(
     unknown.length,
@@ -333,7 +333,7 @@ async function main() {
   assert.equal(unknownRecords[0].gpuName, 'OrayIddDriver Device')
   const facets = await normalizedService.publicFilters()
   assert.equal(
-    facets.socs.filter((name) => name.toLowerCase() === 'snapdragon 865')
+    facets.socs.filter((name) => name.toLowerCase() === 'snapdragon 7s gen 2')
       .length,
     1
   )
@@ -346,6 +346,162 @@ async function main() {
     originalRows,
     'normalization must leave stored records untouched'
   )
+
+  const { normalizeTelemetrySocName, TELEMETRY_SOC_ALIASES } =
+    backendRequire('@app/contracts')
+  for (const [canonical, aliases] of Object.entries(TELEMETRY_SOC_ALIASES)) {
+    for (const alias of [canonical, ...aliases]) {
+      assert.equal(normalizeTelemetrySocName(alias), canonical)
+      assert.equal(normalizeTelemetrySocName(alias.toLowerCase()), canonical)
+    }
+  }
+  const sharedCodes = [
+    'mt6771',
+    'mt6895',
+    'mt6893',
+    'mt6765',
+    'mt6853',
+    'mt6878',
+    'sm7635',
+    'sm7325',
+    'sm8250',
+    'sm8150',
+    'sm8953'
+  ]
+  for (const code of sharedCodes) {
+    assert(
+      normalizeTelemetrySocName(code).endsWith(code.toUpperCase()),
+      `${code} must retain its code`
+    )
+  }
+  assert.notEqual(
+    normalizeTelemetrySocName('sm7435'),
+    normalizeTelemetrySocName('sm7450')
+  )
+  assert.notEqual(
+    normalizeTelemetrySocName('sm8650'),
+    normalizeTelemetrySocName('sm8650-AC')
+  )
+
+  // Unequal alias populations must aggregate the individual measurements, and
+  // generic device reports must split by known hardware, never by vendor alone.
+  const socRows = [10, 20, 30, 40].map((speed, index) => ({
+    ...rows[0],
+    id: index + 1,
+    socName: index === 0 ? 'sm8650' : '8 gen 3',
+    decodeSpeed: speed,
+    prefillSpeed: speed * 10
+  }))
+  socRows.push(
+    ...[
+      ['snapdragon_soc', 'Pixel 8', 'Google Tensor G3'],
+      ['snapdragon_soc', 'Pixel 9 Pro XL', 'Google Tensor G4'],
+      ['tensor_soc', 'Pixel 10', 'Google Tensor G5'],
+      ['snapdragon_soc', 'Pixel 10a', 'Google Tensor G4']
+    ].map(([socName, deviceModel], index) => ({
+      ...rows[0],
+      id: index + 5,
+      socName,
+      deviceModel
+    }))
+  )
+  socRows.push(
+    { ...rows[0], id: 9, socName: 'mt6771', deviceModel: 'unknown' },
+    { ...rows[0], id: 10, socName: 'Helio P60' },
+    { ...rows[0], id: 11, socName: 'Helio P70' }
+  )
+  const socService = new TelemetryService(await telemetryDatabase(socRows))
+  const socBoard = await socService.leaderboard({ limit: '5000' })
+  assert.equal(
+    socBoard.reduce((total, row) => total + row.sampleCount, 0),
+    11
+  )
+  const gen3 = socBoard.find((row) => row.socName === 'Snapdragon 8 Gen 3')
+  assert.equal(gen3.sampleCount, 4)
+  assert.equal(gen3.decodeSpeed.avg, 25)
+  assert.equal(gen3.decodeSpeed.max, 40)
+  assert.equal(gen3.decodeSpeed.top10, 40)
+  for (const socName of ['SM8650', '8 gen 3', 'Snapdragon 8 Gen 3']) {
+    assert.equal(
+      (
+        await socService.records({
+          socName,
+          modelSha256: 'model-hash',
+          backend: 'qnn'
+        })
+      ).length,
+      4
+    )
+    assert.equal((await socService.publicRecords({ socName })).total, 4)
+  }
+  assert.equal(
+    socBoard.find((row) => row.socName === 'Google Tensor G4').sampleCount,
+    2
+  )
+  assert(
+    socBoard
+      .filter((row) => row.socName.startsWith('Google Tensor'))
+      .every((row) => row.socBrand === 'google')
+  )
+  for (const socName of [
+    'MediaTek MT6771',
+    'MediaTek Helio P60',
+    'MediaTek Helio P70'
+  ]) {
+    assert.equal(socBoard.find((row) => row.socName === socName).sampleCount, 1)
+  }
+
+  const gpuRows = ['4060', '4070'].map((gpu, index) => ({
+    ...rows[0],
+    id: index + 1,
+    os: 'windows',
+    backend: 'webrwkv',
+    socName: 'AMD Ryzen 7 7840HS with Radeon 780M Graphics',
+    cpuName: 'AMD Ryzen 7 7840HS with Radeon 780M Graphics',
+    socBrand: 'amd',
+    gpuName: `NVIDIA GeForce RTX ${gpu} Laptop GPU`,
+    decodeSpeed: 10 + index * 10
+  }))
+  const gpuBoard = await new TelemetryService(
+    await telemetryDatabase(gpuRows)
+  ).leaderboard({})
+  assert.equal(
+    gpuBoard.length,
+    2,
+    'desktop GPU results must not merge through a CPU alias'
+  )
+  assert(
+    gpuBoard.every(
+      (row) =>
+        row.socName.startsWith('NVIDIA GeForce RTX') && row.sampleCount === 1
+    )
+  )
+  for (const [code, model, canonical] of [
+    ['mt6779', 'BV8900', 'MediaTek Helio P90'],
+    ['mt6983', 'CPH2493', 'MediaTek Dimensity 9000']
+  ]) {
+    const service = new TelemetryService(
+      await telemetryDatabase([
+        { ...rows[0], socName: code, deviceModel: model }
+      ])
+    )
+    const board = await service.leaderboard({ socName: code })
+    assert.equal(board[0].socName, canonical)
+    assert.deepEqual(board[0].reportedSocNames, [code])
+    for (const socName of [code, canonical]) {
+      assert.equal(
+        (
+          await service.records({
+            socName,
+            modelSha256: 'model-hash',
+            backend: 'qnn'
+          })
+        ).length,
+        1
+      )
+      assert.equal((await service.publicRecords({ socName })).total, 1)
+    }
+  }
 
   const { normalizeTelemetryAppVersion, normalizeTelemetryAppDimensions } =
     backendRequire('@app/contracts')
@@ -419,7 +575,7 @@ async function main() {
   const sortedIds = (items) => items.map((row) => row.id).sort((a, b) => a - b)
   for (const [query, ids] of queryCases) {
     const records = await versionService.records({
-      socName: 'Snapdragon 865',
+      socName: 'Snapdragon 7s Gen 2',
       modelSha256: 'model-hash',
       backend: 'qnn',
       ...query
@@ -524,7 +680,7 @@ async function main() {
         schemaVersion: 1,
         installId: 'test-only-install',
         device: {
-          socName: 'Snapdragon 865',
+          socName: 'Snapdragon 7s Gen 2',
           socBrand: 'qualcomm',
           os: 'android'
         },

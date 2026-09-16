@@ -1,4 +1,5 @@
 import {
+  normalizeTelemetrySocName,
   TELEMETRY_ADMIN_FILTER_BRAND_ORDER,
   TELEMETRY_ADMIN_FILTER_MODEL_TAG_ORDER,
   TELEMETRY_ADMIN_FILTER_OS_ORDER,
@@ -265,7 +266,7 @@ export function formatMetricBasisLabel(metricBasis: CellMetricBasis): string {
 }
 
 export function telemetrySocKey(value: string): string {
-  return value.trim().toLowerCase();
+  return normalizeTelemetrySocName(value).toLowerCase();
 }
 
 export function filterLeaderboardData(
@@ -298,7 +299,11 @@ export function filterLeaderboardData(
   }
   if (filters.selectedSoc.length > 0) {
     const selectedSocs = new Set(filters.selectedSoc.map(telemetrySocKey));
-    filtered = filtered.filter((entry) => selectedSocs.has(telemetrySocKey(entry.socName)));
+    filtered = filtered.filter((entry) =>
+      [entry.socName, ...(entry.reportedSocNames ?? [])].some((name) =>
+        selectedSocs.has(telemetrySocKey(name)),
+      ),
+    );
   }
   return filtered;
 }

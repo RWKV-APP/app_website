@@ -1,6 +1,6 @@
-import { normalizeTelemetryAppDimensions } from '@app/contracts';
+import { normalizeTelemetryAppDimensions, normalizeTelemetrySocName } from '@app/contracts';
 import type { TelemetryFilterSelections } from './telemetryFilters';
-import { getBackendFamily } from './telemetryRules';
+import { getBackendFamily, telemetrySocKey } from './telemetryRules';
 
 export type TelemetryFilterState = TelemetryFilterSelections & {
   selectedVersion: string[];
@@ -42,6 +42,14 @@ export function parseTelemetryFilterState(value: string | null): TelemetryFilter
     }
     // Historical variant selections now select the complete NeuroPilot family.
     state.selectedBackend = Array.from(new Set(state.selectedBackend.map(getBackendFamily)));
+    state.selectedSoc = Array.from(
+      new Map(
+        state.selectedSoc
+          .map(normalizeTelemetrySocName)
+          .filter(Boolean)
+          .map((soc) => [telemetrySocKey(soc), soc]),
+      ).values(),
+    );
     const versions = state.selectedVersion.map((version) =>
       normalizeTelemetryAppDimensions(version),
     );

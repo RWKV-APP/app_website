@@ -12,6 +12,7 @@ export interface TelemetryLeaderboardEntry {
   modelSizeB: number | null;
   quantization: string | null;
   socName: string;
+  reportedSocNames?: string[];
   socBrand: string;
   hardwareBrands?: string[];
   deviceModels: string[];
@@ -27,6 +28,7 @@ export interface TelemetryLeaderboardEntry {
 export interface TelemetryRecordEntry {
   id: number;
   socName: string;
+  reportedSocName?: string;
   socBrand: string;
   os: string;
   osVersion: string | null;

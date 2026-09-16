@@ -9,6 +9,8 @@ import {
   TELEMETRY_BUILD_MODE_ORDER,
   normalizeTelemetryAppVersion,
   normalizeTelemetryAppDimensions,
+  resolveTelemetrySocName as resolveKnownSocName,
+  resolveTelemetryPixelSoc,
   type TelemetryBuildMode,
 } from '@app/contracts';
 import { PrismaService } from '../prisma/prisma.service';
@@ -21,26 +23,6 @@ const MAX_DECODE_SPEED = 5_000;
 const ADMIN_FILTER_OS_ORDER: readonly string[] = TELEMETRY_ADMIN_FILTER_OS_ORDER;
 const ADMIN_FILTER_MODEL_TAG_ORDER: readonly string[] = TELEMETRY_ADMIN_FILTER_MODEL_TAG_ORDER;
 const ADMIN_FILTER_BRAND_ORDER: readonly string[] = TELEMETRY_ADMIN_FILTER_BRAND_ORDER;
-const SOC_NAME_ALIASES: Record<string, string> = {
-  mt6765: 'MediaTek Helio P35',
-  '888': 'Snapdragon 888',
-  mt6853: 'MediaTek Dimensity 720',
-  mt6879: 'MediaTek Dimensity 1050',
-  mt6878: 'MediaTek Dimensity 7300',
-  sm8150: 'Snapdragon 855',
-  kirin985: 'Kirin 985',
-  kirin990: 'Kirin 990',
-  kirin9905g: 'Kirin 990 5G',
-  sm8250: 'Snapdragon 865',
-  tensorsoc: 'Google Tensor',
-  pixelseven: 'Google Tensor G2',
-  pixel7: 'Google Tensor G2',
-  pixel7a: 'Google Tensor G2',
-  pixel7pro: 'Google Tensor G2',
-};
-const CANONICAL_SOC_NAMES = new Map(
-  Object.values(SOC_NAME_ALIASES).map((name) => [normalizeSocAliasKey(name), name]),
-);
 
 interface TelemetryPerfBody {
   schemaVersion: number;
@@ -123,6 +105,7 @@ interface LeaderboardAccumulator {
   modelSizeB: number | null;
   quantization: string | null;
   socName: string;
+  reportedSocNames: Set<string>;
   socBrand: string;
   backend: string;
   isBatch: boolean;
@@ -181,19 +164,6 @@ function pickTopDecileValue(values: number[]): number | null {
   // 样本少于 10 条时，这里会自然回到第 1 名，也就是当前可见的最高分。
   const index = Math.max(0, Math.ceil(sorted.length * 0.1) - 1);
   return sorted[index] ?? sorted[sorted.length - 1] ?? null;
-}
-
-function normalizeSocAliasKey(value: string | null | undefined): string {
-  return (
-    cleanOptionalString(value)
-      ?.toLowerCase()
-      .replace(/[\s_-]+/g, '') ?? ''
-  );
-}
-
-function resolveKnownSocName(value: string | null | undefined): string | null {
-  const key = normalizeSocAliasKey(value);
-  return SOC_NAME_ALIASES[key] ?? CANONICAL_SOC_NAMES.get(key) ?? null;
 }
 
 function normalizeSocFilterKey(value: string): string {
@@ -379,6 +349,7 @@ interface NormalizedTelemetryRecordRow extends TelemetryRecordRow {
   gpuName: string | null;
   buildMode: TelemetryBuildMode;
   socNameKey: string;
+  reportedSocName: string;
 }
 
 const TELEMETRY_DEVICE_ALIASES: Record<string, TelemetryDeviceAlias> = {
@@ -711,7 +682,19 @@ function normalizeTelemetryDevice(
   const deviceModel = cleanOptionalString(device.deviceModel);
   const normalizedBrandFromInput = normalizeBrand(device.socBrand);
   const hasGenericSocName = isGenericSocName(rawSocName, os);
-  const mappedSocName = resolveKnownSocName(rawSocName);
+  const pixelSocName =
+    os === 'android' && (hasGenericSocName || normalizeLookupKey(rawSocName) === 'google tensor')
+      ? resolveTelemetryPixelSoc(deviceModel)
+      : null;
+  // These exact OEM model/code pairs identify one retail chip. The bare MT
+  // platform remains ambiguous and is deliberately not a global alias.
+  const deviceSocName =
+    os === 'android'
+      ? ({ 'mt6779:bv8900': 'MediaTek Helio P90', 'mt6983:cph2493': 'MediaTek Dimensity 9000' }[
+          `${normalizeLookupKey(rawSocName).replace(/^mediatek /, '')}:${normalizeLookupKey(deviceModel)}`
+        ] ?? null)
+      : null;
+  const mappedSocName = pixelSocName ?? deviceSocName ?? resolveKnownSocName(rawSocName);
   const simplifiedSnapdragonXName = simplifySnapdragonXEliteCpuName(cpuName);
 
   let socBrand = normalizedBrandFromInput;
@@ -725,7 +708,10 @@ function normalizeTelemetryDevice(
   let canonicalSocName = rawSocName;
   if (simplifiedSnapdragonXName && (hasGenericSocName || isSnapdragonXEliteLabel(rawSocName))) {
     canonicalSocName = simplifiedSnapdragonXName;
-  } else if (mappedSocName) {
+  } else if (
+    mappedSocName &&
+    (!shouldPreferGpuAsSocName(backend) || !gpuName || os === 'android' || os === 'ios')
+  ) {
     canonicalSocName = mappedSocName;
   } else if (alias?.socName && hasGenericSocName) {
     canonicalSocName = alias.socName;
@@ -798,6 +784,7 @@ function normalizeTelemetryRecordRow(row: TelemetryRecordRow): NormalizedTelemet
     ...row,
     ...normalizeTelemetryAppDimensions(row.appVersion, row.buildMode),
     ...normalized,
+    reportedSocName: row.socName,
   };
 }
 
@@ -945,7 +932,8 @@ export class TelemetryService {
         data: {
           schemaVersion: body.schemaVersion ?? 1,
           installIdHash,
-          socName: normalizedDevice.socNameKey,
+          // Retain reported identity so later alias corrections do not lose part revisions.
+          socName: normalizeLookupKey(body.device?.socName) || normalizedDevice.socNameKey,
           socBrand: normalizedDevice.socBrand,
           os: normalizedDevice.os,
           osVersion: normalizedDevice.osVersion,
@@ -1025,7 +1013,11 @@ export class TelemetryService {
     const socDisplayNames = new Map<string, string>();
     for (const rawRow of rows) {
       const row = normalizeTelemetryLeaderboardRow(rawRow);
-      if (querySocNameKeys.size > 0 && !querySocNameKeys.has(row.socNameKey)) {
+      if (
+        querySocNameKeys.size > 0 &&
+        !querySocNameKeys.has(row.socNameKey) &&
+        !querySocNameKeys.has(normalizeSocFilterKey(rawRow.socName))
+      ) {
         continue;
       }
       row.socName = socDisplayNames.get(row.socNameKey) ?? row.socName;
@@ -1035,6 +1027,7 @@ export class TelemetryService {
       const existing = groups.get(key);
       if (existing) {
         existing.sampleCount += 1;
+        existing.reportedSocNames.add(rawRow.socName);
         if (row.deviceModel) {
           existing.deviceModelCounts.set(
             row.deviceModel,
@@ -1067,6 +1060,7 @@ export class TelemetryService {
         modelSizeB: row.modelSizeB,
         quantization: row.quantization,
         socName: row.socName,
+        reportedSocNames: new Set([rawRow.socName]),
         socBrand: row.socBrand,
         backend: row.backend,
         isBatch: row.isBatch,
@@ -1105,6 +1099,7 @@ export class TelemetryService {
           modelSizeB: group.modelSizeB,
           quantization: group.quantization,
           socName: group.socName,
+          reportedSocNames: Array.from(group.reportedSocNames).sort(),
           socBrand: group.socBrand,
           hardwareBrands: ADMIN_FILTER_BRAND_ORDER.filter((brand) =>
             group.hardwareBrands.has(brand),
@@ -1214,7 +1209,11 @@ export class TelemetryService {
 
     return rows
       .map((row) => normalizeTelemetryRecordRow(row))
-      .filter((row) => row.socNameKey === querySocNameKey)
+      .filter(
+        (row) =>
+          row.socNameKey === querySocNameKey ||
+          normalizeSocFilterKey(row.reportedSocName) === querySocNameKey,
+      )
       .sort((left, right) => right.decodeSpeed - left.decodeSpeed)
       .slice(0, limit)
       .map(({ socNameKey, ...row }) => ({
@@ -1316,7 +1315,11 @@ export class TelemetryService {
       ) {
         return false;
       }
-      if (socNameKeys.size > 0 && !socNameKeys.has(normalized.socNameKey)) {
+      if (
+        socNameKeys.size > 0 &&
+        !socNameKeys.has(normalized.socNameKey) &&
+        !socNameKeys.has(normalizeSocFilterKey(row.socName))
+      ) {
         return false;
       }
       return true;

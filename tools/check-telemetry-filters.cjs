@@ -28,6 +28,12 @@ const {
   parseTelemetryFilterState,
   telemetryQueryKey
 } = frontendRequire('./src/features/telemetry/telemetryFilterState')
+const { telemetrySocSearchText } = frontendRequire('@app/contracts')
+const {
+  normalizeAppleDeviceIdentifier,
+  resolveAndroidSocName,
+  simplifySnapdragonXEliteCpuName
+} = frontendRequire('./src/utils/appleDeviceInfo')
 
 const defaults = {
   selectedPlatforms: [],
@@ -217,6 +223,74 @@ assert.equal(
   0,
   'case-insensitive matching is limited to SoC identity'
 )
+
+// Saved part numbers and current public names must select the same observations.
+const aliasRows = ['SM7435', 'Snapdragon 7s Gen 2', 'SM7450', 'SM7635'].map(
+  (socName) => entry({ os: 'android', socName, backend: 'qnn' })
+)
+for (const selection of ['SM7435', 'Snapdragon 7s Gen 2']) {
+  const filters = { ...defaults, selectedSoc: [selection] }
+  assert.deepEqual(filterLeaderboardData(aliasRows, filters), aliasRows.slice(0, 2))
+  assert.deepEqual(
+    getTelemetryFilterOptions(aliasRows, filters).selectedPlatforms,
+    ['android']
+  )
+}
+const deviceMappedRows = [entry({
+  os: 'android',
+  socName: 'MediaTek Helio P90',
+  reportedSocNames: ['mt6779'],
+  hardwareBrands: ['mediatek'],
+  backend: 'llamacpp'
+})]
+const deviceMappedFilters = parseTelemetryFilterState(JSON.stringify({
+  selectedSoc: ['MT6779']
+}))
+assert.deepEqual(filterLeaderboardData(deviceMappedRows, deviceMappedFilters), deviceMappedRows)
+const deviceMappedOptions = getTelemetryFilterOptions(deviceMappedRows, deviceMappedFilters)
+assert.deepEqual(deviceMappedOptions, {
+  selectedPlatforms: ['android'],
+  selectedBackend: ['llamacpp'],
+  selectedBatch: ['1'],
+  selectedSize: ['0.1B'],
+  selectedModelTag: ['Chat'],
+  selectedBrand: ['mediatek'],
+  selectedSoc: ['MediaTek Helio P90']
+}, 'saved raw codes match every facet while SoC options display the public name')
+assert.deepEqual(
+  parseTelemetryFilterState(JSON.stringify({
+    selectedSoc: ['SM7435', ' Snapdragon 7s Gen 2 ', 'sm7435', 'SM7635', ' ']
+  })).selectedSoc,
+  ['Snapdragon 7s Gen 2', 'Qualcomm SM7635'],
+  'persisted aliases canonicalize and deduplicate without inventing a retail model'
+)
+assert.notEqual(telemetrySocKey('SM7435'), telemetrySocKey('SM7450'))
+assert.equal(telemetrySocKey('SM7635'), 'qualcomm sm7635')
+assert.notEqual(telemetrySocKey('SM7635'), telemetrySocKey('Snapdragon 7s Gen 3'))
+assert.notEqual(telemetrySocKey('8gen1'), telemetrySocKey('8+gen1'))
+assert.notEqual(telemetrySocKey('8gen3'), telemetrySocKey('8sgen3'))
+assert.equal(telemetrySocKey('8+gen1'), telemetrySocKey('Snapdragon 8+ Gen 1'))
+assert.equal(telemetrySocKey('8sgen3'), telemetrySocKey('Snapdragon 8s Gen 3'))
+assert.ok(telemetrySocSearchText('Snapdragon 7s Gen 2').toLowerCase().includes('sm7435'))
+assert.ok(telemetrySocSearchText('SM7435').includes('Snapdragon 7s Gen 2'))
+for (const [name, query] of [
+  ['Snapdragon 8 Gen 3', '8gen3'],
+  ['SM8650', '8gen3'],
+  ['Snapdragon 8s Gen 3', '8sgen3'],
+  ['Snapdragon 7+ Gen 2', '7+gen2']
+]) {
+  assert.ok(telemetrySocSearchText(name).toLowerCase().includes(query), `${name} supports ${query} search`)
+}
+assert.ok(!telemetrySocSearchText('Snapdragon 8s Gen 3').toLowerCase().includes('8gen3'))
+assert.ok(!telemetrySocSearchText('Snapdragon 8 Gen 3').toLowerCase().includes('8sgen3'))
+assert.equal(resolveAndroidSocName('SM7435'), 'Snapdragon 7s Gen 2')
+assert.equal(resolveAndroidSocName('SM7635'), 'Qualcomm SM7635')
+assert.equal(resolveAndroidSocName('xelite'), 'Snapdragon X Elite')
+assert.equal(
+  simplifySnapdragonXEliteCpuName('Snapdragon(R) X - X1E80100 - Qualcomm(R) Oryon(TM) CPU'),
+  'Snapdragon(R) X - X1E80100'
+)
+assert.equal(normalizeAppleDeviceIdentifier('iphone15,2'), 'iPhone15,2')
 
 const neuropilotRows = [
   entry({

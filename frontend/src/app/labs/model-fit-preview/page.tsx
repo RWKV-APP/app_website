@@ -11,6 +11,7 @@ import {
   useTransition,
 } from 'react';
 import Link from 'next/link';
+import { telemetrySocSearchText } from '@app/contracts';
 import {
   BRAND_LABELS,
   BUILD_MODE_LABELS,
@@ -1120,7 +1121,8 @@ export default function ModelFitPreviewPage() {
         (entry) =>
           !deferredSearch ||
           [
-            entry.socName,
+            telemetrySocSearchText(entry.socName),
+            ...(entry.reportedSocNames ?? []),
             formatSocFilterLabel(entry),
             ...entry.deviceModels,
             ...entry.deviceDisplayNames,

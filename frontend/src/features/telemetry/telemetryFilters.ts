@@ -59,7 +59,10 @@ export function getTelemetryFilterOptions(
     const failedGroups = FILTER_KEYS.filter(
       (key, index) =>
         selections[index].size > 0 &&
-        !attributes[key].some((value) =>
+        !(key === 'selectedSoc'
+          ? [...attributes[key], ...(entry.reportedSocNames ?? [])]
+          : attributes[key]
+        ).some((value) =>
           selections[index].has(key === 'selectedSoc' ? telemetrySocKey(value) : value),
         ),
     );
