@@ -355,6 +355,91 @@ async function main() {
       assert.equal(normalizeTelemetrySocName(alias.toLowerCase()), canonical)
     }
   }
+  const { TELEMETRY_CHIP_REGISTRY, resolveTelemetryDeviceSoc } =
+    backendRequire('@app/contracts')
+  const key = (value) =>
+    value
+      .toLowerCase()
+      .replace(/[\s_-]+/g, '')
+      .replace(/^(?:qualcomm|mediatek)(?=(?:sm|sdm|qcm|mt)\d{4})/, '')
+  const identities = new Map()
+  const deviceIdentities = new Map()
+  for (const chip of TELEMETRY_CHIP_REGISTRY) {
+    assert(chip.sources?.length || chip.note, `${chip.name} needs provenance`)
+    for (const alias of [chip.name, ...(chip.aliases ?? [])]) {
+      assert(
+        !identities.has(key(alias)) || identities.get(key(alias)) === chip.name,
+        `ambiguous global alias: ${alias}`
+      )
+      identities.set(key(alias), chip.name)
+    }
+    for (const rule of chip.devices ?? [])
+      for (const model of rule.models)
+        for (const platform of rule.platforms) {
+          const pair = `${key(platform)}:${key(model)}`
+          assert(
+            !deviceIdentities.has(pair) ||
+              deviceIdentities.get(pair) === chip.name,
+            `conflicting device: ${pair}`
+          )
+          deviceIdentities.set(pair, chip.name)
+          assert.equal(resolveTelemetryDeviceSoc(platform, model), chip.name)
+          assert.equal(
+            resolveTelemetryDeviceSoc(`${platform}-unverified`, model),
+            null
+          )
+          assert.equal(
+            resolveTelemetryDeviceSoc(platform, `${model}-unverified`),
+            null
+          )
+        }
+  }
+  const identifiedCases = [
+    ['SM6225', 'CPH2333', 'Snapdragon 680', 'snapdragon'],
+    ['SM6225', 'ALT-LX1', 'Snapdragon 685', 'snapdragon'],
+    ['SM6225', 'unverified', 'Qualcomm SM6225', 'snapdragon'],
+    ['MT6895', 'TECNO CL9', 'MediaTek Dimensity 8200 Ultimate', 'mediatek'],
+    ['MT6895', '22041216C', 'MediaTek Dimensity 8100', 'mediatek'],
+    ['SM-A546E', 'SM-A546E', 'Exynos 1380', 'samsung'],
+    ['snapdragon_soc', 'SM-S901B', 'Exynos 2200', 'samsung'],
+    ['snapdragon_soc', '25042PN24C', 'Xiaomi XRING O1', 'xiaomi'],
+    ['moto e13', 'moto e13', 'UNISOC T606', 'unisoc'],
+    ['MT8788', 'BV5300Plus', 'MediaTek MT8788', 'mediatek'],
+    ['SM8250', 'Pixel 10 Pro XL', 'Qualcomm SM8250', 'snapdragon'],
+    ['SM7635-AC', 'unverified', 'Snapdragon 7s Gen 4', 'snapdragon']
+  ]
+  const identityService = new TelemetryService(
+    await telemetryDatabase(
+      identifiedCases.map(([socName, deviceModel], index) => ({
+        ...rows[0],
+        id: index + 1,
+        socName,
+        deviceModel,
+        socBrand: 'unknown'
+      }))
+    )
+  )
+  const identityBoard = await identityService.leaderboard({ limit: '5000' })
+  assert.equal(
+    identityBoard.reduce((sum, row) => sum + row.sampleCount, 0),
+    identifiedCases.length,
+    'mapping preserves all samples'
+  )
+  for (const [reported, model, expected, brand] of identifiedCases) {
+    const group = identityBoard.find((row) => row.socName === expected)
+    assert(group, `${reported} on ${model} needs consumer identity ${expected}`)
+    assert.equal(group.socBrand, brand)
+    const detail = await identityService.publicRecords({
+      socName: expected,
+      socMatch: 'canonical'
+    })
+    assert.equal(detail.total, group.sampleCount)
+    assert(detail.items.every((row) => row.socName === expected))
+    assert(
+      group.reportedSocNames.includes(reported),
+      'preserve the reported identifier for audit'
+    )
+  }
   const sharedCodes = [
     'mt6771',
     'mt6895',

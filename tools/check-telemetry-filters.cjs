@@ -488,7 +488,7 @@ assert.deepEqual(mixedVersions.selectedBuildMode, [])
 for (const [raw, label] of [
   ['Qualcomm SM6225', 'Qualcomm SM6225（型号待识别）'],
   ['MT6771', 'MediaTek MT6771（型号待识别）'],
-  ['SM7635-AC', 'Qualcomm SM7635-AC（型号待识别）'],
+  ['SM7635-AC', 'Snapdragon 7s Gen 4'],
   ['MT6893Z/CZA', 'MT6893Z/CZA（型号待识别）'],
   ['Unknown', '芯片型号待识别'],
   ['SM7435', 'Snapdragon 7s Gen 2'],
@@ -506,7 +506,10 @@ for (const [raw, label] of [
     'NVIDIA Corporation GB203 [GeForce RTX 5070 Ti] (rev a1)',
     'GeForce RTX 5070 Ti'
   ],
-  ['genuine intel(r) cpu 0000 @ 3.00ghz', 'genuine intel(r) cpu 0000 @ 3.00ghz（型号待识别）']
+  [
+    'genuine intel(r) cpu 0000 @ 3.00ghz',
+    'genuine intel(r) cpu 0000 @ 3.00ghz（型号待识别）'
+  ]
 ]) {
   assert.equal(formatConsumerSocName(raw), label)
   assert.equal(
@@ -515,7 +518,9 @@ for (const [raw, label] of [
     'public labels are idempotent'
   )
   if (!label.includes('型号待识别')) {
-    assert(!/\b(?:SM|SDM|MT|QCM)\d|_soc|X126100|X1E78100|iphone\d+,/i.test(label))
+    assert(
+      !/\b(?:SM|SDM|MT|QCM)\d|_soc|X126100|X1E78100|iphone\d+,/i.test(label)
+    )
   }
 }
 const publicGroupingRows = [
@@ -558,13 +563,86 @@ assert.equal(
 )
 console.log('Consumer SoC labels and grouped filter identity checks passed')
 const xFamilyRows = [
-  entry({socName:'Snapdragon X Elite', reportedSocNames:['x elite']}),
-  entry({socName:'Snapdragon(R) X - X126100', reportedSocNames:['x elite']})
+  entry({ socName: 'Snapdragon X Elite', reportedSocNames: ['x elite'] }),
+  entry({ socName: 'Snapdragon(R) X - X126100', reportedSocNames: ['x elite'] })
 ]
-assert.deepEqual(filterLeaderboardData(xFamilyRows, {...defaults, selectedSoc:['Snapdragon X Elite']}), [xFamilyRows[0]])
+assert.deepEqual(
+  filterLeaderboardData(xFamilyRows, {
+    ...defaults,
+    selectedSoc: ['Snapdragon X Elite']
+  }),
+  [xFamilyRows[0]]
+)
 
-assert.deepEqual(filterLeaderboardData(publicGroupingRows, {...defaults, selectedSoc:['Qualcomm SM6225（型号待识别）']}), [publicGroupingRows[0]])
-assert.deepEqual(filterLeaderboardData(publicGroupingRows, {...defaults, selectedSoc:['Qualcomm SM7635（型号待识别）']}), [publicGroupingRows[1]])
-const suffixRows = ['SM7635', 'SM7635-AC'].map(socName=>entry({socName}))
-assert.equal(getTelemetryFilterOptions(suffixRows, defaults).selectedSoc.length, 2)
-assert.deepEqual(filterLeaderboardData(suffixRows, {...defaults, selectedSoc:['Qualcomm SM7635-AC（型号待识别）']}), [suffixRows[1]])
+assert.deepEqual(
+  filterLeaderboardData(publicGroupingRows, {
+    ...defaults,
+    selectedSoc: ['Qualcomm SM6225（型号待识别）']
+  }),
+  [publicGroupingRows[0]]
+)
+assert.deepEqual(
+  filterLeaderboardData(publicGroupingRows, {
+    ...defaults,
+    selectedSoc: ['Qualcomm SM7635（型号待识别）']
+  }),
+  [publicGroupingRows[1]]
+)
+const suffixRows = ['SM7635', 'SM7635-AC'].map((socName) => entry({ socName }))
+assert.equal(
+  getTelemetryFilterOptions(suffixRows, defaults).selectedSoc.length,
+  2
+)
+assert.deepEqual(
+  filterLeaderboardData(suffixRows, {
+    ...defaults,
+    selectedSoc: ['Qualcomm SM7635-AC（型号待识别）']
+  }),
+  [suffixRows[1]]
+)
+
+// Newly identified consumer names and migration of previous unresolved selections.
+for (const name of [
+  'UNISOC T606',
+  'UNISOC T7250',
+  'Xiaomi XRING O1',
+  'MediaTek MT8788',
+  'Exynos 2400e',
+  'MediaTek Dimensity 8350 Apex'
+]) {
+  assert.equal(formatConsumerSocName(name), name)
+}
+const newlyIdentified = [
+  entry({ socName: 'Snapdragon 685', reportedSocNames: ['SM6225'] })
+]
+assert.deepEqual(
+  telemetrySocFilterLabels(newlyIdentified, ['Qualcomm SM6225（型号待识别）']),
+  ['Snapdragon 685']
+)
+assert.deepEqual(
+  telemetrySocFilterLabels(
+    [...newlyIdentified, entry({ socName: 'Qualcomm SM6225' })],
+    ['Qualcomm SM6225（型号待识别）']
+  ),
+  ['Qualcomm SM6225（型号待识别）']
+)
+assert.deepEqual(
+  getHardwareBrandKeys(
+    entry({
+      socName: 'Xiaomi XRING O1',
+      socBrand: 'xiaomi',
+      hardwareBrands: ['xiaomi']
+    })
+  ),
+  ['xiaomi']
+)
+assert.deepEqual(
+  getHardwareBrandKeys(
+    entry({
+      socName: 'UNISOC T606',
+      socBrand: 'unisoc',
+      hardwareBrands: ['unisoc']
+    })
+  ),
+  ['unisoc']
+)

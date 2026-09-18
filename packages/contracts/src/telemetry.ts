@@ -30,7 +30,9 @@ export const TELEMETRY_ADMIN_FILTER_BRAND_ORDER = [
   'amd',
   'intel',
   'mediatek',
-  'samsung'
+  'samsung',
+  'unisoc',
+  'xiaomi'
 ] as const
 
 export type TelemetryBuildMode = (typeof TELEMETRY_BUILD_MODE_ORDER)[number]

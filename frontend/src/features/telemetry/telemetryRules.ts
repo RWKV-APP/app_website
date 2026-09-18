@@ -30,6 +30,8 @@ export const BRAND_LABELS: Record<string, string> = {
   intel: 'Intel',
   mediatek: 'MediaTek',
   samsung: 'Samsung',
+  unisoc: 'UNISOC',
+  xiaomi: 'Xiaomi',
   google: 'Google',
   huawei: 'Huawei',
 };
@@ -115,6 +117,8 @@ export function inferBrand(socName: string, socBrand: string): string {
   ) {
     return 'google';
   }
+  if (lower.includes('unisoc')) return 'unisoc';
+  if (lower.includes('xring')) return 'xiaomi';
   if (lower.includes('exynos') || lower.includes('samsung')) return 'samsung';
   return 'unknown';
 }
@@ -174,6 +178,8 @@ export function capitalizeBrand(brand: string): string {
     mediatek: 'MediaTek',
     apple: 'Apple',
     samsung: 'Samsung',
+    unisoc: 'UNISOC',
+    xiaomi: 'Xiaomi',
     nvidia: 'NVIDIA',
     amd: 'AMD',
     intel: 'Intel',
@@ -322,8 +328,16 @@ export function telemetrySocFilterLabels(
           return legacyValues.length ? legacyValues.map(formatConsumerSocName) : [value];
         }
         // Current public groups must not be reinterpreted as historical raw aliases.
-        if (formatConsumerSocName(value) === value) return [value];
-        const key = telemetrySocKey(value);
+        if (
+          formatConsumerSocName(value) === value &&
+          (!value.endsWith('（型号待识别）') ||
+            data.some((entry) => formatConsumerSocName(entry.socName) === value))
+        )
+          return [value];
+        // A saved unresolved chip can acquire a name after a registry update.
+        // Only migrate once its old group has disappeared; otherwise keep it isolated.
+        const previousIdentifier = value.replace(/（型号待识别）$/, '');
+        const key = telemetrySocKey(previousIdentifier);
         const matches = data.filter((entry) =>
           [entry.socName, ...(entry.reportedSocNames ?? [])].some(
             (name) => telemetrySocKey(name) === key,
@@ -331,7 +345,7 @@ export function telemetrySocFilterLabels(
         );
         return matches.length
           ? matches.map((entry) => formatConsumerSocName(entry.socName))
-          : [formatConsumerSocName(value)];
+          : [formatConsumerSocName(previousIdentifier)];
       }),
     ),
   );

@@ -11,6 +11,7 @@ import {
   normalizeTelemetryAppDimensions,
   resolveTelemetrySocName as resolveKnownSocName,
   resolveTelemetryPixelSoc,
+  resolveTelemetryDeviceSoc,
   type TelemetryBuildMode,
 } from '@app/contracts';
 import { PrismaService } from '../prisma/prisma.service';
@@ -371,9 +372,9 @@ interface NormalizedTelemetryRecordRow extends TelemetryRecordRow {
 const TELEMETRY_DEVICE_ALIASES: Record<string, TelemetryDeviceAlias> = {
   'sm-s942b': {
     socBrand: 'samsung',
-    socName: 'Exynos 2600',
+    socName: resolveKnownSocName('SM-S942B') ?? undefined,
     deviceName: 'Galaxy S26',
-    cpuName: 'Exynos 2600',
+    cpuName: resolveKnownSocName('SM-S942B') ?? undefined,
   },
   '(tm) 8060s graphics': {
     socBrand: 'amd',
@@ -634,6 +635,8 @@ function inferBrandFromHardware(values: Array<string | null | undefined>): strin
   ) {
     return 'mediatek';
   }
+  if (combined.includes('unisoc')) return 'unisoc';
+  if (combined.includes('xring')) return 'xiaomi';
   if (combined.includes('samsung') || combined.includes('exynos')) {
     return 'samsung';
   }
@@ -686,49 +689,6 @@ function findTelemetryDeviceAlias(device: {
   return null;
 }
 
-// Exact reported code + OEM device identity. Sources: docs/telemetry-soc-names.md.
-const SOC_BY_DEVICE: Record<string, string> = {
-  'mt6779:bv8900': 'MediaTek Helio P90',
-  'mt6983:cph2493': 'MediaTek Dimensity 9000',
-  'mt6789:22071219cg': 'MediaTek Helio G99',
-  'mt6789:24117rn76o': 'MediaTek Helio G99 Ultra',
-  'mt6789:shark 8': 'MediaTek Helio G99',
-  'mt6789:infinix x6833b': 'MediaTek Helio G99',
-  'mt6789:infinix x678b': 'MediaTek Helio G99',
-  'mt6789:sm-a245f': 'MediaTek Helio G99',
-  'mt6895:v2314a': 'MediaTek Dimensity 8200',
-  'mt6895:pjh110': 'MediaTek Dimensity 8200',
-  'mt6899:v2452a': 'MediaTek Dimensity 8400',
-  'mt6899:ser-an00': 'MediaTek Dimensity 8500 Elite',
-  'mt6897:cph2737': 'MediaTek Dimensity 8350',
-  'mt6785:redmi note 8 pro': 'MediaTek Helio G90T',
-  'mt6769:sm-a225f': 'MediaTek Helio G80',
-  'mt6765:sm-a045f': 'MediaTek Helio P35',
-  'mt6879:motorola edge 40 neo': 'MediaTek Dimensity 7030',
-  'sm6225:cph2333': 'Snapdragon 680',
-  'sm6225:cph2565': 'Snapdragon 680',
-  'sm6225:cph2819': 'Snapdragon 685',
-  'sm6225:2201117tg': 'Snapdragon 680',
-  'sm6225:2201117ti': 'Snapdragon 680',
-  'sm6225:220333qny': 'Snapdragon 680',
-  'sm6225:23021raa2y': 'Snapdragon 685',
-  'sm6225:hey-w09': 'Snapdragon 680',
-  'sm6225:sm-a057m': 'Snapdragon 680',
-  'sm6225:sm-a235f': 'Snapdragon 680',
-  'sm6225:moto g play - 2024': 'Snapdragon 680',
-  'sm6375:2201116sg': 'Snapdragon 695',
-  'sm6375:rmo-nx1': 'Snapdragon 695',
-  'sm6375:moto g34 5g': 'Snapdragon 695',
-  'sm6375:moto g71 5g': 'Snapdragon 695',
-  'sm8250:poco f2 pro': 'Snapdragon 865',
-  'sm8250:v2199a': 'Snapdragon 870',
-  'sm7635:fairphone 6': 'Snapdragon 7s Gen 3',
-  'mt6985:v2241a': 'MediaTek Dimensity 9200',
-  'mt6985:v2362a': 'MediaTek Dimensity 9200+',
-  'mt6985:pgfm10': 'MediaTek Dimensity 9200',
-  'mt6877:sm-a346e': 'MediaTek Dimensity 1080',
-};
-
 function normalizeTelemetryDevice(
   device: TelemetryDeviceInput,
   backend: string | null | undefined,
@@ -747,11 +707,7 @@ function normalizeTelemetryDevice(
       : null;
   // Device constraints disambiguate shared platform identifiers.
   const deviceSocName =
-    os === 'android'
-      ? (SOC_BY_DEVICE[
-          `${normalizeLookupKey(rawSocName).replace(/^(?:mediatek|qualcomm) /, '')}:${normalizeLookupKey(deviceModel)}`
-        ] ?? null)
-      : null;
+    os === 'android' || os === 'ios' ? resolveTelemetryDeviceSoc(rawSocName, deviceModel) : null;
   const mappedSocName = pixelSocName ?? deviceSocName ?? resolveKnownSocName(rawSocName);
   const simplifiedSnapdragonXName = simplifySnapdragonXEliteCpuName(cpuName);
 
@@ -804,7 +760,16 @@ function normalizeTelemetryDevice(
     // vendor combinations remain available through their separate fields.
     if (
       socBrand === 'unknown' ||
-      ['snapdragon', 'mediatek', 'huawei', 'google', 'samsung', 'apple'].includes(inferredBrand)
+      [
+        'snapdragon',
+        'mediatek',
+        'huawei',
+        'google',
+        'samsung',
+        'apple',
+        'unisoc',
+        'xiaomi',
+      ].includes(inferredBrand)
     ) {
       socBrand = inferredBrand;
     }

@@ -1,62 +1,58 @@
-// Identity aliases are shared by aggregation, drilldown and saved UI filters.
-// Only unambiguous part numbers belong here; see docs/telemetry-soc-names.md.
-export const TELEMETRY_SOC_ALIASES: Record<string, readonly string[]> = {
-  'Snapdragon 4 Gen 1': ['SM4375'],
-  'Snapdragon 6 Gen 3': ['SM6475', 'SM6475-AB'],
-  'Snapdragon 710': ['SDM710'],
-  'Snapdragon 670': ['SDM670'],
-  'Snapdragon 7 Gen 3': ['SM7550', 'SM7550-AB'],
-  'Snapdragon 6 Gen 1': ['SM6450'],
-  'Snapdragon 7+ Gen 2': ['SM7475', 'SM7475-AB'],
-  'Snapdragon 720G': ['SM7125'],
-  'Snapdragon 7 Gen 4': ['SM7750', 'SM7750-AB'],
-  'Snapdragon 460': ['SM4250', 'SM4250-AA'],
-  'Snapdragon 8 Gen 3': ['SM8650'],
-  'Snapdragon 4s Gen 2': ['SM4635'],
-  'Snapdragon 7+ Gen 3': ['SM7675', 'SM7675-AB'],
-  'Snapdragon 845': ['SDM845'],
-  'Snapdragon 7 Gen 1': ['SM7450'],
-  'Snapdragon 7s Gen 2': ['SM7435', 'SM7435-AB'],
-  'Snapdragon 750G 5G': ['SM7225'],
-  'Qualcomm Dragonwing QCM6490': ['QCM6490'],
-  'Snapdragon 888': ['888'],
-  'MediaTek Dimensity 800': ['MT6873', 'MediaTek Dimensity 800 5G'],
-  'MediaTek Helio G96': ['MT6781'],
-  'Google Tensor': ['pixel6', 'pixel6a', 'pixel6pro'],
-  'Google Tensor G2': ['pixel7', 'pixel7a', 'pixel7pro', 'pixelseven'],
-  'Google Tensor G3': ['pixel8', 'pixel8a', 'pixel8pro'],
-  'Google Tensor G4': [
-    'pixel9',
-    'pixel9a',
-    'pixel9pro',
-    'pixel9proxl',
-    'pixel10a'
-  ],
-  'Google Tensor G5': ['pixel10', 'pixel10pro', 'pixel10proxl'],
-  'AMD Ryzen 7 7840HS w/ Radeon 780M Graphics': [
-    'amd ryzen 7 7840hs with radeon 780m graphics'
-  ]
-}
+import { TELEMETRY_CHIP_REGISTRY } from './telemetry-chip-registry'
+
+// Derived compatibility/search view: chip facts are maintained only in the registry.
+export const TELEMETRY_SOC_ALIASES: Record<string, readonly string[]> =
+  Object.fromEntries(
+    TELEMETRY_CHIP_REGISTRY.map((chip) => [chip.name, chip.aliases ?? []])
+  )
 
 function aliasKey(value: string): string {
   return value.toLowerCase().replace(/[\s_-]+/g, '')
 }
 
-const aliases = new Map(
-  Object.entries(TELEMETRY_SOC_ALIASES).flatMap(([name, values]) =>
-    [name, ...values].map((value) => [aliasKey(value), name] as const)
+function platformKey(value: string): string {
+  return aliasKey(value).replace(
+    /^(?:qualcomm|mediatek)(?=(?:sm|sdm|qcm|mt)\d{4})/,
+    ''
   )
-)
+}
+
+const aliases = new Map<string, string>()
+const devices = new Map<string, string>()
+for (const chip of TELEMETRY_CHIP_REGISTRY) {
+  for (const value of [chip.name, ...(chip.aliases ?? [])]) {
+    aliases.set(platformKey(value), chip.name)
+  }
+  for (const rule of chip.devices ?? []) {
+    for (const model of rule.models) {
+      for (const platform of rule.platforms) {
+        devices.set(`${platformKey(platform)}:${aliasKey(model)}`, chip.name)
+      }
+    }
+  }
+}
+
+/** A registered consumer identity, as opposed to a readable but unresolved code. */
+export function resolveRegisteredTelemetrySocName(
+  value?: string | null
+): string | null {
+  return value ? (aliases.get(platformKey(value)) ?? null) : null
+}
+
+/** Exact platform + exact device. Never infer from a numeric prefix or a similar model. */
+export function resolveTelemetryDeviceSoc(
+  socName?: string | null,
+  deviceModel?: string | null
+): string | null {
+  if (!socName || !deviceModel) return null
+  return devices.get(`${platformKey(socName)}:${aliasKey(deviceModel)}`) ?? null
+}
 
 export function resolveTelemetrySocName(value?: string | null): string | null {
   if (!value) return null
   const name = value.trim().replace(/\s+/g, ' ')
   const key = aliasKey(name)
-  const mapped =
-    aliases.get(key) ??
-    aliases.get(
-      key.replace(/^(?:qualcomm|mediatek)(?=(?:sm|sdm|qcm|mt)\d{4})/, '')
-    )
+  const mapped = resolveRegisteredTelemetrySocName(name)
   if (mapped) return mapped
 
   // Expand spelling only: s, +, Elite and generation remain distinct identities.

@@ -1,27 +1,11 @@
 import iosDevices, { isIOSDeviceString } from '@naverpay/device-info/ios';
-import { resolveTelemetrySocName } from '@app/contracts';
+import { resolveTelemetrySocName, resolveRegisteredTelemetrySocName } from '@app/contracts';
 
 export interface AppleDevicePresentation {
   identifier: string | null;
   modelName: string | null;
   socName: string | null;
 }
-
-const APPLE_SOC_BY_MODEL_NAME: Record<string, string> = {
-  'iPhone 15': 'A16 Bionic',
-  'iPhone 15 Plus': 'A16 Bionic',
-  'iPhone 15 Pro': 'A17 Pro',
-  'iPhone 15 Pro Max': 'A17 Pro',
-  'iPhone 16': 'A18',
-  'iPhone 16 Plus': 'A18',
-  'iPhone 16 Pro': 'A18 Pro',
-  'iPhone 16 Pro Max': 'A18 Pro',
-  'iPhone 16e': 'A18',
-  'iPhone 17': 'A19',
-  'iPhone 17 Pro': 'A19 Pro',
-  'iPhone 17 Pro Max': 'A19 Pro',
-  'iPhone Air': 'A19 Pro',
-};
 
 function cleanOptionalString(value: string | null | undefined): string | null {
   if (typeof value !== 'string') return null;
@@ -88,6 +72,8 @@ export function formatConsumerSocName(value: string): string {
   const raw = value.trim();
   if (raw.endsWith('（型号待识别）') || raw === '芯片型号待识别') return raw;
   if (!raw || /^(?:unknown|n\/a|未识别|未知)$/i.test(raw)) return '芯片型号待识别';
+  const registered = resolveRegisteredTelemetrySocName(raw);
+  if (registered && /^(?:MediaTek MT|UNISOC |Xiaomi XRING)/.test(registered)) return registered;
   const apple = resolveAppleDevicePresentation({ socName: raw });
   if (apple) return apple.socName ?? apple.modelName ?? `${raw}（型号待识别）`;
 
@@ -179,11 +165,7 @@ function resolveAppleSocName(modelName: string | null): string | null {
     return normalizeSocLabel(embeddedSocMatch[1]);
   }
 
-  const mappedSocName =
-    APPLE_SOC_BY_MODEL_NAME[modelName] ??
-    Object.entries(APPLE_SOC_BY_MODEL_NAME).find(
-      ([candidateModelName]) => candidateModelName.toLowerCase() === modelName.toLowerCase(),
-    )?.[1];
+  const mappedSocName = resolveRegisteredTelemetrySocName(modelName);
   return mappedSocName ? normalizeSocLabel(mappedSocName) : null;
 }
 

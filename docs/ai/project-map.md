@@ -115,6 +115,8 @@ The matrix searches loaded data locally and displays all matching rows and model
 columns in one continuous scrollable matrix, without pagination. Only populated
 cells allocate DOM; empty intersections use background grid lines. Every cell has
 an explicit row/column position, and keyboard order follows visible column order.
+Chip names, exact part aliases and platform/device mappings share `packages/contracts/src/telemetry-chip-registry.ts`; maintain evidence URLs and constraints there, following `docs/telemetry-soc-names.md`.
+
 All filter groups and SoC options remain expanded and visible. Exported reports preserve all filtered columns.
 Version/build-mode changes cancel superseded network requests; matrix rows,
 record actions and exports are usable only after the selected query has succeeded.
