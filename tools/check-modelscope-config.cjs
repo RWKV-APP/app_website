@@ -96,6 +96,15 @@ async function main() {
       build: 755
     })
   }
+  const isWindowsX64 = (type) => type.startsWith('win') && !type.startsWith('winArm64')
+  for (const type of [...releasedTypes, ...deferredTypes].filter((type) => !sourceLatestTypes.includes(type))) {
+    distributionRecords.unshift({
+      ...distributions[type],
+      url: `https://example.test/${type}/4.8.1`,
+      version: '4.8.1',
+      build: 756
+    })
+  }
   const distributionService = new DistributionService({
     distribution: { findMany: async () => distributionRecords }
   }, {})
@@ -113,8 +122,8 @@ async function main() {
     'androidGooglePlay'
   ]) {
     // App clients receive the landing page and the latest version for their OS.
-    assert.equal(appResult[type].version, '4.8.0')
-    assert.equal(appResult[type].build, 755)
+    assert.equal(appResult[type].version, isWindowsX64(type) ? '4.8.1' : '4.8.0')
+    assert.equal(appResult[type].build, isWindowsX64(type) ? 756 : 755)
   }
   for (const type of deferredTypes.filter((type) => /^(macos|iOS)/.test(type))) {
     assert.equal(appResult[type].version, '4.7.2')
@@ -126,9 +135,10 @@ async function main() {
     headers: {}
   })
   for (const type of releasedTypes) {
-    assert.equal(rawResult[type].version, '4.8.0')
-    assert.equal(rawResult[type].build, 755)
-    assert.equal(rawResult[type].url, `https://example.test/${type}/4.8.0`)
+    const version = isWindowsX64(type) ? '4.8.1' : '4.8.0'
+    assert.equal(rawResult[type].version, version)
+    assert.equal(rawResult[type].build, isWindowsX64(type) ? 756 : 755)
+    assert.equal(rawResult[type].url, `https://example.test/${type}/${version}`)
   }
   for (const type of deferredTypes) {
     assert.equal(rawResult[type].version, '4.7.2')

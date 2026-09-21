@@ -124,11 +124,13 @@ explicit `modelScopeOnly` option to defer their independent Hugging Face checks.
 App update responses continue to link to the download page, but select version
 metadata independently for macOS, Linux, Windows x64, Windows ARM64, Android,
 and iOS. Publishing one platform does not announce an update for another.
-The latest distribution snapshot is capped at version 4.7.2. Newer packages
-remain in distribution history and cannot advance the website or App update
-response until `LATEST_PUBLISHED_APP_VERSION` is deliberately raised.
+Windows x64 installer and ZIP channels on ModelScope, Hugging Face and GitHub
+may select published packages through 4.8.1. Other staged direct-download
+channels retain their 4.8.0 cap, deferred mirrors and iOS retain 4.7.2, and
+macOS/Pgyer continue following their published source packages. Newer records
+remain in history until the corresponding platform policy is raised.
 Requests without App headers return the original per-channel records within
-that cap, including older mirrors and store metadata.
+those platform limits, including older mirrors and store metadata.
 
 ## Build
 

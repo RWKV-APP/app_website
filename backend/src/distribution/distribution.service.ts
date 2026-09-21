@@ -7,6 +7,14 @@ import { Config } from '../config';
 import { ReleaseNotesService } from './release-notes.service';
 
 const LATEST_PUBLISHED_APP_VERSION = '4.8.0';
+const WINDOWS_X64_RELEASE_TYPES = new Set<string>([
+  DistributionType.winHF,
+  DistributionType.winMS,
+  DistributionType.winGR,
+  DistributionType.winZipHF,
+  DistributionType.winZipMS,
+  DistributionType.winZipGR,
+]);
 // Non-macOS channels retain their staged release policy.
 const CURRENT_RELEASE_TYPES = new Set<string>([
   DistributionType.linuxHF,
@@ -1764,16 +1772,18 @@ export class DistributionService implements OnModuleInit {
     });
     const recordsByType = new Map<string, DistributionSnapshotRecord[]>();
     for (const record of records) {
+      const maximumVersion = WINDOWS_X64_RELEASE_TYPES.has(record.type)
+        ? '4.8.1'
+        : CURRENT_RELEASE_TYPES.has(record.type)
+          ? LATEST_PUBLISHED_APP_VERSION
+          : '4.7.2';
       // macOS and Pgyer follow the latest package actually discovered at the source.
       if (
         !record.type.startsWith('macos') &&
         record.type !== DistributionType.androidPgyer &&
         record.type !== DistributionType.androidPgyerAPK &&
         this.isSemanticVersion(record.version) &&
-        this.compareVersions(
-          record.version,
-          CURRENT_RELEASE_TYPES.has(record.type) ? LATEST_PUBLISHED_APP_VERSION : '4.7.2',
-        ) > 0
+        this.compareVersions(record.version, maximumVersion) > 0
       ) {
         continue;
       }
