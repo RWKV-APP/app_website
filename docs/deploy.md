@@ -16,6 +16,11 @@ Publish the current `app_website` state to production while keeping release note
 - Keep the repository free of `*.spec.ts` files. Do not add, restore, or commit
   them; `.gitignore` and `pnpm check:no-specs` enforce this Git boundary.
 - Treat `backend/data/release-notes/zh-Hans/` as the release-note source of truth.
+- The website selects one file per `major.minor` series. Its latest file must
+  contain all published version sections in that series, newest first. A request
+  to write only a short description for the new version does not remove history.
+  Each version's highest-build file owns its original section; corrections belong
+  there after review. Never carry sections from another minor series.
 
 ## Steps
 
@@ -41,6 +46,13 @@ If the sync script reports missing translations, translate the latest `zh-Hans` 
 - `ru`: `[Новое] / [Улучшено] / [Исправлено]`
 
 Then run `node tools/sync-release-notes.mjs --check` again.
+
+The sync command restores missing same-series history in the latest Chinese
+file and all five translations. It rejects changed historical sections and
+cross-series content instead of silently replacing them. It validates every
+locale before writing. `pnpm check:release-notes` checks the regression case and
+completeness without modifying files; it is also required by `pnpm check` and
+the production artifact build. Never bypass a missing-history failure.
 
 3. Run validation.
 
@@ -106,7 +118,15 @@ curl --http2 --compressed -sS -D - -o /dev/null "https://rwkv.halowang.cloud${ST
 
 The expected result is HTTP/2 for all three requests, `Cache-Control: no-cache` plus gzip for HTML, `Cache-Control: no-store` for `build-info.json`, and one-year immutable caching plus gzip for hashed JS/CSS.
 
-8. Verify release notes for the latest source file.
+8. Verify the complete release-note history in all locales.
+
+```bash
+node tools/sync-release-notes.mjs --verify-live
+```
+
+This read-only check requires both the exact-build endpoint and the series-list
+endpoint to match the complete local content, version and build for all six
+locales. Non-empty latest content alone is insufficient.
 
 Find the latest source file:
 
@@ -121,6 +141,11 @@ curl -f 'https://api.rwkv.halowang.cloud/distributions/release-notes?build=<buil
 ```
 
 The response should have the same `build`, the same `version`, and non-empty `content` that includes the newest section.
+
+Open `/release-notes` and `/changelog` in a browser. Confirm the newest section
+and retained historical sections are visible in the same series card, with
+the previous minor series in its own card. Capture the result; an API 200 or a
+successful build does not prove the visible history survived publication.
 
 9. Final report.
 

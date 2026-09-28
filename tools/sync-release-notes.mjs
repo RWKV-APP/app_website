@@ -120,6 +120,7 @@ const manualTranslations = {
 const args = new Set(process.argv.slice(2));
 const checkOnly = args.has('--check');
 const printSource = args.has('--print-source');
+const verifyLive = args.has('--verify-live');
 
 function readText(filePath) {
   return fs.readFileSync(filePath, 'utf8');
@@ -152,6 +153,102 @@ function getLatestSourceFile() {
 
 function normalize(content) {
   return content.replace(/\r\n/g, '\n').replace(/\s+$/u, '') + '\n';
+}
+
+function releaseIdentity(fileName) {
+  const match = /^(\d+)-(\d+\.\d+)\.(\d+)\.md$/.exec(fileName);
+  if (!match) throw new Error(`Invalid release-note filename: ${fileName}`);
+  return {
+    build: Number(match[1]),
+    series: match[2],
+    patch: Number(match[3]),
+    version: `${match[2]}.${match[3]}`,
+  };
+}
+
+function versionSections(content) {
+  const sections = new Map();
+  for (const block of normalize(content)
+    .trim()
+    .split(/(?=^## )/m)) {
+    const match = /^## (\d+\.\d+\.\d+)\n/.exec(block + '\n');
+    if (!match || sections.has(match[1]) || !block.slice(match[0].length).trim()) {
+      throw new Error('Release notes require unique, non-empty ## x.y.z sections');
+    }
+    sections.set(match[1], block.trim());
+  }
+  return sections;
+}
+
+// One authoritative section per version; a higher build supersedes the same version.
+export function buildCumulativeNotes(fileName, notes) {
+  const latest = releaseIdentity(fileName);
+  const seriesFiles = Object.keys(notes)
+    .filter((name) => {
+      const note = releaseIdentity(name);
+      return (
+        note.series === latest.series && note.patch <= latest.patch && note.build <= latest.build
+      );
+    })
+    .sort(
+      (a, b) =>
+        releaseIdentity(b).patch - releaseIdentity(a).patch ||
+        releaseIdentity(b).build - releaseIdentity(a).build,
+    );
+  const history = new Map();
+  for (const name of seriesFiles) {
+    const { version } = releaseIdentity(name);
+    if (history.has(version)) continue;
+    const section = versionSections(notes[name]).get(version);
+    if (!section) throw new Error(`Missing own version section in ${name}`);
+    history.set(version, section);
+  }
+  for (const [version, section] of versionSections(notes[fileName])) {
+    if (history.get(version) !== section) {
+      throw new Error(
+        `Unexpected or changed historical section ${version} in ${fileName}; review its original version file`,
+      );
+    }
+  }
+  return [...history.values()].join('\n\n') + '\n';
+}
+
+function readReleaseNotes(locale) {
+  return Object.fromEntries(
+    getReleaseFiles(locale).map((name) => [
+      name,
+      readText(path.join(releaseNotesRoot, locale, name)),
+    ]),
+  );
+}
+
+async function verifyPublishedNotes(fileName, outputs) {
+  const { build, version, series } = releaseIdentity(fileName);
+  for (const { locale, rendered } of outputs) {
+    const base = 'https://api.rwkv.halowang.cloud/distributions/release-notes';
+    for (const suffix of [
+      `?build=${build}&version=${version}&locale=${locale}`,
+      `/all?locale=${locale}`,
+    ]) {
+      const response = await fetch(base + suffix, {
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error(`Release notes ${locale}: HTTP ${response.status}`);
+      const data = await response.json();
+      const matches = suffix.startsWith('/all')
+        ? data.filter((note) => note.version.startsWith(`${series}.`))
+        : [data];
+      if (
+        matches.length !== 1 ||
+        matches[0].build !== build ||
+        matches[0].version !== version ||
+        normalize(matches[0].content) !== rendered
+      ) {
+        throw new Error(`Published release-note identity or history mismatch: ${locale} ${suffix}`);
+      }
+    }
+    console.log(`verified_live=${locale}/${fileName} (exact and series list, complete content)`);
+  }
 }
 
 function extractBulletLines(content) {
@@ -210,7 +307,7 @@ function renderLocale(sourceContent, locale) {
   return normalize(rendered);
 }
 
-function main() {
+async function main() {
   const sourceFileName = getLatestSourceFile();
   if (printSource) {
     process.stdout.write(`${sourceFileName}\n`);
@@ -218,23 +315,41 @@ function main() {
   }
 
   const sourcePath = path.join(releaseNotesRoot, sourceLocale, sourceFileName);
-  const sourceContent = readText(sourcePath);
+  const sourceContent = buildCumulativeNotes(sourceFileName, readReleaseNotes(sourceLocale));
   const changed = [];
+  const outputs = [{ locale: sourceLocale, targetPath: sourcePath, rendered: sourceContent }];
 
   for (const locale of targetLocales) {
     const targetPath = path.join(releaseNotesRoot, locale, sourceFileName);
     const rendered = renderLocale(sourceContent, locale);
+    const notes = readReleaseNotes(locale);
+    if (notes[sourceFileName]) buildCumulativeNotes(sourceFileName, notes);
+    if (
+      buildCumulativeNotes(sourceFileName, {
+        ...notes,
+        [sourceFileName]: rendered,
+      }) !== rendered
+    ) {
+      throw new Error(`Incomplete translated history: ${locale}/${sourceFileName}`);
+    }
+    outputs.push({ locale, targetPath, rendered });
+  }
+
+  // Validate every locale before writing any file.
+  for (const { targetPath, rendered } of outputs) {
     const current = fs.existsSync(targetPath) ? readText(targetPath) : '';
     if (normalize(current) !== rendered) {
       changed.push(path.relative(projectRoot, targetPath));
-      if (!checkOnly) {
+      if (!checkOnly && !verifyLive) {
         writeText(targetPath, rendered);
       }
     }
   }
 
-  if (checkOnly && changed.length > 0) {
-    throw new Error(`Release notes are not synchronized:\n${changed.join('\n')}`);
+  if ((checkOnly || verifyLive) && changed.length > 0) {
+    throw new Error(
+      `Release-note history or translations are incomplete; run node tools/sync-release-notes.mjs:\n${changed.join('\n')}`,
+    );
   }
 
   console.log(`source=${path.relative(projectRoot, sourcePath)}`);
@@ -243,11 +358,12 @@ function main() {
   } else {
     console.log('updated=');
   }
+  if (verifyLive) await verifyPublishedNotes(sourceFileName, outputs);
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
 }
