@@ -16,6 +16,11 @@ Publish the current `app_website` state to production while keeping release note
 - Keep the repository free of `*.spec.ts` files. Do not add, restore, or commit
   them; `.gitignore` and `pnpm check:no-specs` enforce this Git boundary.
 - Treat `backend/data/release-notes/zh-Hans/` as the release-note source of truth.
+- Write public release notes for ordinary users: describe the benefit or visible
+  behavior in plain language. Do not expose API wiring, credentials/configuration,
+  package formats, build numbers or rollout mechanics unless the user explicitly
+  requests them for this audience. Use the user-approved wording and meaning in
+  every locale; keep engineering and deployment details in internal records.
 - The website selects one file per `major.minor` series. Its latest file must
   contain all published version sections in that series, newest first. A request
   to write only a short description for the new version does not remove history.
