@@ -6,7 +6,7 @@ import { DistributionType } from '../types/distribution';
 import { Config } from '../config';
 import { ReleaseNotesService } from './release-notes.service';
 
-const LATEST_PUBLISHED_APP_VERSION = '4.8.4';
+const LATEST_PUBLISHED_APP_VERSION = '4.8.5';
 // Non-macOS channels retain their staged release policy.
 const CURRENT_RELEASE_TYPES = new Set<string>([
   DistributionType.linuxHF,
