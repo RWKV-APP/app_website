@@ -90,17 +90,17 @@ async function main() {
     distributionRecords.unshift({
       ...distributions.androidMS,
       type,
-      url: `https://example.test/${type}/4.8.6`,
-      version: '4.8.6',
-      build: 763
+      url: `https://example.test/${type}/4.9.0`,
+      version: '4.9.0',
+      build: 765
     })
   }
   for (const type of [...releasedTypes, ...deferredTypes].filter((type) => !sourceLatestTypes.includes(type))) {
     distributionRecords.unshift({
       ...distributions[type],
-      url: `https://example.test/${type}/4.8.7`,
-      version: '4.8.7',
-      build: 764
+      url: `https://example.test/${type}/4.9.1`,
+      version: '4.9.1',
+      build: 766
     })
   }
   const distributionService = new DistributionService({
@@ -120,8 +120,8 @@ async function main() {
     'androidGooglePlay'
   ]) {
     // App clients receive the landing page and the latest version for their OS.
-    assert.equal(appResult[type].version, '4.8.6')
-    assert.equal(appResult[type].build, 763)
+    assert.equal(appResult[type].version, '4.9.0')
+    assert.equal(appResult[type].build, 765)
   }
   for (const type of deferredTypes.filter((type) => /^(macos|iOS)/.test(type))) {
     assert.equal(appResult[type].version, '4.7.2')
@@ -133,9 +133,9 @@ async function main() {
     headers: {}
   })
   for (const type of releasedTypes) {
-    const version = '4.8.6'
+    const version = '4.9.0'
     assert.equal(rawResult[type].version, version)
-    assert.equal(rawResult[type].build, 763)
+    assert.equal(rawResult[type].build, 765)
     assert.equal(rawResult[type].url, `https://example.test/${type}/${version}`)
   }
   for (const type of deferredTypes) {
@@ -157,28 +157,28 @@ async function main() {
   distributionRecords.unshift({
     ...distributions.androidMS,
     version: '4.10.0',
-    build: 763
+    build: 765
   })
   await distributionService.refreshLatestSnapshotAfterSync()
   const cappedResult = await distributionService.getLatestDistributions()
-  assert.equal(cappedResult.androidMS.version, '4.8.6')
-  assert.equal(cappedResult.androidMS.build, 763)
+  assert.equal(cappedResult.androidMS.version, '4.9.0')
+  assert.equal(cappedResult.androidMS.build, 765)
   const filteredResult = await distributionController.getLatestDistributions({
     ...appRequest,
     query: {},
     url: '/distributions/latest?key%3DandroidHF%26key%3DmacosMS'
   })
   assert.deepEqual(Object.keys(filteredResult), ['androidHF', 'macosMS'])
-  assert.equal(filteredResult.androidHF.version, '4.8.6')
-  assert.equal(filteredResult.androidHF.build, 763)
-  assert.equal(filteredResult.macosMS.build, 763)
+  assert.equal(filteredResult.androidHF.version, '4.9.0')
+  assert.equal(filteredResult.androidHF.build, 765)
+  assert.equal(filteredResult.macosMS.build, 765)
 
   // macOS and Pgyer follow published packages, including after a cache refresh.
   for (const type of sourceLatestTypes) {
     distributionRecords.unshift({
       ...distributions[type],
       version: '4.10.0',
-      build: 763,
+      build: 765,
       url: `https://example.test/${type}/4.10.0`
     })
   }
@@ -186,9 +186,9 @@ async function main() {
   const futureMacosResult = await distributionService.getLatestDistributions()
   for (const type of sourceLatestTypes) {
     assert.equal(futureMacosResult[type].version, '4.10.0')
-    assert.equal(futureMacosResult[type].build, 763)
+    assert.equal(futureMacosResult[type].build, 765)
   }
-  assert.equal(futureMacosResult.androidMS.version, '4.8.6')
+  assert.equal(futureMacosResult.androidMS.version, '4.9.0')
   const missingMacosService = new DistributionService({
     distribution: { findMany: async () => [distributions.macosHF] }
   }, {})
