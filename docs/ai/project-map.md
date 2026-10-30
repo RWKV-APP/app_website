@@ -51,6 +51,13 @@ Avoid re-creating these constants inside feature pages or services.
 - `telemetry/`: performance telemetry ingest, public leaderboard and paginated records; admin routes retain authentication.
 - `prisma/`: shared Prisma service/module.
 
+Catalog uploads validate new and modified model rows against approved repository
+mirrors. A legacy row without an approved repository mapping may be retained only when its complete JSON
+value matches an unused row in the same section of the currently published file.
+Drafts, other files/sections and extra duplicates do not establish this baseline;
+the upload warnings identify retained legacy entries without claiming new provider
+verification. Mapped rows keep the normal repository checks.
+
 When adding a backend feature, prefer a feature module over registering everything directly in `AppModule`.
 
 ## Frontend Feature Areas

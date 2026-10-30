@@ -232,8 +232,16 @@ async function main() {
   const records = []
   const activities = []
   const calls = []
+  let publishedConfig = null
+  const baselineQueries = []
   const service = new RemoteConfigService({
     remoteConfig: {
+      findFirst: async (query) => {
+        baselineQueries.push(query)
+        return publishedConfig?.fileName === query.where.fileName &&
+          publishedConfig.published === query.where.published &&
+          publishedConfig.type === query.where.type ? publishedConfig : null
+      },
       create: async ({ data }) => {
         const record = {
           ...data,
@@ -313,6 +321,59 @@ async function main() {
   ]
   for (const badModel of rejects)
     await assert.rejects(upload([badModel]), /Upload blocked/)
+
+  const unmappedLegacy = {
+    ...legacy,
+    url: legacy.url.replace('HaloWang/rwkv-weights', 'BlinkDL/rwkv7-g1'),
+    platforms: ['android'],
+    backend: 'pytorch'
+  }
+  publishedConfig = {
+    fileName: 'latest.json',
+    type: 'app_config',
+    published: true,
+    content: JSON.stringify({ chat: { model_config: [unmappedLegacy] } })
+  }
+  for (const modelScopeOnly of [true, false]) {
+    calls.length = 0
+    const result = await upload([unmappedLegacy, legacy], { modelScopeOnly })
+    assert.match(result.warnings.join('\n'), /Preserved unchanged legacy entry/)
+    assert.deepEqual(JSON.parse(records.at(-1).content).chat.model_config[0], unmappedLegacy)
+    assert.equal(calls.filter((call) => call.source === 'modelscope').length, 1)
+    assert.equal(calls.filter((call) => call.source === 'huggingface').length, modelScopeOnly ? 0 : 1)
+  }
+  assert.deepEqual(baselineQueries.at(-1).where, {
+    type: 'app_config', fileName: 'latest.json', published: true
+  })
+  for (const changed of [
+    { fileSize: 4 }, { date: 124 }, { platforms: ['ios'] },
+    { backend: 'qnn' }, { sha256: metadata.sha256 },
+    { url: `${unmappedLegacy.url}.new` }, { name: 'new' }
+  ]) {
+    await assert.rejects(upload([{ ...unmappedLegacy, ...changed }]), /Only unchanged entries/)
+  }
+  await assert.rejects(upload([unmappedLegacy, unmappedLegacy]), /Only unchanged entries/)
+  await assert.rejects(upload([unmappedLegacy], { fileName: '755.json' }), /Only unchanged entries/)
+  publishedConfig.content = JSON.stringify({ albatross: { model_config: [unmappedLegacy] } })
+  await assert.rejects(upload([unmappedLegacy]), /Only unchanged entries/)
+  publishedConfig.published = false
+  await assert.rejects(upload([unmappedLegacy]), /Only unchanged entries/)
+  publishedConfig = null
+  await assert.rejects(upload([unmappedLegacy]), /Only unchanged entries/)
+  const githubLegacy = {
+    ...unmappedLegacy,
+    url: 'https://github.com/HaloWang/RWKV-Demos/releases/download/1.0.0_weights/test'
+  }
+  publishedConfig = {
+    fileName: 'latest.json', type: 'app_config', published: true,
+    content: JSON.stringify({ chat: { model_config: [githubLegacy] } })
+  }
+  await upload([githubLegacy])
+  await assert.rejects(upload([{ ...githubLegacy, fileSize: 4 }]), /must use a Hugging Face resolve URL/)
+  await assert.rejects(upload([githubLegacy, githubLegacy]), /must use a Hugging Face resolve URL/)
+  publishedConfig = null
+  await assert.rejects(upload([githubLegacy]), /must use a Hugging Face resolve URL/)
+  calls.length = 0
   await assert.rejects(
     upload([model], { modelScopeOnly: 'true' }),
     /must be a boolean/
