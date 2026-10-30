@@ -1,5 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { aos as aosDevices, isAndroidDeviceString } from '@naverpay/device-info';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  aos as aosDevices,
+  ios as iosDevices,
+  isAndroidDeviceString,
+  isIOSDeviceString,
+} from '@naverpay/device-info';
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import {
@@ -83,6 +88,9 @@ interface RecordsQuery {
   appVersion?: string;
   buildMode?: string;
   limit?: string;
+  page?: string;
+  sortBy?: string;
+  sortOrder?: string;
 }
 
 interface AdminRecordsQuery {
@@ -367,6 +375,18 @@ interface NormalizedTelemetryRecordRow extends TelemetryRecordRow {
   buildMode: TelemetryBuildMode;
   socNameKey: string;
   reportedSocName: string;
+}
+
+type PublicTelemetryRecord = Omit<NormalizedTelemetryRecordRow, 'socNameKey'> & {
+  deviceDisplayName: string | null;
+};
+
+interface TelemetryRecordPage {
+  items: PublicTelemetryRecord[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
 }
 
 const TELEMETRY_DEVICE_ALIASES: Record<string, TelemetryDeviceAlias> = {
@@ -1179,12 +1199,30 @@ export class TelemetryService {
     return { appVersions, buildModes: [...TELEMETRY_BUILD_MODE_ORDER] };
   }
 
-  records(query: RecordsQuery): Promise<any[]> {
+  records(query: RecordsQuery): Promise<PublicTelemetryRecord[] | TelemetryRecordPage> {
     return this.cached(this.queryKey('records', query), () => this.queryRecords(query));
   }
 
-  private async queryRecords(query: RecordsQuery): Promise<any[]> {
-    const limit = Math.min(Math.max(parseInt(query.limit ?? '50', 10) || 50, 1), 200);
+  private async queryRecords(
+    query: RecordsQuery,
+  ): Promise<PublicTelemetryRecord[] | TelemetryRecordPage> {
+    const paginated = query.page !== undefined;
+    const limit = Math.min(
+      Math.max(
+        parseInt(query.limit ?? (paginated ? '100' : '50'), 10) || (paginated ? 100 : 50),
+        1,
+      ),
+      paginated ? 100 : 200,
+    );
+    const sortBy = query.sortBy ?? 'Decode';
+    const sortOrder = query.sortOrder ?? 'desc';
+    if (
+      !['Prefill', 'Decode', 'Backend', 'Device', 'Hardware', 'Memory', 'Version', 'Time'].includes(
+        sortBy,
+      ) ||
+      !['asc', 'desc'].includes(sortOrder)
+    )
+      throw new BadRequestException('Invalid record sort column or direction');
 
     const where: TelemetryWhere = {
       modelSha256: query.modelSha256.toLowerCase().trim(),
@@ -1230,7 +1268,7 @@ export class TelemetryService {
 
     const querySocNameKey = normalizeSocFilterKey(query.socName);
 
-    return rows
+    const records = rows
       .map((row) => normalizeTelemetryRecordRow(row))
       .filter(
         (row) =>
@@ -1238,12 +1276,64 @@ export class TelemetryService {
           (query.socMatch !== 'canonical' &&
             normalizeSocFilterKey(row.reportedSocName) === querySocNameKey),
       )
-      .sort((left, right) => right.decodeSpeed - left.decodeSpeed)
-      .slice(0, limit)
       .map(({ socNameKey, ...row }) => ({
         ...row,
         deviceDisplayName: resolveDeviceDisplayName(row.os, row.deviceModel),
       }));
+
+    const sortValue = (row: PublicTelemetryRecord): string | number | null => {
+      switch (sortBy) {
+        case 'Prefill':
+          return row.prefillSpeed;
+        case 'Decode':
+          return row.decodeSpeed;
+        case 'Backend':
+          return row.backend;
+        case 'Device': {
+          const device = row.deviceDisplayName || row.deviceModel;
+          if (device && isIOSDeviceString(device)) return iosDevices[device];
+          return (
+            [device, row.deviceDisplayName && row.deviceModel !== device ? row.deviceModel : null]
+              .filter(Boolean)
+              .join(' ') || null
+          );
+        }
+        case 'Hardware':
+          return [row.socName, row.cpuName, row.gpuName].filter(Boolean).join(' ');
+        case 'Memory':
+          return row.totalVramMb || row.totalMemoryMb || null;
+        case 'Version':
+          return row.appVersion;
+        case 'Time':
+          return new Date(row.createdAt).getTime();
+        default:
+          return null;
+      }
+    };
+    records.sort((left, right) => {
+      const a = sortValue(left);
+      const b = sortValue(right);
+      const missingA = a === null || a === '' || Number.isNaN(a);
+      const missingB = b === null || b === '' || Number.isNaN(b);
+      if (missingA || missingB) return Number(missingA) - Number(missingB) || left.id - right.id;
+      const order =
+        typeof a === 'number' && typeof b === 'number'
+          ? a - b
+          : String(a).localeCompare(String(b), undefined, { numeric: true });
+      return (sortOrder === 'asc' ? order : -order) || left.id - right.id;
+    });
+    // Legacy callers keep the array response; page requests sort the full match set first.
+    if (!paginated) return records.slice(0, limit);
+    const total = records.length;
+    const totalPages = Math.max(Math.ceil(total / limit), 1);
+    const page = Math.min(Math.max(parseInt(query.page ?? '1', 10) || 1, 1), totalPages);
+    return {
+      items: records.slice((page - 1) * limit, page * limit),
+      page,
+      limit,
+      total,
+      totalPages,
+    };
   }
 
   async adminRecords(query: AdminRecordsQuery): Promise<{

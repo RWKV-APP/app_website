@@ -181,6 +181,160 @@ async function main() {
     1
   )
 
+  // A sidebar page contains 100 rows from the complete, globally sorted match set.
+  const pageRows = Array.from({ length: 205 }, (_, index) => ({
+    ...rows[0],
+    id: index + 1,
+    decodeSpeed: 205 - index,
+    prefillSpeed: index + 1,
+    deviceModel: 'Device' + (205 - index),
+    cpuName: 'CPU ' + (index + 1),
+    totalMemoryMb: index < 202 ? (index + 1) * 1024 : null,
+    totalVramMb: index === 0 ? 300 * 1024 : null,
+    appVersion: index % 2 ? '4.9.0' : '4.10.0',
+    createdAt: Date.UTC(2026, 0, 1) + index * 1000
+  }))
+  const pagedService = new TelemetryService(await telemetryDatabase(pageRows))
+  const pageQuery = {
+    socName: 'Snapdragon 7s Gen 2',
+    socMatch: 'canonical',
+    modelSha256: 'model-hash',
+    backend: 'qnn'
+  }
+  for (const sortBy of [
+    'Prefill',
+    'Decode',
+    'Backend',
+    'Device',
+    'Hardware',
+    'Memory',
+    'Version',
+    'Time'
+  ]) {
+    for (const sortOrder of ['asc', 'desc']) {
+      const pages = await Promise.all(
+        [1, 2, 3].map((page) =>
+          pagedService.records({
+            ...pageQuery,
+            page: String(page),
+            sortBy,
+            sortOrder
+          })
+        )
+      )
+      assert.deepEqual(
+        pages.map((p) => p.items.length),
+        [100, 100, 5]
+      )
+      for (const [index, page] of pages.entries()) {
+        assert.equal(page.page, index + 1)
+        assert.equal(page.limit, 100)
+        assert.equal(page.total, 205)
+        assert.equal(page.totalPages, 3)
+        assert(!JSON.stringify(page).includes('MUST_NOT_BE_PUBLIC'))
+      }
+      const items = pages.flatMap((p) => p.items)
+      assert.equal(
+        new Set(items.map((row) => row.id)).size,
+        205,
+        'pages must not duplicate or skip rows'
+      )
+      const ids = items.map((row) => row.id)
+      if (['Prefill', 'Time', 'Hardware'].includes(sortBy))
+        assert.equal(ids[0], sortOrder === 'asc' ? 1 : 205)
+      if (['Decode', 'Device'].includes(sortBy))
+        assert.equal(ids[0], sortOrder === 'asc' ? 205 : 1)
+      if (sortBy === 'Backend')
+        assert.deepEqual(
+          ids,
+          pageRows.map((row) => row.id),
+          'equal sort keys use stable IDs'
+        )
+      if (sortBy === 'Version') {
+        const firstVersion = sortOrder === 'asc' ? '4.9.0' : '4.10.0'
+        const boundary = firstVersion === '4.9.0' ? 102 : 103
+        assert(
+          items
+            .slice(0, boundary)
+            .every((row) => row.appVersion === firstVersion),
+          'numeric versions sort globally before page slicing'
+        )
+        assert(
+          items.slice(boundary).every((row) => row.appVersion !== firstVersion)
+        )
+      }
+      if (sortBy === 'Memory') {
+        assert.deepEqual(
+          ids.slice(-3),
+          [203, 204, 205],
+          'unknown memory stays last in both directions'
+        )
+        assert.equal(
+          ids[0],
+          sortOrder === 'asc' ? 2 : 1,
+          'VRAM takes precedence over total RAM'
+        )
+      }
+    }
+  }
+  const lastPage = await pagedService.records({ ...pageQuery, page: '9999' })
+  assert.equal(lastPage.page, 3)
+  assert.equal(lastPage.items.length, 5)
+  const defaultPage = await pagedService.records({
+    ...pageQuery,
+    page: 'not-a-page',
+    limit: '0'
+  })
+  assert.equal(defaultPage.page, 1)
+  assert.equal(defaultPage.limit, 100)
+  const cappedPage = await pagedService.records({
+    ...pageQuery,
+    page: '-1',
+    limit: '10000'
+  })
+  assert.equal(cappedPage.page, 1)
+  assert.equal(cappedPage.items.length, 100)
+  const filteredPage = await pagedService.records({
+    ...pageQuery,
+    page: '2',
+    appVersion: '4.10.0',
+    buildMode: 'release',
+    os: 'android',
+    isBatch: 'false',
+    batchCount: '1'
+  })
+  assert.equal(filteredPage.total, 103)
+  assert.equal(filteredPage.items.length, 3)
+  const emptyPage = await pagedService.records({
+    ...pageQuery,
+    socName: 'No matching device',
+    page: '2'
+  })
+  assert.deepEqual(emptyPage, {
+    items: [],
+    page: 1,
+    limit: 100,
+    total: 0,
+    totalPages: 1
+  })
+  const legacyRecords = await pagedService.records({
+    ...pageQuery,
+    limit: '10000'
+  })
+  assert(
+    Array.isArray(legacyRecords),
+    'legacy calls without page keep array response'
+  )
+  assert.equal(legacyRecords.length, 200)
+  await assert.rejects(
+    pagedService.records({ ...pageQuery, page: '1', sortBy: '__proto__' }),
+    /Invalid record sort/
+  )
+  await assert.rejects(
+    pagedService.records({ ...pageQuery, page: '1', sortOrder: 'invalid' }),
+    /Invalid record sort/
+  )
+
   // Historical aliases, stale vendor tags and invalid identifiers use the same
   // normalization in aggregates, facets and record drilldown without rewriting rows.
   const canonicalCases = [
@@ -950,9 +1104,35 @@ async function main() {
   const app = express()
   const payload = Array.from({ length: 30 }, () => first[0])
   const controller = new TelemetryController({
-    leaderboard: async () => payload
+    leaderboard: async () => payload,
+    records: (query) => pagedService.records(query)
   })
   app.get('/', (req, res, next) => controller.leaderboard(req, res).catch(next))
+  app.get('/records', (req, res, next) => {
+    const q = req.query
+    return controller
+      .records(
+        req,
+        res,
+        q.socName,
+        q.modelSha256,
+        q.backend,
+        q.isBatch,
+        q.batchCount,
+        q.os,
+        q.appVersion,
+        q.buildMode,
+        q.limit,
+        q.socMatch,
+        q.page,
+        q.sortBy,
+        q.sortOrder
+      )
+      .catch(next)
+  })
+  app.use((error, req, res, next) =>
+    res.status(error.getStatus?.() ?? 500).json({ message: error.message })
+  )
   const server = app.listen(0, '127.0.0.1')
   await new Promise((resolve) => server.once('listening', resolve))
   try {
@@ -982,6 +1162,31 @@ async function main() {
     assert.match(packed.headers.vary, /Accept-Encoding/)
     assert.equal(packed.headers['cache-control'], 'public, max-age=15')
     assert.deepEqual(JSON.parse(gunzipSync(packed.body)), payload)
+    const endpoint =
+      'http://127.0.0.1:' +
+      server.address().port +
+      '/records?' +
+      new URLSearchParams({
+        ...pageQuery,
+        page: '2',
+        limit: '100',
+        sortBy: 'Prefill',
+        sortOrder: 'asc'
+      })
+    const pageResponse = await fetch(endpoint)
+    assert.equal(pageResponse.status, 200)
+    const httpPage = await pageResponse.json()
+    assert.equal(httpPage.page, 2)
+    assert.equal(httpPage.items.length, 100)
+    assert.equal(
+      httpPage.items[0].prefillSpeed,
+      101,
+      'HTTP handler forwards page and sort parameters'
+    )
+    const invalidResponse = await fetch(
+      endpoint.replace('sortBy=Prefill', 'sortBy=unknown')
+    )
+    assert.equal(invalidResponse.status, 400)
     const plain = await request('gzip;q=0, identity')
     assert.equal(plain.headers['content-encoding'], undefined)
     assert.deepEqual(JSON.parse(plain.body), payload)

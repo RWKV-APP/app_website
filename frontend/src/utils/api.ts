@@ -20,7 +20,8 @@ import {
 import type {
   TelemetryLeaderboardEntry,
   TelemetryPublicFilters,
-  TelemetryRecordEntry,
+  TelemetryRecordPage,
+  TelemetryRecordSortColumn,
 } from '@/types/telemetry';
 import { API_BASE_URL } from './apiBase';
 
@@ -402,8 +403,11 @@ export async function fetchPublicTelemetryRecords(params: {
   appVersions?: string[];
   buildModes?: string[];
   limit?: number;
+  page: number;
+  sortBy: TelemetryRecordSortColumn;
+  sortOrder: 'asc' | 'desc';
   signal?: AbortSignal;
-}): Promise<TelemetryRecordEntry[]> {
+}): Promise<TelemetryRecordPage> {
   const query = new URLSearchParams({
     socName: params.socName,
     socMatch: 'canonical',
@@ -412,6 +416,9 @@ export async function fetchPublicTelemetryRecords(params: {
     isBatch: String(params.isBatch),
     batchCount: String(params.batchCount),
     limit: String(params.limit ?? 100),
+    page: String(params.page),
+    sortBy: params.sortBy,
+    sortOrder: params.sortOrder,
   });
   if (params.os) {
     query.set('os', params.os);
@@ -429,7 +436,20 @@ export async function fetchPublicTelemetryRecords(params: {
   if (!response.ok) {
     throw new Error(await parseErrorResponse(response));
   }
-  return (await response.json()) as TelemetryRecordEntry[];
+  const result = (await response.json()) as TelemetryRecordPage;
+  if (
+    !Array.isArray(result?.items) ||
+    ![result.page, result.limit, result.total, result.totalPages].every(Number.isInteger) ||
+    result.page < 1 ||
+    result.page > result.totalPages ||
+    result.limit < 1 ||
+    result.limit > 100 ||
+    result.total < result.items.length ||
+    result.items.length > result.limit ||
+    result.totalPages !== Math.max(Math.ceil(result.total / result.limit), 1)
+  )
+    throw new Error('明细响应格式错误，请稍后重试。');
+  return result;
 }
 
 export async function fetchPublicEvalRuns(): Promise<EvalRunSummaryRecord[]> {

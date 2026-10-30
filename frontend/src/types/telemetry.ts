@@ -59,3 +59,21 @@ export interface TelemetryPublicFilters {
   appVersions: string[];
   buildModes: string[];
 }
+
+export type TelemetryRecordSortColumn =
+  | 'Prefill'
+  | 'Decode'
+  | 'Backend'
+  | 'Device'
+  | 'Hardware'
+  | 'Memory'
+  | 'Version'
+  | 'Time';
+
+export interface TelemetryRecordPage {
+  items: TelemetryRecordEntry[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}

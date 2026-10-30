@@ -133,6 +133,19 @@ export function deriveWeightLabel(entry: TelemetryLeaderboardEntry): string {
   return '大小未知';
 }
 
+export function deriveModelGeneration(entry: TelemetryLeaderboardEntry): string {
+  const generation = /(?:^|[^a-z0-9])g(\d+)([a-z])(?=$|[^a-z0-9])/i;
+  const match = entry.modelName.match(generation) ?? entry.modelFileName.match(generation);
+  return match ? `G${match[1]}${match[2].toLowerCase()}` : '未知代际';
+}
+
+export function compareModelGenerations(left: string, right: string): number {
+  return (
+    Number(left === '未知代际') - Number(right === '未知代际') ||
+    right.localeCompare(left, undefined, { numeric: true })
+  );
+}
+
 function normalizeBrandKey(brand: string): string {
   return brand.toLowerCase() === 'snapdragon' ? 'qualcomm' : brand.toLowerCase();
 }
@@ -372,6 +385,11 @@ export function filterLeaderboardData(
   }
   if (filters.selectedModelTag.length > 0) {
     filtered = filtered.filter((entry) => filters.selectedModelTag.includes(deriveModelTag(entry)));
+  }
+  if (filters.selectedGeneration.length > 0) {
+    filtered = filtered.filter((entry) =>
+      filters.selectedGeneration.includes(deriveModelGeneration(entry)),
+    );
   }
   if (filters.selectedBrand.length > 0) {
     const selectedBrands = new Set(filters.selectedBrand);

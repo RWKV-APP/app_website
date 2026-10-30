@@ -837,6 +837,27 @@
   flex-direction: column;
 }
 
+.sidebarPagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.8125rem;
+}
+
+.sidebarPagination > div {
+  display: flex;
+  gap: 8px;
+}
+
+.sidebarPagination button {
+  min-height: 44px;
+}
+
 .recordTableHeader {
   display: grid;
   min-width: 900px;

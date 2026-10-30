@@ -16,6 +16,7 @@ import {
   BRAND_LABELS,
   BUILD_MODE_LABELS,
   capitalizeBrand,
+  compareModelGenerations,
   CellMetricBasis,
   deriveModelTag,
   deriveQuantLabel,
@@ -36,7 +37,6 @@ import {
   telemetrySocFilterLabels,
 } from '@/features/telemetry/telemetryRules';
 import { getTelemetryFilterOptions } from '@/features/telemetry/telemetryFilters';
-import { sortTelemetryRecords } from '@/features/telemetry/telemetryRecordSort';
 import {
   defaultTelemetryFilters,
   FILTER_STORAGE_KEY,
@@ -52,6 +52,7 @@ import {
 import type {
   TelemetryLeaderboardEntry as LeaderboardEntry,
   TelemetryRecordEntry as RecordEntry,
+  TelemetryRecordSortColumn as RecordSortColumn,
 } from '@/types/telemetry';
 import {
   formatConsumerSocName,
@@ -112,7 +113,11 @@ interface SidebarState {
   open: boolean;
   loading: boolean;
   records: RecordEntry[];
+  page: number;
+  total: number;
+  totalPages: number;
   cellInfo: {
+    batchCount: number;
     socName: string;
     modelSha256: string;
     backend: string;
@@ -170,6 +175,7 @@ function FilterGroup({
   valueKey = (value) => value,
   pending = false,
   emptyLabel,
+  sortOptions,
 }: {
   label: string;
   options: string[];
@@ -179,12 +185,14 @@ function FilterGroup({
   valueKey?: (value: string) => string;
   pending?: boolean;
   emptyLabel?: string;
+  sortOptions?: (left: string, right: string) => number;
 }) {
   const selectedKeys = new Set(selected.map(valueKey));
   const optionKeys = new Set(options.map(valueKey));
   const visibleOptions = Array.from(
     new Map([...selected, ...options].map((value) => [valueKey(value), value])).values(),
   );
+  if (sortOptions) visibleOptions.sort(sortOptions);
   return (
     <div className={styles.tabRow} role="group" aria-label={label}>
       <span className={styles.filterLabel}>{label}</span>
@@ -391,24 +399,16 @@ function getRecordHardwareLabel(record: RecordEntry): StackedCellLabel {
   };
 }
 
-const RECORD_SORT_VALUES = {
-  Prefill: (record: RecordEntry) => record.prefillSpeed,
-  Decode: (record: RecordEntry) => record.decodeSpeed,
-  Backend: (record: RecordEntry) =>
-    `${formatBackendLabel(record.backend)}${record.isBatch ? ` batch×${record.batchCount}` : ''}`,
-  Device: (record: RecordEntry) => {
-    const label = getRecordDeviceLabel(record);
-    return [label.primary, label.secondary].filter(Boolean).join(' ');
-  },
-  Hardware: (record: RecordEntry) => {
-    const label = getRecordHardwareLabel(record);
-    return [label.primary, label.secondary].filter(Boolean).join(' ');
-  },
-  Memory: (record: RecordEntry) => record.totalVramMb || record.totalMemoryMb || null,
-  Version: (record: RecordEntry) => record.appVersion,
-  Time: (record: RecordEntry) => Date.parse(record.createdAt),
-};
-type RecordSortColumn = keyof typeof RECORD_SORT_VALUES;
+const RECORD_SORT_COLUMNS: RecordSortColumn[] = [
+  'Prefill',
+  'Decode',
+  'Backend',
+  'Device',
+  'Hardware',
+  'Memory',
+  'Version',
+  'Time',
+];
 
 function buildCellClass(decode: number | null): string {
   if (decode === null) return '';
@@ -939,20 +939,6 @@ async function fetchFilters(
   return fetchPublicTelemetryFilters(signal);
 }
 
-async function fetchRecords(params: {
-  socName: string;
-  modelSha256: string;
-  backend: string;
-  isBatch: boolean;
-  batchCount: number;
-  os?: string;
-  appVersions?: string[];
-  buildModes?: string[];
-  signal?: AbortSignal;
-}): Promise<RecordEntry[]> {
-  return fetchPublicTelemetryRecords(params);
-}
-
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -971,6 +957,7 @@ export default function ModelFitPreviewPage() {
   const [selectedBuildMode, setSelectedBuildMode] = useState<string[]>([]);
   const [selectedSize, setSelectedSize] = useState<string[]>([]);
   const [selectedModelTag, setSelectedModelTag] = useState<string[]>(['Chat']);
+  const [selectedGeneration, setSelectedGeneration] = useState<string[]>([]);
   const [selectedBrand, setSelectedBrand] = useState<string[]>([]);
   const [selectedSoc, setSelectedSoc] = useState<string[]>([]);
   const [search, setSearch] = useState('');
@@ -991,21 +978,16 @@ export default function ModelFitPreviewPage() {
     open: false,
     loading: false,
     records: [],
+    page: 1,
+    total: 0,
+    totalPages: 1,
     cellInfo: null,
   });
   const [recordSort, setRecordSort] = useState<{
     column: RecordSortColumn;
     direction: 'asc' | 'desc';
   }>({ column: 'Decode', direction: 'desc' });
-  const sortedRecords = useMemo(
-    () =>
-      sortTelemetryRecords(
-        sidebar.records,
-        RECORD_SORT_VALUES[recordSort.column],
-        recordSort.direction,
-      ),
-    [sidebar.records, recordSort],
-  );
+  const [recordsReloadKey, setRecordsReloadKey] = useState(0);
 
   useEffect(() => {
     let saved = defaultTelemetryFilters();
@@ -1023,6 +1005,7 @@ export default function ModelFitPreviewPage() {
     setSelectedBackend(saved.selectedBackend);
     setSelectedBatch(saved.selectedBatch);
     setSelectedModelTag(saved.selectedModelTag);
+    setSelectedGeneration(saved.selectedGeneration);
     setSelectedSize(saved.selectedSize);
     setSelectedBrand(saved.selectedBrand);
     setSelectedSoc(saved.selectedSoc);
@@ -1042,6 +1025,7 @@ export default function ModelFitPreviewPage() {
           selectedBackend,
           selectedBatch,
           selectedModelTag,
+          selectedGeneration,
           selectedSize,
           selectedBrand,
           selectedSoc,
@@ -1059,6 +1043,7 @@ export default function ModelFitPreviewPage() {
     selectedBackend,
     selectedBatch,
     selectedModelTag,
+    selectedGeneration,
     selectedSize,
     selectedBrand,
     selectedSoc,
@@ -1108,8 +1093,6 @@ export default function ModelFitPreviewPage() {
     return () => controller.abort();
   }, [filtersReady, selectedBuildMode, selectedVersion, queryKey, reloadKey]);
 
-  useEffect(() => () => recordsRequest.current?.abort(), []);
-
   useEffect(() => {
     if (sidebar.open) sidebarDialog.current?.showModal();
   }, [sidebar.open]);
@@ -1131,6 +1114,7 @@ export default function ModelFitPreviewPage() {
       selectedBatch,
       selectedSize,
       selectedModelTag,
+      selectedGeneration,
       selectedBrand,
       selectedSoc: selectedSocLabels,
     }),
@@ -1140,6 +1124,7 @@ export default function ModelFitPreviewPage() {
       selectedBatch,
       selectedSize,
       selectedModelTag,
+      selectedGeneration,
       selectedBrand,
       selectedSocLabels,
     ],
@@ -1185,6 +1170,7 @@ export default function ModelFitPreviewPage() {
       setSelectedBackend([]);
       setSelectedBatch([]);
       setSelectedModelTag([]);
+      setSelectedGeneration([]);
       setSelectedSize([]);
       setSelectedBrand([]);
       setSelectedSoc([]);
@@ -1231,6 +1217,7 @@ export default function ModelFitPreviewPage() {
         formatFilterSelection(selectedBackend, 'all-backends', formatBackendLabel),
       ),
       sanitizeFileNamePart(formatFilterSelection(selectedModelTag, 'all-types')),
+      sanitizeFileNamePart(formatFilterSelection(selectedGeneration, 'all-generations')),
       sanitizeFileNamePart(formatFilterSelection(selectedSize, 'all-weights')),
       sanitizeFileNamePart(formatFilterSelection(selectedBrand, 'all-brands', capitalizeBrand)),
       sanitizeFileNamePart(
@@ -1257,6 +1244,7 @@ export default function ModelFitPreviewPage() {
     selectedBrand,
     selectedBuildMode,
     selectedModelTag,
+    selectedGeneration,
     selectedPlatforms,
     selectedSize,
     selectedSoc,
@@ -1290,6 +1278,7 @@ export default function ModelFitPreviewPage() {
           value: formatFilterSelection(selectedBackend, '不限制', formatBackendLabel),
         },
         { label: 'Type', value: formatFilterSelection(selectedModelTag, '不限制') },
+        { label: 'Generation', value: formatFilterSelection(selectedGeneration, '不限制') },
         { label: 'Weight', value: formatFilterSelection(selectedSize, '不限制') },
         { label: 'Chip', value: socDisplay.primaryLabel },
         {
@@ -1306,10 +1295,10 @@ export default function ModelFitPreviewPage() {
         },
       ];
       if (socDisplay.secondaryLabel) {
-        filters.splice(5, 0, { label: 'Device', value: socDisplay.secondaryLabel });
+        filters.splice(6, 0, { label: 'Device', value: socDisplay.secondaryLabel });
       }
       if (socDisplay.metaLabel) {
-        filters.splice(6, 0, { label: 'Apple ID', value: socDisplay.metaLabel });
+        filters.splice(7, 0, { label: 'Apple ID', value: socDisplay.metaLabel });
       }
       if (selectedBrand.length > 0) {
         filters.splice(4, 0, {
@@ -1367,6 +1356,7 @@ export default function ModelFitPreviewPage() {
       selectedBrand,
       selectedBuildMode,
       selectedModelTag,
+      selectedGeneration,
       selectedSize,
       selectedVersion,
       weightColumns,
@@ -1374,51 +1364,87 @@ export default function ModelFitPreviewPage() {
   );
 
   const handleCellClick = useCallback(
-    async (cell: MatrixCell, weightLabel: string) => {
+    (cell: MatrixCell, weightLabel: string) => {
       if (!actionsReady) return;
-      const socLabel = formatSocFilterLabel({ socName: cell.socName });
-      const info = {
-        socName: cell.socName,
-        modelSha256: cell.modelSha256,
-        backend: cell.backend,
-        isBatch: cell.isBatch,
-        os: cell.os,
-        label: `${socLabel} × ${weightLabel}`,
-      };
       recordsRequest.current?.abort();
-      const controller = new AbortController();
-      recordsRequest.current = controller;
       setSidebarError(null);
-      setSidebar({ open: true, loading: true, records: [], cellInfo: info });
-
-      try {
-        const records = await fetchRecords({
-          signal: controller.signal,
+      setSidebar({
+        open: true,
+        loading: true,
+        records: [],
+        page: 1,
+        total: 0,
+        totalPages: 1,
+        cellInfo: {
           socName: cell.socName,
           modelSha256: cell.modelSha256,
           backend: cell.backend,
           isBatch: cell.isBatch,
           batchCount: cell.batchCount,
           os: cell.os,
-          appVersions: selectedVersion,
-          buildModes: selectedBuildMode,
-        });
-        if (!controller.signal.aborted)
-          setSidebar((prev) => ({ ...prev, loading: false, records }));
-      } catch {
-        if (!controller.signal.aborted) {
-          setSidebarError('明细加载失败，请关闭后重试。');
-          setSidebar((prev) => ({ ...prev, loading: false }));
-        }
-      }
+          label: `${formatSocFilterLabel({ socName: cell.socName })} × ${weightLabel}`,
+        },
+      });
     },
-    [actionsReady, selectedBuildMode, selectedVersion],
+    [actionsReady],
   );
+
+  useEffect(() => {
+    if (!sidebar.open || !sidebar.cellInfo) return;
+    const controller = new AbortController();
+    recordsRequest.current = controller;
+    setSidebarError(null);
+    setSidebar((previous) => ({ ...previous, loading: true }));
+    fetchPublicTelemetryRecords({
+      ...sidebar.cellInfo,
+      page: sidebar.page,
+      limit: 100,
+      sortBy: recordSort.column,
+      sortOrder: recordSort.direction,
+      appVersions: selectedVersion,
+      buildModes: selectedBuildMode,
+      signal: controller.signal,
+    })
+      .then((result) => {
+        if (!controller.signal.aborted)
+          setSidebar((previous) => ({
+            ...previous,
+            loading: false,
+            records: result.items,
+            page: result.page,
+            total: result.total,
+            totalPages: result.totalPages,
+          }));
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setSidebarError('明细加载失败，请重试。');
+          setSidebar((previous) => ({ ...previous, loading: false, records: [] }));
+        }
+      });
+    return () => controller.abort();
+  }, [
+    sidebar.open,
+    sidebar.cellInfo,
+    sidebar.page,
+    recordSort,
+    selectedVersion,
+    selectedBuildMode,
+    recordsReloadKey,
+  ]);
 
   const closeSidebar = useCallback(() => {
     recordsRequest.current?.abort();
     sidebarDialog.current?.close();
-    setSidebar({ open: false, loading: false, records: [], cellInfo: null });
+    setSidebar({
+      open: false,
+      loading: false,
+      records: [],
+      page: 1,
+      total: 0,
+      totalPages: 1,
+      cellInfo: null,
+    });
   }, []);
 
   return (
@@ -1482,6 +1508,14 @@ export default function ModelFitPreviewPage() {
               onChange={(values) => startFilterTransition(() => setSelectedModelTag(values))}
               pending={!resultsReady}
               format={(value) => MODEL_TAG_LABELS[value] ?? value}
+            />
+            <FilterGroup
+              label="模型代际"
+              options={options.selectedGeneration}
+              selected={selectedGeneration}
+              onChange={(values) => startFilterTransition(() => setSelectedGeneration(values))}
+              pending={!resultsReady}
+              sortOptions={compareModelGenerations}
             />
             <FilterGroup
               label="权重大小"
@@ -1818,6 +1852,7 @@ export default function ModelFitPreviewPage() {
             ref={sidebarDialog}
             className={styles.sidebar}
             aria-label={sidebar.cellInfo?.label ?? '性能样本'}
+            aria-busy={sidebar.loading}
             onCancel={closeSidebar}
             onClick={(event) => {
               if (event.target === event.currentTarget) closeSidebar();
@@ -1840,13 +1875,20 @@ export default function ModelFitPreviewPage() {
             ) : sidebarError ? (
               <div className={styles.sidebarLoading} role="alert">
                 {sidebarError}
+                <button
+                  type="button"
+                  className={styles.resetButton}
+                  onClick={() => setRecordsReloadKey((key) => key + 1)}
+                >
+                  重试
+                </button>
               </div>
             ) : sidebar.records.length === 0 ? (
               <div className={styles.sidebarLoading}>暂无明细记录</div>
             ) : (
               <div className={styles.sidebarRecords} role="table" aria-label="性能样本明细">
                 <div className={styles.recordTableHeader} role="row">
-                  {(Object.keys(RECORD_SORT_VALUES) as RecordSortColumn[]).map((column) => {
+                  {RECORD_SORT_COLUMNS.map((column) => {
                     const active = recordSort.column === column;
                     const nextDirection = active && recordSort.direction === 'asc' ? 'desc' : 'asc';
                     return (
@@ -1865,7 +1907,10 @@ export default function ModelFitPreviewPage() {
                           type="button"
                           className={styles.recordSortButton}
                           aria-label={`${column}：点击按${nextDirection === 'asc' ? '升序' : '降序'}排序`}
-                          onClick={() => setRecordSort({ column, direction: nextDirection })}
+                          onClick={() => {
+                            setRecordSort({ column, direction: nextDirection });
+                            setSidebar((previous) => ({ ...previous, page: 1, loading: true }));
+                          }}
                         >
                           {column}
                           <svg width="12" height="16" viewBox="0 0 12 16" aria-hidden="true">
@@ -1892,7 +1937,7 @@ export default function ModelFitPreviewPage() {
                     Details
                   </span>
                 </div>
-                {sortedRecords.map((r) => {
+                {sidebar.records.map((r) => {
                   // Memory: VRAM 优先（Windows/Linux），否则总内存
                   const memoryLabel = r.totalVramMb
                     ? `${(r.totalVramMb / 1024).toFixed(0)} GB VRAM`
@@ -1947,6 +1992,41 @@ export default function ModelFitPreviewPage() {
                 })}
               </div>
             )}
+            <nav className={styles.sidebarPagination} aria-label="样本分页">
+              <span role="status">
+                共 {sidebar.total} 条 · 第 {sidebar.page} / {sidebar.totalPages} 页 · 每页 100 条
+              </span>
+              <div>
+                <button
+                  type="button"
+                  className={styles.resetButton}
+                  disabled={sidebar.loading || !!sidebarError || sidebar.page <= 1}
+                  onClick={() =>
+                    setSidebar((previous) => ({
+                      ...previous,
+                      page: previous.page - 1,
+                      loading: true,
+                    }))
+                  }
+                >
+                  上一页
+                </button>
+                <button
+                  type="button"
+                  className={styles.resetButton}
+                  disabled={sidebar.loading || !!sidebarError || sidebar.page >= sidebar.totalPages}
+                  onClick={() =>
+                    setSidebar((previous) => ({
+                      ...previous,
+                      page: previous.page + 1,
+                      loading: true,
+                    }))
+                  }
+                >
+                  下一页
+                </button>
+              </div>
+            </nav>
           </dialog>
         </>
       ) : null}
