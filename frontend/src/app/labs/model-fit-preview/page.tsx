@@ -36,6 +36,7 @@ import {
   telemetrySocFilterLabels,
 } from '@/features/telemetry/telemetryRules';
 import { getTelemetryFilterOptions } from '@/features/telemetry/telemetryFilters';
+import { sortTelemetryRecords } from '@/features/telemetry/telemetryRecordSort';
 import {
   defaultTelemetryFilters,
   FILTER_STORAGE_KEY,
@@ -389,6 +390,25 @@ function getRecordHardwareLabel(record: RecordEntry): StackedCellLabel {
     secondary: null,
   };
 }
+
+const RECORD_SORT_VALUES = {
+  Prefill: (record: RecordEntry) => record.prefillSpeed,
+  Decode: (record: RecordEntry) => record.decodeSpeed,
+  Backend: (record: RecordEntry) =>
+    `${formatBackendLabel(record.backend)}${record.isBatch ? ` batch×${record.batchCount}` : ''}`,
+  Device: (record: RecordEntry) => {
+    const label = getRecordDeviceLabel(record);
+    return [label.primary, label.secondary].filter(Boolean).join(' ');
+  },
+  Hardware: (record: RecordEntry) => {
+    const label = getRecordHardwareLabel(record);
+    return [label.primary, label.secondary].filter(Boolean).join(' ');
+  },
+  Memory: (record: RecordEntry) => record.totalVramMb || record.totalMemoryMb || null,
+  Version: (record: RecordEntry) => record.appVersion,
+  Time: (record: RecordEntry) => Date.parse(record.createdAt),
+};
+type RecordSortColumn = keyof typeof RECORD_SORT_VALUES;
 
 function buildCellClass(decode: number | null): string {
   if (decode === null) return '';
@@ -973,6 +993,19 @@ export default function ModelFitPreviewPage() {
     records: [],
     cellInfo: null,
   });
+  const [recordSort, setRecordSort] = useState<{
+    column: RecordSortColumn;
+    direction: 'asc' | 'desc';
+  }>({ column: 'Decode', direction: 'desc' });
+  const sortedRecords = useMemo(
+    () =>
+      sortTelemetryRecords(
+        sidebar.records,
+        RECORD_SORT_VALUES[recordSort.column],
+        recordSort.direction,
+      ),
+    [sidebar.records, recordSort],
+  );
 
   useEffect(() => {
     let saved = defaultTelemetryFilters();
@@ -1811,19 +1844,55 @@ export default function ModelFitPreviewPage() {
             ) : sidebar.records.length === 0 ? (
               <div className={styles.sidebarLoading}>暂无明细记录</div>
             ) : (
-              <div className={styles.sidebarRecords}>
-                <div className={styles.recordTableHeader}>
-                  <span className={styles.recordColSpeed}>Prefill</span>
-                  <span className={styles.recordColSpeed}>Decode</span>
-                  <span className={styles.recordColInfo}>Backend</span>
-                  <span className={styles.recordColInfo}>Device</span>
-                  <span className={styles.recordColInfo}>Hardware</span>
-                  <span className={styles.recordColInfo}>Memory</span>
-                  <span className={styles.recordColInfo}>Version</span>
-                  <span className={styles.recordColInfo}>Time</span>
-                  <span className={styles.recordColAction}>Details</span>
+              <div className={styles.sidebarRecords} role="table" aria-label="性能样本明细">
+                <div className={styles.recordTableHeader} role="row">
+                  {(Object.keys(RECORD_SORT_VALUES) as RecordSortColumn[]).map((column) => {
+                    const active = recordSort.column === column;
+                    const nextDirection = active && recordSort.direction === 'asc' ? 'desc' : 'asc';
+                    return (
+                      <span
+                        key={column}
+                        role="columnheader"
+                        aria-sort={
+                          active
+                            ? recordSort.direction === 'asc'
+                              ? 'ascending'
+                              : 'descending'
+                            : 'none'
+                        }
+                      >
+                        <button
+                          type="button"
+                          className={styles.recordSortButton}
+                          aria-label={`${column}：点击按${nextDirection === 'asc' ? '升序' : '降序'}排序`}
+                          onClick={() => setRecordSort({ column, direction: nextDirection })}
+                        >
+                          {column}
+                          <svg width="12" height="16" viewBox="0 0 12 16" aria-hidden="true">
+                            <path
+                              d="m3 6 3-3 3 3"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              opacity={active && recordSort.direction === 'asc' ? 1 : 0.35}
+                            />
+                            <path
+                              d="m3 10 3 3 3-3"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              opacity={active && recordSort.direction === 'desc' ? 1 : 0.35}
+                            />
+                          </svg>
+                        </button>
+                      </span>
+                    );
+                  })}
+                  <span className={styles.recordColAction} role="columnheader">
+                    Details
+                  </span>
                 </div>
-                {sidebar.records.map((r) => {
+                {sortedRecords.map((r) => {
                   // Memory: VRAM 优先（Windows/Linux），否则总内存
                   const memoryLabel = r.totalVramMb
                     ? `${(r.totalVramMb / 1024).toFixed(0)} GB VRAM`
@@ -1833,38 +1902,46 @@ export default function ModelFitPreviewPage() {
                   const deviceLabel = getRecordDeviceLabel(r);
                   const hardwareLabel = getRecordHardwareLabel(r);
                   return (
-                    <div key={r.id} className={styles.recordRow}>
-                      <span className={styles.recordColSpeed}>
+                    <div key={r.id} className={styles.recordRow} role="row">
+                      <span className={styles.recordColSpeed} role="cell">
                         <strong>{r.prefillSpeed.toFixed(1)}</strong> t/s
                       </span>
-                      <span className={styles.recordColSpeed}>
+                      <span className={styles.recordColSpeed} role="cell">
                         <strong>{r.decodeSpeed.toFixed(1)}</strong> t/s
                       </span>
-                      <span className={styles.recordColInfo}>
+                      <span className={styles.recordColInfo} role="cell">
                         {formatBackendLabel(r.backend)}
                         {r.isBatch ? ` batch×${r.batchCount}` : ''}
                       </span>
-                      <span className={styles.recordColInfo}>
+                      <span className={styles.recordColInfo} role="cell">
                         <span className={styles.recordPrimary}>{deviceLabel.primary}</span>
                         {deviceLabel.secondary ? (
                           <span className={styles.recordSecondary}>{deviceLabel.secondary}</span>
                         ) : null}
                       </span>
-                      <span className={styles.recordColInfo}>
+                      <span className={styles.recordColInfo} role="cell">
                         <span className={styles.recordPrimary}>{hardwareLabel.primary}</span>
                         {hardwareLabel.secondary ? (
                           <span className={styles.recordSecondary}>{hardwareLabel.secondary}</span>
                         ) : null}
                       </span>
-                      <span className={styles.recordColInfo}>{memoryLabel}</span>
-                      <span className={styles.recordColInfo}>{r.appVersion || '—'}</span>
-                      <span className={styles.recordColInfo}>{formatTimestamp(r.createdAt)}</span>
-                      <Link
-                        href={`/labs/model-fit-preview/records?recordId=${r.id}`}
-                        className={styles.recordDetailLink}
-                      >
-                        详情
-                      </Link>
+                      <span className={styles.recordColInfo} role="cell">
+                        {memoryLabel}
+                      </span>
+                      <span className={styles.recordColInfo} role="cell">
+                        {r.appVersion || '—'}
+                      </span>
+                      <span className={styles.recordColInfo} role="cell">
+                        {formatTimestamp(r.createdAt)}
+                      </span>
+                      <span className={styles.recordColAction} role="cell">
+                        <Link
+                          href={`/labs/model-fit-preview/records?recordId=${r.id}`}
+                          className={styles.recordDetailLink}
+                        >
+                          详情
+                        </Link>
+                      </span>
                     </div>
                   );
                 })}

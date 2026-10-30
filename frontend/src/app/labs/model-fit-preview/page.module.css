@@ -839,6 +839,7 @@
 
 .recordTableHeader {
   display: grid;
+  min-width: 900px;
   grid-template-columns: 0.9fr 0.9fr 1.1fr 1fr 1.8fr 0.9fr 0.7fr 0.8fr 0.7fr;
   gap: 8px;
   padding: 8px 12px;
@@ -856,6 +857,7 @@
 
 .recordRow {
   display: grid;
+  min-width: 900px;
   grid-template-columns: 0.9fr 0.9fr 1.1fr 1fr 1.8fr 0.9fr 0.7fr 0.8fr 0.7fr;
   gap: 8px;
   align-items: center;
@@ -863,6 +865,36 @@
   font-size: 0.8125rem;
   line-height: 1.3;
   border-bottom: 1px solid var(--color-border);
+}
+
+.recordSortButton {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.recordSortButton svg {
+  flex-shrink: 0;
+}
+
+.recordSortButton:hover,
+[aria-sort='ascending'] .recordSortButton,
+[aria-sort='descending'] .recordSortButton {
+  color: var(--color-link);
+}
+
+.recordSortButton:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
 }
 
 .recordRow:last-child {

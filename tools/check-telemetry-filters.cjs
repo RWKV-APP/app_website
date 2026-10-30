@@ -15,6 +15,9 @@ backendRequire('ts-node').register({
 const { getTelemetryFilterOptions } = frontendRequire(
   './src/features/telemetry/telemetryFilters'
 )
+const { sortTelemetryRecords } = frontendRequire(
+  './src/features/telemetry/telemetryRecordSort'
+)
 const {
   deriveWeightLabel,
   filterLeaderboardData,
@@ -46,6 +49,95 @@ const defaults = {
   selectedBrand: [],
   selectedSoc: []
 }
+
+const sortRows = [
+  {
+    id: 1,
+    appVersion: '4.9.0',
+    decodeSpeed: 90,
+    totalMemoryMb: 16384,
+    createdAt: '2026-10-30T08:00:00+08:00'
+  },
+  {
+    id: 2,
+    appVersion: '4.10.0',
+    decodeSpeed: 100,
+    totalMemoryMb: 8192,
+    createdAt: '2026-10-30T01:00:00Z'
+  },
+  {
+    id: 3,
+    appVersion: '',
+    decodeSpeed: NaN,
+    totalMemoryMb: null,
+    createdAt: 'invalid'
+  },
+  {
+    id: 4,
+    appVersion: '4.9.0',
+    decodeSpeed: 90,
+    totalMemoryMb: 16384,
+    createdAt: '2026-10-30T08:00:00+08:00'
+  }
+]
+const sortedIds = (value, direction) =>
+  sortTelemetryRecords(sortRows, value, direction).map((row) => row.id)
+assert.deepEqual(
+  sortedIds((row) => row.appVersion, 'asc'),
+  [1, 4, 2, 3]
+)
+assert.deepEqual(
+  sortedIds((row) => row.appVersion, 'desc'),
+  [2, 1, 4, 3]
+)
+assert.deepEqual(
+  sortedIds((row) => row.decodeSpeed, 'asc'),
+  [1, 4, 2, 3]
+)
+assert.deepEqual(
+  sortedIds((row) => row.decodeSpeed, 'desc'),
+  [2, 1, 4, 3]
+)
+assert.deepEqual(
+  sortedIds((row) => row.totalMemoryMb, 'asc'),
+  [2, 1, 4, 3]
+)
+assert.deepEqual(
+  sortedIds((row) => row.totalMemoryMb, 'desc'),
+  [1, 4, 2, 3]
+)
+assert.deepEqual(
+  sortedIds((row) => Date.parse(row.createdAt), 'asc'),
+  [1, 4, 2, 3]
+)
+assert.deepEqual(
+  sortedIds((row) => Date.parse(row.createdAt), 'desc'),
+  [2, 1, 4, 3]
+)
+assert.deepEqual(
+  sortRows.map((row) => row.id),
+  [1, 2, 3, 4],
+  'sorting preserves source order'
+)
+assert.deepEqual(
+  sortTelemetryRecords([], (row) => row.id, 'asc'),
+  []
+)
+const manyRows = Array.from({ length: 1001 }, (_, id) => ({
+  id,
+  decodeSpeed: 1000 - id
+}))
+const manySorted = sortTelemetryRecords(
+  manyRows,
+  (row) => row.decodeSpeed,
+  'asc'
+)
+assert.equal(manySorted.length, 1001)
+assert.equal(manySorted[0].id, 1000)
+assert.equal(manySorted[1000].id, 0)
+console.log(
+  'Sidebar sorting: numeric versions, speeds, memory, timestamps, missing values, stable ties and all records passed'
+)
 const entry = (values) => ({
   os: 'macos',
   socName: 'Apple M4',
