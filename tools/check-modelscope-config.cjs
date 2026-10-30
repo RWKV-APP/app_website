@@ -9,6 +9,7 @@ backendRequire('ts-node').register({
   project: path.join(__dirname, '../backend/tsconfig.json'),
   transpileOnly: true
 })
+const { BadRequestException } = backendRequire('@nestjs/common')
 const { RemoteConfigService } = backendRequire(
   './src/remote-config/remote-config.service'
 )
@@ -373,6 +374,35 @@ async function main() {
   await assert.rejects(upload([githubLegacy, githubLegacy]), /must use a Hugging Face resolve URL/)
   publishedConfig = null
   await assert.rejects(upload([githubLegacy]), /must use a Hugging Face resolve URL/)
+  const goodModelScopeMetadata = service.getModelScopeFileMetadata
+  const missingMirror = new BadRequestException('Upload blocked: points to a non-existent ModelScope file: test')
+  service.getModelScopeFileMetadata = async () => { throw missingMirror }
+  for (const existing of [legacy, model]) {
+    publishedConfig = {
+      fileName: 'latest.json', type: 'app_config', published: true,
+      content: JSON.stringify({ chat: { model_config: [existing] } })
+    }
+    for (const modelScopeOnly of existing === model ? [true] : [true, false]) {
+      const result = await upload([existing], { modelScopeOnly })
+      assert.match(result.warnings.join('\n'), /ModelScope returned 404/)
+      assert.deepEqual(JSON.parse(records.at(-1).content).chat.model_config[0], existing)
+    }
+    await assert.rejects(upload([{ ...existing, name: 'modified' }]), /non-existent ModelScope file/)
+    await assert.rejects(upload([existing, existing]), /non-existent ModelScope file/)
+    await assert.rejects(upload([existing], { fileName: '755.json' }), /non-existent ModelScope file/)
+    publishedConfig.content = JSON.stringify({ world: { model_config: [existing] } })
+    await assert.rejects(upload([existing]), /non-existent ModelScope file/)
+    publishedConfig.content = JSON.stringify({ chat: { model_config: [existing] } })
+    publishedConfig.published = false
+    await assert.rejects(upload([existing]), /non-existent ModelScope file/)
+    publishedConfig.published = true
+    service.getModelScopeFileMetadata = async () => { throw new BadRequestException('ModelScope validation failed with status 503') }
+    await assert.rejects(upload([existing]), /status 503/)
+    service.getModelScopeFileMetadata = async () => { throw missingMirror }
+  }
+  publishedConfig = null
+  await assert.rejects(upload([legacy]), /non-existent ModelScope file/)
+  service.getModelScopeFileMetadata = goodModelScopeMetadata
   calls.length = 0
   await assert.rejects(
     upload([model], { modelScopeOnly: 'true' }),

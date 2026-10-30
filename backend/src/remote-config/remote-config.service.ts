@@ -548,6 +548,49 @@ export class RemoteConfigService {
       );
     }
 
+    const takePublishedModel = async (sectionName: string, model: Record<string, unknown>) => {
+    if (!publishedConfig) {
+      const published = await this.prisma.remoteConfig.findFirst({
+        where: { type: REMOTE_CONFIG_TYPES.appConfig, fileName, published: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      publishedConfig = published ? this.parseContent(published.content) : {};
+    }
+    if (!remainingPublishedModels.has(sectionName)) {
+      const publishedSection = publishedConfig[sectionName] as Record<string, unknown>;
+      remainingPublishedModels.set(
+        sectionName,
+        Array.isArray(publishedSection?.model_config) ? [...publishedSection.model_config] : [],
+      );
+    }
+    const remaining = remainingPublishedModels.get(sectionName);
+    const publishedIndex = remaining.findIndex((row) => isDeepStrictEqual(row, model));
+    if (publishedIndex < 0) return false;
+    remaining.splice(publishedIndex, 1);
+    return true;
+    };
+    const getModelScopeMetadata = async (
+      target: ModelScopeResolveTarget,
+      location: ModelConfigLocation,
+      model: Record<string, unknown>,
+    ): Promise<ModelScopeFileMetadata | null> => {
+      try {
+        return await this.getModelScopeFileMetadata(target, {
+          ...location, metadataCache: modelScopeMetadataCache,
+        });
+      } catch (error) {
+        if (
+          error instanceof BadRequestException &&
+          error.message.includes('points to a non-existent ModelScope file:') &&
+          await takePublishedModel(location.sectionName, model)
+        ) {
+          warnings.push(`Preserved unchanged legacy entry from published ${fileName} section "${location.sectionName}" model_config[${location.modelIndex}]; ModelScope returned 404, so prior metadata was retained without renewed verification.`);
+          return null;
+        }
+        throw error;
+      }
+    };
+
     for (const sectionName of APP_CONFIG_SECTIONS.filter((section) => section in parsed)) {
       const sectionValue = parsed[sectionName];
       if (!sectionValue || Array.isArray(sectionValue) || typeof sectionValue !== 'object') {
@@ -581,10 +624,8 @@ export class RemoteConfigService {
         if (directModelScopeTarget) {
           const location = { fileName, sectionName, modelIndex: index };
           this.assertModelScopeCatalogRow(model, directModelScopeTarget, location, modelScopeOnly);
-          const modelScopeMetadata = await this.getModelScopeFileMetadata(directModelScopeTarget, {
-            ...location,
-            metadataCache: modelScopeMetadataCache,
-          });
+          const modelScopeMetadata = await getModelScopeMetadata(directModelScopeTarget, location, model);
+          if (!modelScopeMetadata) continue;
           this.assertModelScopeMetadata(model, modelScopeMetadata, location);
           if (modelScopeMetadata.timestamp > 0 && model.date !== modelScopeMetadata.timestamp) {
             model.date = modelScopeMetadata.timestamp;
@@ -598,25 +639,7 @@ export class RemoteConfigService {
           ? this.resolveModelScopeTarget(huggingFaceTarget)
           : null;
         if (!modelScopeTarget) {
-          if (!publishedConfig) {
-            const published = await this.prisma.remoteConfig.findFirst({
-              where: { type: REMOTE_CONFIG_TYPES.appConfig, fileName, published: true },
-              orderBy: { createdAt: 'desc' },
-            });
-            publishedConfig = published ? this.parseContent(published.content) : {};
-          }
-          if (!remainingPublishedModels.has(sectionName)) {
-            const publishedSection = publishedConfig[sectionName] as Record<string, unknown>;
-            remainingPublishedModels.set(
-              sectionName,
-              Array.isArray(publishedSection?.model_config) ? [...publishedSection.model_config] : [],
-            );
-          }
-          const remaining = remainingPublishedModels.get(sectionName);
-          const publishedIndex = remaining.findIndex((row) => isDeepStrictEqual(row, model));
-          if (publishedIndex >= 0) {
-            // Preserve existing consumers without admitting new or modified unmapped rows.
-            remaining.splice(publishedIndex, 1);
+          if (await takePublishedModel(sectionName, model)) {
             warnings.push(
               `Preserved unchanged legacy entry from published ${fileName} section "${sectionName}" model_config[${index}]; no approved ModelScope mirror is available.`,
             );
@@ -638,17 +661,15 @@ export class RemoteConfigService {
 
         if (modelScopeOnly) {
           const location = { fileName, sectionName, modelIndex: index };
-          const metadata = await this.getModelScopeFileMetadata(modelScopeTarget, {
-            ...location,
-            metadataCache: modelScopeMetadataCache,
-          });
+          const metadata = await getModelScopeMetadata(modelScopeTarget, location, model);
+          if (!metadata) continue;
           this.assertModelScopeMetadata(model, metadata, location, false);
           model.fileSize = metadata.size;
           continue;
         }
 
         let huggingFaceMetadata: HuggingFaceFileMetadata;
-        let modelScopeMetadata: ModelScopeFileMetadata;
+        let modelScopeMetadata: ModelScopeFileMetadata | null;
         try {
           [huggingFaceMetadata, modelScopeMetadata] = await Promise.all([
             this.getHuggingFaceFileMetadata(normalizedUrl, {
@@ -658,12 +679,7 @@ export class RemoteConfigService {
               treeCache: huggingFaceTreeCache,
               metadataCache: huggingFaceMetadataCache,
             }),
-            this.getModelScopeFileMetadata(modelScopeTarget, {
-              fileName,
-              sectionName,
-              modelIndex: index,
-              metadataCache: modelScopeMetadataCache,
-            }),
+            getModelScopeMetadata(modelScopeTarget, {fileName, sectionName, modelIndex: index}, model),
           ]);
         } catch (error) {
           if (error instanceof BadRequestException) {
@@ -675,6 +691,7 @@ export class RemoteConfigService {
           );
         }
 
+        if (!modelScopeMetadata) continue;
         this.assertMirroredFileMetadata(
           normalizedUrl,
           model,
