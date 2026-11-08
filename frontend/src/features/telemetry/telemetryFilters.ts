@@ -3,6 +3,8 @@ import type { TelemetryLeaderboardEntry } from '@/types/telemetry';
 import {
   BRAND_ORDER,
   OS_ORDER,
+  compareModelGenerations,
+  deriveModelGeneration,
   deriveModelTag,
   deriveWeightLabel,
   getBackendFamily,
@@ -17,6 +19,7 @@ export type TelemetryFilterSelections = {
   selectedBatch: string[];
   selectedSize: string[];
   selectedModelTag: string[];
+  selectedGeneration: string[];
   selectedBrand: string[];
   selectedSoc: string[];
 };
@@ -27,6 +30,7 @@ const FILTER_KEYS: (keyof TelemetryFilterSelections)[] = [
   'selectedBatch',
   'selectedSize',
   'selectedModelTag',
+  'selectedGeneration',
   'selectedBrand',
   'selectedSoc',
 ];
@@ -55,6 +59,7 @@ export function getTelemetryFilterOptions(
       selectedBatch: [String(entry.batchCount)],
       selectedSize: [deriveWeightLabel(entry)],
       selectedModelTag: [deriveModelTag(entry)],
+      selectedGeneration: [deriveModelGeneration(entry)],
       selectedBrand: getHardwareBrandKeys(entry),
       selectedSoc: [formatConsumerSocName(entry.socName)],
     };
@@ -77,6 +82,7 @@ export function getTelemetryFilterOptions(
     FILTER_KEYS.map((key, index) => {
       const order = FIXED_ORDER[key];
       const values = Array.from(counts[index].keys()).sort((a, b) => {
+        if (key === 'selectedGeneration') return compareModelGenerations(a, b);
         if (key === 'selectedSoc') {
           const unknownOrder = Number(a.includes('型号待识别')) - Number(b.includes('型号待识别'));
           if (unknownOrder) return unknownOrder;

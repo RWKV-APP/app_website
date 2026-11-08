@@ -3,6 +3,7 @@ import axios from 'axios';
 import { RemoteConfig, RemoteConfigActivity } from '@prisma/client';
 import JSZip = require('jszip');
 import { APP_CONFIG_SECTIONS } from '@app/contracts';
+import { isDeepStrictEqual } from 'node:util';
 import { Config } from '../config';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -536,6 +537,8 @@ export class RemoteConfigService {
     const huggingFaceTreeCache = new Map<string, Promise<HuggingFaceTreeEntry[]>>();
     const huggingFaceMetadataCache = new Map<string, Promise<HuggingFaceFileMetadata>>();
     const modelScopeMetadataCache = new Map<string, Promise<ModelScopeFileMetadata>>();
+    let publishedConfig: Record<string, unknown>;
+    const remainingPublishedModels = new Map<string, unknown[]>();
     let synchronizedDualSourceModelCount = 0;
     let synchronizedImmutableModelCount = 0;
     const warnings: string[] = [];
@@ -544,6 +547,49 @@ export class RemoteConfigService {
         'Hugging Face verification was explicitly deferred; model metadata was checked only on ModelScope.',
       );
     }
+
+    const takePublishedModel = async (sectionName: string, model: Record<string, unknown>) => {
+    if (!publishedConfig) {
+      const published = await this.prisma.remoteConfig.findFirst({
+        where: { type: REMOTE_CONFIG_TYPES.appConfig, fileName, published: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      publishedConfig = published ? this.parseContent(published.content) : {};
+    }
+    if (!remainingPublishedModels.has(sectionName)) {
+      const publishedSection = publishedConfig[sectionName] as Record<string, unknown>;
+      remainingPublishedModels.set(
+        sectionName,
+        Array.isArray(publishedSection?.model_config) ? [...publishedSection.model_config] : [],
+      );
+    }
+    const remaining = remainingPublishedModels.get(sectionName);
+    const publishedIndex = remaining.findIndex((row) => isDeepStrictEqual(row, model));
+    if (publishedIndex < 0) return false;
+    remaining.splice(publishedIndex, 1);
+    return true;
+    };
+    const getModelScopeMetadata = async (
+      target: ModelScopeResolveTarget,
+      location: ModelConfigLocation,
+      model: Record<string, unknown>,
+    ): Promise<ModelScopeFileMetadata | null> => {
+      try {
+        return await this.getModelScopeFileMetadata(target, {
+          ...location, metadataCache: modelScopeMetadataCache,
+        });
+      } catch (error) {
+        if (
+          error instanceof BadRequestException &&
+          error.message.includes('points to a non-existent ModelScope file:') &&
+          await takePublishedModel(location.sectionName, model)
+        ) {
+          warnings.push(`Preserved unchanged legacy entry from published ${fileName} section "${location.sectionName}" model_config[${location.modelIndex}]; ModelScope returned 404, so prior metadata was retained without renewed verification.`);
+          return null;
+        }
+        throw error;
+      }
+    };
 
     for (const sectionName of APP_CONFIG_SECTIONS.filter((section) => section in parsed)) {
       const sectionValue = parsed[sectionName];
@@ -578,10 +624,8 @@ export class RemoteConfigService {
         if (directModelScopeTarget) {
           const location = { fileName, sectionName, modelIndex: index };
           this.assertModelScopeCatalogRow(model, directModelScopeTarget, location, modelScopeOnly);
-          const modelScopeMetadata = await this.getModelScopeFileMetadata(directModelScopeTarget, {
-            ...location,
-            metadataCache: modelScopeMetadataCache,
-          });
+          const modelScopeMetadata = await getModelScopeMetadata(directModelScopeTarget, location, model);
+          if (!modelScopeMetadata) continue;
           this.assertModelScopeMetadata(model, modelScopeMetadata, location);
           if (modelScopeMetadata.timestamp > 0 && model.date !== modelScopeMetadata.timestamp) {
             model.date = modelScopeMetadata.timestamp;
@@ -591,30 +635,41 @@ export class RemoteConfigService {
         }
 
         const huggingFaceTarget = this.parseHuggingFaceResolveUrl(normalizedUrl);
-        if (!huggingFaceTarget) {
+        const modelScopeTarget = huggingFaceTarget
+          ? this.resolveModelScopeTarget(huggingFaceTarget)
+          : null;
+        if (!modelScopeTarget) {
+          if (await takePublishedModel(sectionName, model)) {
+            warnings.push(
+              `Preserved unchanged legacy entry from published ${fileName} section "${sectionName}" model_config[${index}]; no approved ModelScope mirror is available.`,
+            );
+            continue;
+          }
+          if (!huggingFaceTarget) {
+            throw new BadRequestException(
+              `Upload blocked: ${fileName} section "${sectionName}" model_config[${index}] must use a Hugging Face resolve URL. Received: ${normalizedUrl}`,
+            );
+          }
+          const supportedRepositories = MODEL_REPOSITORY_MIRRORS.map(
+            (candidate) =>
+              `${candidate.huggingFaceRepoId}@${candidate.huggingFaceRevision} -> ${candidate.modelScopeRepoId}@${candidate.modelScopeRevision}`,
+          ).join(', ');
           throw new BadRequestException(
-            `Upload blocked: ${fileName} section "${sectionName}" model_config[${index}] must use a Hugging Face resolve URL. Received: ${normalizedUrl}`,
+            `Upload blocked: ${fileName} section "${sectionName}" model_config[${index}] uses ${huggingFaceTarget.repoId}@${huggingFaceTarget.revision}, which has no approved ModelScope mirror. Only unchanged entries from this published file and section can be retained. Supported mappings: ${supportedRepositories}.`,
           );
         }
-        const modelScopeTarget = this.resolveModelScopeTarget(huggingFaceTarget, {
-          fileName,
-          sectionName,
-          modelIndex: index,
-        });
 
         if (modelScopeOnly) {
           const location = { fileName, sectionName, modelIndex: index };
-          const metadata = await this.getModelScopeFileMetadata(modelScopeTarget, {
-            ...location,
-            metadataCache: modelScopeMetadataCache,
-          });
+          const metadata = await getModelScopeMetadata(modelScopeTarget, location, model);
+          if (!metadata) continue;
           this.assertModelScopeMetadata(model, metadata, location, false);
           model.fileSize = metadata.size;
           continue;
         }
 
         let huggingFaceMetadata: HuggingFaceFileMetadata;
-        let modelScopeMetadata: ModelScopeFileMetadata;
+        let modelScopeMetadata: ModelScopeFileMetadata | null;
         try {
           [huggingFaceMetadata, modelScopeMetadata] = await Promise.all([
             this.getHuggingFaceFileMetadata(normalizedUrl, {
@@ -624,12 +679,7 @@ export class RemoteConfigService {
               treeCache: huggingFaceTreeCache,
               metadataCache: huggingFaceMetadataCache,
             }),
-            this.getModelScopeFileMetadata(modelScopeTarget, {
-              fileName,
-              sectionName,
-              modelIndex: index,
-              metadataCache: modelScopeMetadataCache,
-            }),
+            getModelScopeMetadata(modelScopeTarget, {fileName, sectionName, modelIndex: index}, model),
           ]);
         } catch (error) {
           if (error instanceof BadRequestException) {
@@ -641,6 +691,7 @@ export class RemoteConfigService {
           );
         }
 
+        if (!modelScopeMetadata) continue;
         this.assertMirroredFileMetadata(
           normalizedUrl,
           model,
@@ -703,8 +754,7 @@ export class RemoteConfigService {
 
   private resolveModelScopeTarget(
     huggingFaceTarget: HuggingFaceResolveTarget,
-    location: ModelConfigLocation,
-  ): ModelScopeResolveTarget {
+  ): ModelScopeResolveTarget | null {
     const mirror = MODEL_REPOSITORY_MIRRORS.find(
       (candidate) =>
         candidate.huggingFaceRepoId.toLowerCase() === huggingFaceTarget.repoId.toLowerCase() &&
@@ -712,13 +762,7 @@ export class RemoteConfigService {
     );
 
     if (!mirror) {
-      const supportedRepositories = MODEL_REPOSITORY_MIRRORS.map(
-        (candidate) =>
-          `${candidate.huggingFaceRepoId}@${candidate.huggingFaceRevision} -> ${candidate.modelScopeRepoId}@${candidate.modelScopeRevision}`,
-      ).join(', ');
-      throw new BadRequestException(
-        `Upload blocked: ${location.fileName} section "${location.sectionName}" model_config[${location.modelIndex}] uses ${huggingFaceTarget.repoId}@${huggingFaceTarget.revision}, which has no approved ModelScope mirror. Supported mappings: ${supportedRepositories}.`,
-      );
+      return null;
     }
 
     return {

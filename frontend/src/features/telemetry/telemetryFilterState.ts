@@ -17,6 +17,7 @@ export function defaultTelemetryFilters(): TelemetryFilterState {
     selectedBatch: [],
     selectedSize: [],
     selectedModelTag: ['Chat'],
+    selectedGeneration: [],
     selectedBrand: [],
     selectedSoc: [],
     selectedVersion: [],

@@ -123,6 +123,9 @@ export class TelemetryController {
     @Query('buildMode') buildMode?: string,
     @Query('limit') limit?: string,
     @Query('socMatch') socMatch?: string,
+    @Query('page') page?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: string,
   ) {
     if (!socName || !modelSha256 || !backend) {
       return res.status(400).json({ error: 'socName, modelSha256, and backend are required' });
@@ -141,6 +144,9 @@ export class TelemetryController {
         appVersion,
         buildMode,
         limit,
+        page,
+        sortBy,
+        sortOrder,
       }),
     );
   }

@@ -17,6 +17,8 @@ const { getTelemetryFilterOptions } = frontendRequire(
 )
 const {
   deriveWeightLabel,
+  deriveModelGeneration,
+  compareModelGenerations,
   filterLeaderboardData,
   formatBackendLabel,
   getBackendFamily,
@@ -43,9 +45,11 @@ const defaults = {
   selectedBatch: [],
   selectedSize: [],
   selectedModelTag: [],
+  selectedGeneration: [],
   selectedBrand: [],
   selectedSoc: []
 }
+
 const entry = (values) => ({
   os: 'macos',
   socName: 'Apple M4',
@@ -271,6 +275,7 @@ assert.deepEqual(
     selectedBatch: ['1'],
     selectedSize: ['0.1B'],
     selectedModelTag: ['Chat'],
+    selectedGeneration: ['未知代际'],
     selectedBrand: ['mediatek'],
     selectedSoc: ['MediaTek Helio P90']
   },
@@ -384,6 +389,7 @@ const storedState = {
   selectedBatch: ['1', '16'],
   selectedSize: ['2.9B', '大小未知'],
   selectedModelTag: ['Chat', 'VL'],
+  selectedGeneration: ['G1k', 'G1g'],
   selectedBrand: ['apple', 'qualcomm'],
   selectedSoc: ['Apple M4', 'Unavailable model'],
   selectedVersion: ['4.8.0', '4.7.2'],
@@ -444,6 +450,7 @@ assert.deepEqual(
       selectedBatch: null,
       selectedSize: ['2.9B', '', '2.9B'],
       selectedModelTag: [],
+      selectedGeneration: [],
       selectedVersion: {},
       selectedBuildMode: false,
       search: 42,
@@ -646,3 +653,142 @@ assert.deepEqual(
   ),
   ['unisoc']
 )
+
+// Generation labels come from model identity, not quantization or backend names.
+for (const [modelName, modelFileName, expected] of [
+  ['RWKV7-G1k 2.9B', 'test.bin', 'G1k'],
+  ['rwkv7-g1G-0.4B', 'test.bin', 'G1g'],
+  ['RWKV7 2.9B', 'rwkv7_g1i_2.9b.gguf', 'G1i'],
+  ['RWKV7-G1h 1.5B', 'rwkv7-g1k.bin', 'G1h'],
+  ['RWKV7-G1zz', 'test.bin', '未知代际'],
+  ['RWKV7 1.5B', 'test.bin', '未知代际']
+])
+  assert.equal(
+    deriveModelGeneration(entry({ modelName, modelFileName })),
+    expected
+  )
+const generations = ['G1g', 'G1z', 'G1i', 'G1h', 'G1k', 'G1a'].map(
+  (generation, i) =>
+    entry({
+      modelName: 'RWKV7-' + generation + ' 2.9B',
+      sampleCount: 1000 - i,
+      os: generation === 'G1i' ? 'android' : 'macos'
+    })
+)
+assert.deepEqual(
+  getTelemetryFilterOptions(generations, defaults).selectedGeneration,
+  ['G1z', 'G1k', 'G1i', 'G1h', 'G1g', 'G1a']
+)
+assert.deepEqual(['G1g', '未知代际', 'G1k'].sort(compareModelGenerations), [
+  'G1k',
+  'G1g',
+  '未知代际'
+])
+const generationFilters = { ...defaults, selectedGeneration: ['G1k', 'G1g'] }
+assert.deepEqual(filterLeaderboardData(generations, generationFilters), [
+  generations[0],
+  generations[4]
+])
+assert.deepEqual(
+  getTelemetryFilterOptions(generations, generationFilters).selectedPlatforms,
+  ['macos']
+)
+assert.deepEqual(
+  getTelemetryFilterOptions(generations, {
+    ...generationFilters,
+    selectedPlatforms: ['android']
+  }).selectedGeneration,
+  ['G1i']
+)
+assert.deepEqual(
+  filterLeaderboardData(generations, {
+    ...generationFilters,
+    selectedPlatforms: ['android']
+  }),
+  []
+)
+assert.deepEqual(
+  parseTelemetryFilterState(
+    JSON.stringify({ selectedGeneration: ['G1k', 'G1k', 'G1h'] })
+  ).selectedGeneration,
+  ['G1k', 'G1h']
+)
+assert.deepEqual(
+  parseTelemetryFilterState(JSON.stringify({ selectedSize: ['2.9B'] }))
+    .selectedGeneration,
+  [],
+  'old saved filters default to unrestricted generation'
+)
+assert.deepEqual(
+  parseTelemetryFilterState(JSON.stringify({ selectedGeneration: 'G1k' }))
+    .selectedGeneration,
+  []
+)
+console.log(
+  'Generation filters: names/files, reverse alphabet, unknowns, multi-select, cross-facets and saved-state compatibility passed'
+)
+
+async function checkRecordPageRequest() {
+  const { fetchPublicTelemetryRecords } = frontendRequire('./src/utils/api')
+  const originalFetch = global.fetch
+  const controller = new AbortController()
+  const page = { items: [], page: 3, limit: 100, total: 205, totalPages: 3 }
+  try {
+    global.fetch = async (url, options) => {
+      const query = new URL(url, 'http://localhost').searchParams
+      assert.equal(query.get('page'), '3')
+      assert.equal(query.get('limit'), '100')
+      assert.equal(query.get('sortBy'), 'Time')
+      assert.equal(query.get('sortOrder'), 'asc')
+      assert.equal(query.get('socMatch'), 'canonical')
+      assert.equal(query.get('appVersion'), '4.9.0,4.8.6')
+      assert.equal(query.get('buildMode'), 'release')
+      assert.equal(options.signal, controller.signal)
+      return new Response(JSON.stringify(page))
+    }
+    const query = {
+      socName: 'A18',
+      modelSha256: 'test',
+      backend: 'mlx',
+      isBatch: false,
+      batchCount: 1,
+      page: 3,
+      sortBy: 'Time',
+      sortOrder: 'asc',
+      appVersions: ['4.9.0', '4.8.6'],
+      buildModes: ['release'],
+      signal: controller.signal
+    }
+    assert.deepEqual(await fetchPublicTelemetryRecords(query), page)
+    for (const invalid of [
+      [],
+      null,
+      { ...page, page: 4 },
+      { ...page, limit: 200 },
+      { ...page, totalPages: 2 }
+    ]) {
+      global.fetch = async () => new Response(JSON.stringify(invalid))
+      await assert.rejects(
+        fetchPublicTelemetryRecords(query),
+        /明细响应格式错误/
+      )
+    }
+    global.fetch = async () =>
+      new Response(JSON.stringify({ message: 'temporary failure' }), {
+        status: 503
+      })
+    await assert.rejects(
+      fetchPublicTelemetryRecords(query),
+      /temporary failure/
+    )
+  } finally {
+    global.fetch = originalFetch
+  }
+  console.log(
+    'Sidebar request: page, size, global sort, filters, cancellation and HTTP error propagation passed'
+  )
+}
+checkRecordPageRequest().catch((error) => {
+  console.error(error)
+  process.exitCode = 1
+})
