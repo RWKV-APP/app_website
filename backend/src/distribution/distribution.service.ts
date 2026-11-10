@@ -7,7 +7,9 @@ import { Config } from '../config';
 import { ReleaseNotesService } from './release-notes.service';
 
 const LATEST_PUBLISHED_APP_VERSION = '4.9.1';
-// Non-macOS channels retain their staged release policy.
+// App Store Lookup reports a version name, while installed clients compare build numbers.
+const IOS_UPDATE_RELEASE = { version: '4.9.2', build: 767 };
+// Other channels retain their staged release policy.
 const CURRENT_RELEASE_TYPES = new Set<string>([
   DistributionType.linuxHF,
   DistributionType.linuxMS,
@@ -30,7 +32,6 @@ const CURRENT_RELEASE_TYPES = new Set<string>([
   DistributionType.androidHF,
   DistributionType.androidMS,
   DistributionType.androidGR,
-  DistributionType.iOSAS,
 ]);
 
 export interface DistributionSnapshotRecord {
@@ -1212,7 +1213,6 @@ export class DistributionService implements OnModuleInit {
     const appId = '6740192639';
 
     let version = 'latest';
-    const build: number | null = null;
 
     try {
       // Use iTunes Lookup API with country=us so we get the US App Store version
@@ -1238,7 +1238,7 @@ export class DistributionService implements OnModuleInit {
       type: DistributionType.iOSAS,
       url: appStoreUrl,
       version,
-      build,
+      build: version === IOS_UPDATE_RELEASE.version ? IOS_UPDATE_RELEASE.build : null,
     });
 
     this.logger.log(`✅ Updated ${DistributionType.iOSAS}: App Store link (version: ${version})`);
@@ -1765,9 +1765,12 @@ export class DistributionService implements OnModuleInit {
     });
     const recordsByType = new Map<string, DistributionSnapshotRecord[]>();
     for (const record of records) {
-      const maximumVersion = CURRENT_RELEASE_TYPES.has(record.type)
-        ? LATEST_PUBLISHED_APP_VERSION
-        : '4.7.2';
+      const maximumVersion =
+        record.type === DistributionType.iOSAS
+          ? IOS_UPDATE_RELEASE.version
+          : CURRENT_RELEASE_TYPES.has(record.type)
+            ? LATEST_PUBLISHED_APP_VERSION
+            : '4.7.2';
       // macOS and Pgyer follow the latest package actually discovered at the source.
       if (
         !record.type.startsWith('macos') &&

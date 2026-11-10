@@ -198,6 +198,36 @@ async function main() {
   assert.equal(missingMacosResult.macosMS, null)
 
   const axios = backendRequire('axios').default
+  const originalGet = axios.get
+  const { androidMS: baselineAndroid } = await distributionController.getLatestDistributions(appRequest)
+  const appStoreRecords = [distributions.iOSAS, ...distributionRecords.filter((row) => row.type !== 'iOSAS')]
+  const appStoreService = new DistributionService({
+    distribution: { findMany: async () => appStoreRecords }
+  }, {})
+  appStoreService.saveDistribution = async (row) => {
+    appStoreRecords[0] = { ...distributions.iOSAS, ...row }
+  }
+  try {
+    for (const [version, build] of [['4.9.1', null], ['4.9.2', 767]]) {
+      axios.get = async (url) => {
+        assert.equal(url, 'https://itunes.apple.com/lookup?id=6740192639&country=us')
+        return { data: { results: [{ version }] } }
+      }
+      await appStoreService.checkIOSAS()
+      await appStoreService.refreshLatestSnapshotAfterSync()
+      const result = await new DistributionController(appStoreService).getLatestDistributions({
+        ...appRequest,
+        url: '/distributions/latest?key%3DiOSTF%26key%3DiOSAS%26key%3DandroidMS'
+      })
+      assert.equal(result.iOSTF, null)
+      assert.equal(result.iOSAS.version, version)
+      assert.equal(result.iOSAS.build, build)
+      assert.deepEqual(result.androidMS, baselineAndroid)
+    }
+  } finally {
+    axios.get = originalGet
+  }
+
   const originalPost = axios.post
   const pgyerRequests = []
   const pgyerResponse = { data: { code: 0, data: {
