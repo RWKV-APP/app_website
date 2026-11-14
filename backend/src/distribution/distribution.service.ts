@@ -6,9 +6,9 @@ import { DistributionType } from '../types/distribution';
 import { Config } from '../config';
 import { ReleaseNotesService } from './release-notes.service';
 
-const LATEST_PUBLISHED_APP_VERSION = '4.9.1';
+const LATEST_PUBLISHED_APP_VERSION = '4.9.3';
 // App Store Lookup reports a version name, while installed clients compare build numbers.
-const IOS_UPDATE_RELEASE = { version: '4.9.2', build: 767 };
+const IOS_UPDATE_BUILDS = new Map([['4.9.2', 767], ['4.9.3', 768]]);
 // Other channels retain their staged release policy.
 const CURRENT_RELEASE_TYPES = new Set<string>([
   DistributionType.linuxHF,
@@ -1238,7 +1238,7 @@ export class DistributionService implements OnModuleInit {
       type: DistributionType.iOSAS,
       url: appStoreUrl,
       version,
-      build: version === IOS_UPDATE_RELEASE.version ? IOS_UPDATE_RELEASE.build : null,
+      build: IOS_UPDATE_BUILDS.get(version) ?? null,
     });
 
     this.logger.log(`✅ Updated ${DistributionType.iOSAS}: App Store link (version: ${version})`);
@@ -1766,11 +1766,9 @@ export class DistributionService implements OnModuleInit {
     const recordsByType = new Map<string, DistributionSnapshotRecord[]>();
     for (const record of records) {
       const maximumVersion =
-        record.type === DistributionType.iOSAS
-          ? IOS_UPDATE_RELEASE.version
-          : CURRENT_RELEASE_TYPES.has(record.type)
-            ? LATEST_PUBLISHED_APP_VERSION
-            : '4.7.2';
+        record.type === DistributionType.iOSAS || CURRENT_RELEASE_TYPES.has(record.type)
+          ? LATEST_PUBLISHED_APP_VERSION
+          : '4.7.2';
       // macOS and Pgyer follow the latest package actually discovered at the source.
       if (
         !record.type.startsWith('macos') &&

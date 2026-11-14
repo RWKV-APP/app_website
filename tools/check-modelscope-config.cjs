@@ -208,7 +208,7 @@ async function main() {
     appStoreRecords[0] = { ...distributions.iOSAS, ...row }
   }
   try {
-    for (const [version, build] of [['4.9.1', null], ['4.9.2', 767]]) {
+    for (const [version, build] of [['4.9.1', null], ['4.9.2', 767], ['4.9.3', 768]]) {
       axios.get = async (url) => {
         assert.equal(url, 'https://itunes.apple.com/lookup?id=6740192639&country=us')
         return { data: { results: [{ version }] } }
@@ -227,6 +227,16 @@ async function main() {
   } finally {
     axios.get = originalGet
   }
+
+  distributionRecords.unshift({
+    ...distributions.androidMS,
+    version: '4.9.3',
+    build: 768
+  })
+  await distributionService.refreshLatestSnapshotAfterSync()
+  const currentReleaseResult = await distributionService.getLatestDistributions()
+  assert.equal(currentReleaseResult.androidMS.version, '4.9.3')
+  assert.equal(currentReleaseResult.androidMS.build, 768)
 
   const originalPost = axios.post
   const pgyerRequests = []
